@@ -511,8 +511,9 @@ export function createInvocationSnapshot(
 	status = getInvocationStatus(details.mode, details.results),
 	previousSnapshot?: InvocationSnapshot,
 ): InvocationSnapshot {
+	const snapshotResults = details.viewerResults ?? details.results;
 	const previousResults = previousSnapshot?.results ?? [];
-	const nextResults = details.results.map((result, index) => {
+	const nextResults = snapshotResults.map((result, index) => {
 		initializeResultRevisions(result);
 		const previousResult = previousResults[index];
 		if (

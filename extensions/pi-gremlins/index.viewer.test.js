@@ -865,6 +865,62 @@ describe("pi-gremlins viewer command", () => {
 		expect(text).not.toContain("←/→ result");
 	});
 
+	test("uses full ordered live chain viewer results for navigation beyond active step", () => {
+		const writer = createPendingResult(
+			"writer",
+			"Draft initial answer",
+			1,
+			"user",
+			"g1",
+		);
+		writer.exitCode = 0;
+		writer.messages.push({
+			role: "assistant",
+			content: [{ type: "text", text: "draft ready" }],
+		});
+		bumpResultVisibleRevision(writer);
+		bumpResultDerivedRevision(writer);
+
+		const reviewer = createPendingResult(
+			"reviewer",
+			"Review draft ready carefully",
+			2,
+			"user",
+			"g2",
+		);
+		reviewer.viewerEntries.push({
+			type: "assistant-text",
+			text: "reviewing",
+			streaming: true,
+		});
+		bumpResultDerivedRevision(reviewer);
+
+		const closer = createPendingResult(
+			"closer",
+			"Finalize {previous}",
+			3,
+			"user",
+			"g3",
+		);
+
+		const snapshot = createInvocationSnapshot(
+			"viewer-chain-live-full-order",
+			{
+				...createDetails("chain", [writer, reviewer]),
+				viewerResults: [writer, reviewer, closer],
+			},
+			"Running",
+		);
+		const text = renderOverlayText(snapshot, {
+			width: 72,
+			rows: 24,
+			selectedResultIndex: 2,
+		});
+
+		expect(text).toContain("focus · step 3/3 · closer [user] · Running · g3");
+		expect(text).toContain("task · Finalize {previous}");
+	});
+
 	test("renders mission-control chrome with focused mixed-model telemetry visible", () => {
 		const planner = createPendingResult("planner", "Plan route", 1, "project");
 		planner.exitCode = 0;
