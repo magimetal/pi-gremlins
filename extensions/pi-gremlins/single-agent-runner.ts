@@ -10,7 +10,10 @@ import type {
 } from "@mariozechner/pi-ai";
 import { withFileMutationQueue } from "@mariozechner/pi-coding-agent";
 import { resolveAgentByName } from "./agents.js";
-import type { RunSingleAgentFn } from "./execution-modes.js";
+import type {
+	RunSingleAgentFn,
+	SteerableSessionCallbacks,
+} from "./execution-modes.js";
 import {
 	bumpResultDerivedRevision,
 	bumpResultVisibleRevision,
@@ -133,6 +136,22 @@ function finishAssistantViewerEntry(
 	}
 	if (clearIndex) state.currentAssistantEntryIndex = null;
 	return changed;
+}
+
+function appendSteerViewerEntry(
+	result: SingleResult,
+	state: SingleRunViewerState,
+	text: string,
+	isError: boolean,
+): boolean {
+	const assistantEntryChanged = finishAssistantViewerEntry(result, state);
+	result.viewerEntries.push({
+		type: "steer",
+		text,
+		streaming: false,
+		isError,
+	});
+	return true || assistantEntryChanged;
 }
 
 function ensureToolCallViewerEntry(
@@ -437,6 +456,13 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 	return { command: "pi", args };
 }
 
+function unregisterSteerableSession(
+	callbacks: SteerableSessionCallbacks | undefined,
+	gremlinId: string,
+): void {
+	callbacks?.unregister(gremlinId);
+}
+
 export const runSingleAgent: RunSingleAgentFn = async (
 	defaultCwd,
 	agents,
@@ -449,6 +475,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 	onUpdate,
 	makeDetails,
 	packageDiscoveryWarning,
+	steerableSessionCallbacks,
 ): Promise<SingleResult> => {
 	const agentLookup = resolveAgentByName(agents, agentName);
 	const agent = agentLookup.agent;
@@ -475,7 +502,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 		return missingAgentResult;
 	}
 
-	const args: string[] = ["--mode", "json", "-p", "--no-session"];
+	const args: string[] = ["--mode", "rpc", "--no-session"];
 	if (agent.model) args.push("--model", agent.model);
 	if (agent.thinking) args.push("--thinking", agent.thinking);
 	if (agent.tools && agent.tools.length > 0) {
@@ -524,7 +551,6 @@ export const runSingleAgent: RunSingleAgentFn = async (
 			args.push("--append-system-prompt", tmpPromptPath);
 		}
 
-		args.push(`Task: ${task}`);
 		let wasAborted = false;
 		let childProcessErrorMessage: string | null = null;
 		let malformedStdoutCount = 0;
@@ -535,9 +561,55 @@ export const runSingleAgent: RunSingleAgentFn = async (
 			const proc = spawn(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,
 				shell: false,
-				stdio: ["ignore", "pipe", "pipe"],
+				stdio: ["pipe", "pipe", "pipe"],
 			});
 			let buffer = "";
+			let settled = false;
+			let observedExitCode: number | undefined;
+			let exitFallbackTimer: ReturnType<typeof setTimeout> | undefined;
+			let removeAbortListener: (() => void) | undefined;
+			let steeringActive = true;
+			let stdinClosed = false;
+
+			const closeStdin = () => {
+				if (stdinClosed) return;
+				stdinClosed = true;
+				try {
+					proc.stdin?.end();
+				} catch {
+					/* ignore child stdin shutdown errors */
+				}
+			};
+
+			const deactivateSteering = () => {
+				if (!steeringActive) return;
+				steeringActive = false;
+				unregisterSteerableSession(steerableSessionCallbacks, gremlinId);
+			};
+
+			const writeRpcCommand = (command: Record<string, unknown>) => {
+				if (!proc.stdin || stdinClosed || !steeringActive || settled) {
+					throw new Error(`Gremlin ${gremlinId} is no longer active.`);
+				}
+				proc.stdin.write(`${JSON.stringify(command)}\n`);
+			};
+
+			const finalize = (code: number) => {
+				if (settled) return;
+				settled = true;
+				deactivateSteering();
+				if (exitFallbackTimer) clearTimeout(exitFallbackTimer);
+				if (buffer.trim()) processLine(buffer);
+				buffer = "";
+				removeAbortListener?.();
+				resolve(code);
+			};
+
+			const appendSteerEvent = (message: string, isError: boolean) => {
+				appendSteerViewerEntry(currentResult, viewerState, message, isError);
+				bumpResultDerivedRevision(currentResult);
+				emitUpdate();
+			};
 
 			const processLine = (line: string) => {
 				if (!line.trim()) return;
@@ -550,6 +622,34 @@ export const runSingleAgent: RunSingleAgentFn = async (
 					appendStderrLine(
 						currentResult,
 						`${CHILD_PROTOCOL_ERROR_PREFIX} dropped malformed child stdout line ${malformedStdoutCount}: ${lastMalformedStdoutPreview}`,
+					);
+					return;
+				}
+
+				if (event.type === "response") return;
+				if (event.type === "agent_start") return;
+				if (event.type === "agent_end") {
+					deactivateSteering();
+					closeStdin();
+					return;
+				}
+				if (event.type === "extension_ui_request") {
+					const method =
+						typeof event.method === "string" ? event.method : "unknown";
+					appendStderrLine(
+						currentResult,
+						`${CHILD_PROTOCOL_ERROR_PREFIX} child requested unsupported UI method: ${method}`,
+					);
+					return;
+				}
+				if (event.type === "extension_error") {
+					const errorText =
+						typeof event.error === "string"
+							? event.error
+							: "child extension error";
+					appendStderrLine(
+						currentResult,
+						`${CHILD_PROTOCOL_ERROR_PREFIX} ${errorText}`,
 					);
 					return;
 				}
@@ -610,20 +710,26 @@ export const runSingleAgent: RunSingleAgentFn = async (
 				}
 			};
 
-			let settled = false;
-			let observedExitCode: number | undefined;
-			let exitFallbackTimer: ReturnType<typeof setTimeout> | undefined;
-			let removeAbortListener: (() => void) | undefined;
-
-			const finalize = (code: number) => {
-				if (settled) return;
-				settled = true;
-				if (exitFallbackTimer) clearTimeout(exitFallbackTimer);
-				if (buffer.trim()) processLine(buffer);
-				buffer = "";
-				removeAbortListener?.();
-				resolve(code);
-			};
+			steerableSessionCallbacks?.register(gremlinId, {
+				steer: async (message: string) => {
+					const trimmedMessage = message.trim();
+					if (!trimmedMessage) {
+						throw new Error("Steering message cannot be empty.");
+					}
+					if (!steeringActive || settled || currentResult.exitCode !== -1) {
+						throw new Error(`Gremlin ${gremlinId} is no longer active.`);
+					}
+					try {
+						writeRpcCommand({ type: "steer", message: trimmedMessage });
+						appendSteerEvent(trimmedMessage, false);
+					} catch (error) {
+						const errorMessage =
+							error instanceof Error ? error.message : String(error);
+						appendSteerEvent(`${trimmedMessage} → ${errorMessage}`, true);
+						throw error;
+					}
+				},
+			});
 
 			proc.stdout.on("data", (data) => {
 				buffer += data.toString();
@@ -650,6 +756,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 			});
 
 			proc.on("error", (error) => {
+				deactivateSteering();
 				childProcessErrorMessage = formatChildProcessError(error);
 				appendStderrLine(currentResult, childProcessErrorMessage);
 				finalize(1);
@@ -658,6 +765,8 @@ export const runSingleAgent: RunSingleAgentFn = async (
 			if (signal) {
 				const killProc = () => {
 					wasAborted = true;
+					deactivateSteering();
+					closeStdin();
 					proc.kill("SIGTERM");
 					setTimeout(() => {
 						if (!proc.killed) proc.kill("SIGKILL");
@@ -671,6 +780,15 @@ export const runSingleAgent: RunSingleAgentFn = async (
 						signal.removeEventListener("abort", killProc);
 					};
 				}
+			}
+
+			try {
+				writeRpcCommand({ type: "prompt", message: `Task: ${task}` });
+			} catch (error) {
+				deactivateSteering();
+				childProcessErrorMessage = formatChildProcessError(error);
+				appendStderrLine(currentResult, childProcessErrorMessage);
+				finalize(1);
 			}
 		});
 
@@ -706,6 +824,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 		}
 		return currentResult;
 	} finally {
+		unregisterSteerableSession(steerableSessionCallbacks, gremlinId);
 		if (tmpPromptDir) {
 			try {
 				fs.rmSync(tmpPromptDir, { recursive: true, force: true });

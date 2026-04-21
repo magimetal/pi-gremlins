@@ -36,6 +36,10 @@ function createMockProcess({
 	const proc = new EventEmitter();
 	proc.stdout = new EventEmitter();
 	proc.stderr = new EventEmitter();
+	proc.stdin = {
+		write: () => true,
+		end: () => {},
+	};
 	proc.killed = false;
 	proc.kill = () => {
 		proc.killed = true;
@@ -48,6 +52,7 @@ function createMockProcess({
 		for (const chunk of stderrChunks) {
 			proc.stderr.emit("data", Buffer.from(chunk));
 		}
+		proc.emit("exit", closeCode);
 		proc.emit("close", closeCode);
 	});
 

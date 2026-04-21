@@ -36,6 +36,7 @@ type LiveStage = "active" | "pending" | "terminal";
 
 type DigestEntry =
 	| { kind: "assistant"; text: string; streaming: boolean }
+	| { kind: "steer"; text: string; streaming: boolean; isError: boolean }
 	| {
 			kind: "toolCall";
 			text: string;
@@ -321,6 +322,16 @@ function buildDigestEntries(
 			continue;
 		}
 
+		if (item.type === "steer") {
+			entries.push({
+				kind: "steer",
+				text: summarizeInlineText(item.content),
+				streaming: item.streaming,
+				isError: item.isError,
+			});
+			continue;
+		}
+
 		if (item.type === "toolCall") {
 			entries.push({
 				kind: "toolCall",
@@ -332,6 +343,8 @@ function buildDigestEntries(
 			});
 			continue;
 		}
+
+		if (item.type !== "toolResult") continue;
 
 		const summary = summarizeInlineText(item.content);
 		const pendingIndex = findPendingToolCallIndex(
@@ -415,6 +428,22 @@ function describeDigestEntry(
 			label: entry.streaming ? "live" : "digest",
 			text: entry.text,
 			tone: entry.streaming ? "warning" : "toolOutput",
+		};
+	}
+	if (entry.kind === "steer") {
+		let label = "steer";
+		let tone = "accent";
+		if (entry.isError) {
+			label = "steer error";
+			tone = "error";
+		} else if (entry.streaming) {
+			label = "steering";
+			tone = "warning";
+		}
+		return {
+			label,
+			text: entry.text,
+			tone,
 		};
 	}
 	if (entry.kind === "toolCall") {

@@ -440,6 +440,38 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).not.toContain("✗ tars");
 	});
 
+	test("renders steering events in embedded summaries for auditability", () => {
+		const tool = createRegisteredTool();
+		const text = renderToText(
+			tool,
+			{
+				content: [{ type: "text", text: "unused" }],
+				details: createDetails("single", [
+					createSingleResult({
+						exitCode: -1,
+						viewerEntries: [
+							{
+								type: "assistant-text",
+								text: "drafting answer",
+								streaming: true,
+							},
+							{
+								type: "steer",
+								text: "update README too",
+								streaming: false,
+								isError: false,
+							},
+						],
+					}),
+				]),
+			},
+			{ expanded: true },
+		);
+
+		expect(text).toContain("steer · update README too");
+		expect(text).toContain("live · drafting answer");
+	});
+
 	test("keeps no-entry tool-call-only single summaries terminal-safe and running-live", () => {
 		const tool = createRegisteredTool();
 		const completed = renderToText(tool, {

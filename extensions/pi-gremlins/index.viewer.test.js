@@ -263,6 +263,60 @@ describe("pi-gremlins viewer command", () => {
 		events.get("session_shutdown")?.();
 	});
 
+	test("reports steer command errors for missing payload unknown id and inactive gremlin", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		const { tool, commands } = createExtensionHarness();
+		const notifications = [];
+
+		expect(commands.has("gremlins:steer")).toBe(true);
+		await commands.get("gremlins:steer").handler("", {
+			hasUI: true,
+			ui: {
+				notify: (message, level) => {
+					notifications.push({ message, level });
+				},
+				custom: async () => {},
+			},
+		});
+		await commands.get("gremlins:steer").handler("g99 update README", {
+			hasUI: true,
+			ui: {
+				notify: (message, level) => {
+					notifications.push({ message, level });
+				},
+				custom: async () => {},
+			},
+		});
+
+		await seedInvocation(tool, workspace, "steer-inactive");
+		await commands.get("gremlins:steer").handler("g1 update README", {
+			hasUI: true,
+			ui: {
+				notify: (message, level) => {
+					notifications.push({ message, level });
+				},
+				custom: async () => {},
+			},
+		});
+
+		expect(notifications).toEqual([
+			{
+				message: "Usage: /gremlins:steer <gremlin-id> <message>",
+				level: "error",
+			},
+			{
+				message: "Unknown gremlin id: g99.",
+				level: "error",
+			},
+			{
+				message: "Gremlin g1 is no longer active.",
+				level: "error",
+			},
+		]);
+	});
+
 	test("opens new viewer overlay for latest invocation", async () => {
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;

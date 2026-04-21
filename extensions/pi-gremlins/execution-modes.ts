@@ -22,6 +22,15 @@ export interface TaskExecutionItem {
 
 export interface ChainExecutionItem extends TaskExecutionItem {}
 
+export interface SteerableGremlinSession {
+	steer: (message: string) => Promise<void>;
+}
+
+export interface SteerableSessionCallbacks {
+	register: (gremlinId: string, session: SteerableGremlinSession) => void;
+	unregister: (gremlinId: string) => void;
+}
+
 export type RunSingleAgentFn = (
 	defaultCwd: string,
 	agents: AgentConfig[],
@@ -34,6 +43,7 @@ export type RunSingleAgentFn = (
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => PiGremlinsDetails,
 	packageDiscoveryWarning?: string,
+	steerableSessionCallbacks?: SteerableSessionCallbacks,
 ) => Promise<SingleResult>;
 
 export type OnUpdateCallback = (
@@ -51,6 +61,7 @@ interface ExecutionModeDependencies {
 	) => (results: SingleResult[]) => PiGremlinsDetails;
 	allocateGremlinId: () => string;
 	packageDiscoveryWarning?: string;
+	steerableSessionCallbacks?: SteerableSessionCallbacks;
 }
 
 interface ChainExecutionDependencies extends ExecutionModeDependencies {
@@ -130,6 +141,7 @@ export async function executeChainMode({
 	makeDetails,
 	allocateGremlinId,
 	packageDiscoveryWarning,
+	steerableSessionCallbacks,
 }: ChainExecutionDependencies): Promise<PiGremlinsToolResult> {
 	const results: SingleResult[] = [];
 	let previousOutput = "";
@@ -178,6 +190,7 @@ export async function executeChainMode({
 			chainUpdate,
 			makeDetails("chain"),
 			packageDiscoveryWarning,
+			steerableSessionCallbacks,
 		);
 		results.push(result);
 
@@ -246,6 +259,7 @@ export async function executeParallelMode({
 	maxConcurrency,
 	mapWithConcurrencyLimit,
 	packageDiscoveryWarning,
+	steerableSessionCallbacks,
 }: ParallelExecutionDependencies): Promise<PiGremlinsToolResult> {
 	const taskRuns = tasks.map((task) => ({
 		...task,
@@ -312,6 +326,7 @@ export async function executeParallelMode({
 				},
 				makeDetails("parallel"),
 				packageDiscoveryWarning,
+				steerableSessionCallbacks,
 			);
 			replaceParallelResult(index, result);
 			emitParallelUpdate();
@@ -358,6 +373,7 @@ export async function executeSingleMode({
 	makeDetails,
 	packageDiscoveryWarning,
 	gremlinId,
+	steerableSessionCallbacks,
 }: SingleExecutionDependencies): Promise<PiGremlinsToolResult> {
 	const result = await runSingleAgent(
 		ctxCwd,
@@ -371,6 +387,7 @@ export async function executeSingleMode({
 		handleInvocationUpdate,
 		makeDetails("single"),
 		packageDiscoveryWarning,
+		steerableSessionCallbacks,
 	);
 	const details = makeDetails("single")([result]);
 	const resultStatus = getSingleResultStatus(result);
