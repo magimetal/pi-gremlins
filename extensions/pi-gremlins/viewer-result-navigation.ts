@@ -60,13 +60,13 @@ export const VIEWER_SCROLL_LINE_STEP = 3;
 const VIEWER_SCROLL_TO_START_KEYS: string[] = [
 	Key.home,
 	Key.ctrl(Key.home),
-	Key.ctrl(Key.up),
+	Key.alt(Key.up),
 ];
 
 const VIEWER_SCROLL_TO_END_KEYS: string[] = [
 	Key.end,
 	Key.ctrl(Key.end),
-	Key.ctrl(Key.down),
+	Key.alt(Key.down),
 ];
 
 function clampLine(text: string, width: number): string {
@@ -260,7 +260,7 @@ export function getViewerNavigationHint(
 ): string | null {
 	if (!hasMultiResultNavigation(resultCount)) return null;
 	return pickLineVariant(dialogWidth, [
-		"←/→ result · ↑/↓ scroll · PgUp/PgDn page · Home/End/Ctrl+↑/Ctrl+↓ · Esc close",
+		"←/→ result · ↑/↓ scroll · PgUp/PgDn page · Home/End/Alt+↑/Alt+↓ · Esc close",
 		"←/→ result · ↑/↓ scroll · PgUp/PgDn · Home/End · Esc close",
 		"←/→ result · ↑/↓ scroll · Esc close",
 	]);

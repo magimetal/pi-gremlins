@@ -7,14 +7,15 @@ mock.module("@mariozechner/pi-tui", () => {
 		up: "up",
 		down: "down",
 		ctrl: (key) => `ctrl-${key}`,
+		alt: (key) => `alt-${key}`,
 	};
 	const keyMap = new Map([
 		["\x1b[H", Key.home],
-		["\x1bOa", Key.ctrl(Key.up)],
-		["\x1b[57419;5u", Key.ctrl(Key.up)],
+		["\x1b[1;3A", Key.alt(Key.up)],
+		["\x1b[57419;3u", Key.alt(Key.up)],
 		["\x1b[F", Key.end],
-		["\x1bOb", Key.ctrl(Key.down)],
-		["\x1b[57420;5u", Key.ctrl(Key.down)],
+		["\x1b[1;3B", Key.alt(Key.down)],
+		["\x1b[57420;3u", Key.alt(Key.down)],
 	]);
 	return {
 		Key,
@@ -205,6 +206,9 @@ describe("viewer result navigation", () => {
 		expect(getViewerNavigationHint(3)).toBe(
 			"←/→ result · ↑/↓ scroll · PgUp/PgDn · Home/End · Esc close",
 		);
+		expect(getViewerNavigationHint(3, 80)).toBe(
+			"←/→ result · ↑/↓ scroll · PgUp/PgDn page · Home/End/Alt+↑/Alt+↓ · Esc close",
+		);
 		expect(getViewerNavigationHint(3, 40)).toBe(
 			"←/→ result · ↑/↓ scroll · Esc close",
 		);
@@ -218,14 +222,18 @@ describe("viewer result navigation", () => {
 		});
 	});
 
-	test("treats legacy and CSI-u ctrl+up/down as home/end viewer aliases", () => {
+	test("treats alt+up/down and CSI-u variants as home/end viewer aliases", () => {
 		expect(isViewerScrollToStartKey("\x1b[H")).toBe(true);
-		expect(isViewerScrollToStartKey("\x1bOa")).toBe(true);
-		expect(isViewerScrollToStartKey("\x1b[57419;5u")).toBe(true);
+		expect(isViewerScrollToStartKey("\x1b[1;3A")).toBe(true);
+		expect(isViewerScrollToStartKey("\x1b[57419;3u")).toBe(true);
+		expect(isViewerScrollToStartKey("\x1bOa")).toBe(false);
+		expect(isViewerScrollToStartKey("\x1b[57419;5u")).toBe(false);
 		expect(isViewerScrollToStartKey("\x1b[A")).toBe(false);
 		expect(isViewerScrollToEndKey("\x1b[F")).toBe(true);
-		expect(isViewerScrollToEndKey("\x1bOb")).toBe(true);
-		expect(isViewerScrollToEndKey("\x1b[57420;5u")).toBe(true);
+		expect(isViewerScrollToEndKey("\x1b[1;3B")).toBe(true);
+		expect(isViewerScrollToEndKey("\x1b[57420;3u")).toBe(true);
+		expect(isViewerScrollToEndKey("\x1bOb")).toBe(false);
+		expect(isViewerScrollToEndKey("\x1b[57420;5u")).toBe(false);
 		expect(isViewerScrollToEndKey("\x1b[B")).toBe(false);
 	});
 

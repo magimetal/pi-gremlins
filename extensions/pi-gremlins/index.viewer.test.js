@@ -66,6 +66,7 @@ mock.module("@mariozechner/pi-tui", () => ({
 		up: "up",
 		down: "down",
 		ctrl: (key) => `ctrl-${key}`,
+		alt: (key) => `alt-${key}`,
 	},
 	Markdown: class {
 		constructor(text) {
