@@ -106,6 +106,7 @@ import {
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
+const CHILD_PROCESS_EXIT_GRACE_MS = 50;
 const NO_INVOCATION_TEXT = "No pi-gremlins run available in this session.";
 const VIEWER_TITLE = "pi-gremlins mission control";
 
@@ -1578,6 +1579,21 @@ async function runSingleAgent(
 				}
 			};
 
+			let settled = false;
+			let observedExitCode: number | undefined;
+			let exitFallbackTimer: ReturnType<typeof setTimeout> | undefined;
+			let removeAbortListener: (() => void) | undefined;
+
+			const finalize = (code: number) => {
+				if (settled) return;
+				settled = true;
+				if (exitFallbackTimer) clearTimeout(exitFallbackTimer);
+				if (buffer.trim()) processLine(buffer);
+				buffer = "";
+				removeAbortListener?.();
+				resolve(code);
+			};
+
 			proc.stdout.on("data", (data) => {
 				buffer += data.toString();
 				const lines = buffer.split("\n");
@@ -1589,13 +1605,21 @@ async function runSingleAgent(
 				currentResult.stderr += data.toString();
 			});
 
+			proc.on("exit", (code) => {
+				if (settled) return;
+				observedExitCode = code ?? observedExitCode ?? 0;
+				if (exitFallbackTimer) clearTimeout(exitFallbackTimer);
+				exitFallbackTimer = setTimeout(() => {
+					finalize(observedExitCode ?? 0);
+				}, CHILD_PROCESS_EXIT_GRACE_MS);
+			});
+
 			proc.on("close", (code) => {
-				if (buffer.trim()) processLine(buffer);
-				resolve(code ?? 0);
+				finalize(code ?? observedExitCode ?? 0);
 			});
 
 			proc.on("error", () => {
-				resolve(1);
+				finalize(1);
 			});
 
 			if (signal) {
@@ -1606,8 +1630,14 @@ async function runSingleAgent(
 						if (!proc.killed) proc.kill("SIGKILL");
 					}, 5000);
 				};
-				if (signal.aborted) killProc();
-				else signal.addEventListener("abort", killProc, { once: true });
+				if (signal.aborted) {
+					killProc();
+				} else {
+					signal.addEventListener("abort", killProc, { once: true });
+					removeAbortListener = () => {
+						signal.removeEventListener("abort", killProc);
+					};
+				}
 			}
 		});
 

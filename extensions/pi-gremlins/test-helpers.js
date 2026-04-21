@@ -34,7 +34,10 @@ export function createMockProcess({
 	stdoutChunks = [],
 	stderrChunks = [],
 	closeCode = 0,
+	exitCode = closeCode,
 	closeDelay,
+	exitDelay,
+	omitClose = false,
 	errorAt,
 } = {}) {
 	const proc = new EventEmitter();
@@ -54,6 +57,7 @@ export function createMockProcess({
 		];
 		const finalCloseDelay =
 			closeDelay ?? (allDelays.length > 0 ? Math.max(...allDelays) + 1 : 0);
+		const finalExitDelay = exitDelay ?? finalCloseDelay;
 
 		for (const event of stdoutEvents) {
 			setTimeout(() => {
@@ -71,8 +75,13 @@ export function createMockProcess({
 			}, errorAt);
 		}
 		setTimeout(() => {
-			proc.emit("close", closeCode);
-		}, finalCloseDelay);
+			proc.emit("exit", exitCode);
+		}, finalExitDelay);
+		if (!omitClose) {
+			setTimeout(() => {
+				proc.emit("close", closeCode);
+			}, finalCloseDelay);
+		}
 	});
 
 	return proc;

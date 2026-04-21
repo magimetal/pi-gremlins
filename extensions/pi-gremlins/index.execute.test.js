@@ -750,6 +750,61 @@ describe("pi-gremlins execute streaming characterization", () => {
 		]);
 	});
 
+	test("single mode resolves buffered terminal output after child exit when close never arrives", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					JSON.stringify({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [{ type: "text", text: "final answer after exit" }],
+							usage: {
+								input: 3,
+								output: 2,
+								cacheRead: 0,
+								cacheWrite: 0,
+								cost: { total: 0.01 },
+								totalTokens: 5,
+							},
+						},
+					}),
+				],
+				exitCode: 0,
+				exitDelay: 5,
+				omitClose: true,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const result = await Promise.race([
+			tool.execute(
+				"single-exit-without-close",
+				{ agent: "tars", task: "Finish and exit cleanly" },
+				undefined,
+				undefined,
+				createExecutionContext(workspace.repoRoot),
+			),
+			new Promise((_, reject) => {
+				setTimeout(() => {
+					reject(new Error("timed out waiting for child exit fallback"));
+				}, 250);
+			}),
+		]);
+
+		expect(result.content[0].text).toBe("final answer after exit");
+		expect(result.details.status).toBe("Completed");
+		expect(result.details.results[0]).toMatchObject({
+			agent: "tars",
+			exitCode: 0,
+		});
+	});
+
 	test("chain mode emits pending snapshots, previous substitution, and stops on error", async () => {
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;
