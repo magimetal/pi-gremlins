@@ -308,7 +308,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 			"Gremlin protocol error: child emitted 1 malformed JSON stdout line.",
 		);
 		expect(result.details.results[0].stderr).toContain(
-			"[pi-gremlins] dropped malformed child stdout line 1: not-json",
+			"[Gremlins🧌] dropped malformed child stdout line 1: not-json",
 		);
 	});
 
@@ -1743,7 +1743,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 			(arg) => typeof arg === "string" && arg.startsWith("Task: Review "),
 		);
 		expect(secondTaskArg).toContain(
-			"...[truncated by pi-gremlins chain handoff]",
+			"...[truncated by Gremlins🧌 chain handoff]",
 		);
 		expect(secondTaskArg.length).toBeLessThanOrEqual(8100);
 	});

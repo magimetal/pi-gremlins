@@ -74,9 +74,9 @@ interface SingleExecutionDependencies extends ExecutionModeDependencies {
 const MAX_CHAIN_CARRY_FORWARD_CHARS = 8000;
 const MAX_CHAIN_TASK_CHARS = 12000;
 const CHAIN_CARRY_FORWARD_TRUNCATION_NOTE =
-	"...[truncated by pi-gremlins chain handoff]";
+	"...[truncated by Gremlins🧌 chain handoff]";
 const CHAIN_TASK_TRUNCATION_NOTE =
-	"...[task truncated by pi-gremlins chain handoff]";
+	"...[task truncated by Gremlins🧌 chain handoff]";
 
 function clampTextWithNote(
 	text: string,
