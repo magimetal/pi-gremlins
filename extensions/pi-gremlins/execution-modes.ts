@@ -131,39 +131,58 @@ export async function executeChainMode({
 	allocateGremlinId,
 	packageDiscoveryWarning,
 }: ChainExecutionDependencies): Promise<PiGremlinsToolResult> {
+	const chainRuns = chain.map((step, index) => ({
+		...step,
+		stepNumber: index + 1,
+		gremlinId: allocateGremlinId(),
+	}));
+	const viewerResults: SingleResult[] = chainRuns.map((step) =>
+		createPendingResult(
+			step.agent,
+			step.task,
+			step.stepNumber,
+			"unknown",
+			step.gremlinId,
+		),
+	);
+	const buildLiveChainDetails = (
+		results: SingleResult[],
+	): PiGremlinsDetails => ({
+		...makeDetails("chain")(results),
+		viewerResults: [...viewerResults],
+	});
 	const results: SingleResult[] = [];
 	let previousOutput = "";
 
-	for (let i = 0; i < chain.length; i++) {
-		const step = chain[i];
+	for (let i = 0; i < chainRuns.length; i++) {
+		const step = chainRuns[i];
 		const taskWithContext = applyPreviousOutputToChainTask(
 			step.task,
 			previousOutput,
 		);
+		const pendingResult = createPendingResult(
+			step.agent,
+			taskWithContext,
+			step.stepNumber,
+			"unknown",
+			step.gremlinId,
+		);
+		viewerResults[i] = pendingResult;
 
-		const gremlinId = allocateGremlinId();
 		const chainUpdate: OnUpdateCallback = (partial) => {
 			const currentResult = partial.details?.results[0];
 			if (!currentResult) return;
+			viewerResults[i] = currentResult;
 			const allResults = [...results, currentResult];
 			handleInvocationUpdate({
 				content: partial.content,
-				details: makeDetails("chain")(allResults),
+				details: buildLiveChainDetails(allResults),
 			});
 		};
 
 		handleInvocationUpdate({
 			content: [{ type: "text", text: "(running...)" }],
-			details: makeDetails("chain")([
-				...results,
-				createPendingResult(
-					step.agent,
-					taskWithContext,
-					i + 1,
-					"unknown",
-					gremlinId,
-				),
-			]),
+			details: buildLiveChainDetails([...results, pendingResult]),
 		});
 
 		const result = await runSingleAgent(
@@ -172,14 +191,15 @@ export async function executeChainMode({
 			step.agent,
 			taskWithContext,
 			step.cwd,
-			i + 1,
-			gremlinId,
+			step.stepNumber,
+			step.gremlinId,
 			signal,
 			chainUpdate,
 			makeDetails("chain"),
 			packageDiscoveryWarning,
 		);
 		results.push(result);
+		viewerResults[i] = result;
 
 		const resultStatus = getSingleResultStatus(result);
 		if (resultStatus === "Failed" || resultStatus === "Canceled") {
@@ -189,7 +209,7 @@ export async function executeChainMode({
 					content: [
 						{
 							type: "text" as const,
-							text: `Chain canceled at step ${i + 1} (${step.agent}): ${getSingleResultErrorText(result)}`,
+							text: `Chain canceled at step ${step.stepNumber} (${step.agent}): ${getSingleResultErrorText(result)}`,
 						},
 					],
 					details,
@@ -201,7 +221,7 @@ export async function executeChainMode({
 				content: [
 					{
 						type: "text" as const,
-						text: `Chain stopped at step ${i + 1} (${step.agent}): ${getSingleResultErrorText(result)}`,
+						text: `Chain stopped at step ${step.stepNumber} (${step.agent}): ${getSingleResultErrorText(result)}`,
 					},
 				],
 				details,

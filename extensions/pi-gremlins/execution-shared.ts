@@ -83,6 +83,7 @@ export interface PiGremlinsDetails {
 	agentScope: AgentScope;
 	projectAgentsDir: string | null;
 	results: SingleResult[];
+	viewerResults?: SingleResult[];
 }
 
 export interface ViewerToolCallRecord {

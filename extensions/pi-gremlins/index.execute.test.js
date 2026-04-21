@@ -1234,22 +1234,52 @@ describe("pi-gremlins execute streaming characterization", () => {
 				task: "Draft initial answer",
 				exitCode: -1,
 			}),
+			expect.objectContaining({
+				agent: "reviewer",
+				step: 2,
+				task: "Review {previous} carefully",
+				exitCode: -1,
+			}),
+			expect.objectContaining({
+				agent: "closer",
+				step: 3,
+				task: "Finalize {previous}",
+				exitCode: -1,
+			}),
+		]);
+		expect(updates[0].details.viewerResults).toEqual([
+			expect.objectContaining({
+				agent: "writer",
+				step: 1,
+				task: "Draft initial answer",
+				exitCode: -1,
+			}),
+			expect.objectContaining({
+				agent: "reviewer",
+				step: 2,
+				task: "Review {previous} carefully",
+				exitCode: -1,
+			}),
+			expect.objectContaining({
+				agent: "closer",
+				step: 3,
+				task: "Finalize {previous}",
+				exitCode: -1,
+			}),
 		]);
 		expect(
-			updates.some(
-				(update) =>
-					update.details.results.length === 1 &&
-					update.details.results[0].viewerEntries.some(
-						(entry) =>
-							entry.type === "tool-result" &&
-							entry.streaming === true &&
-							entry.content === "drafting",
-					),
+			updates.some((update) =>
+				update.details.results[0].viewerEntries.some(
+					(entry) =>
+						entry.type === "tool-result" &&
+						entry.streaming === true &&
+						entry.content === "drafting",
+				),
 			),
 		).toBe(true);
 		const secondStepPending = updates.find(
 			(update) =>
-				update.details.results.length === 2 &&
+				update.details.results.length === 3 &&
 				update.details.results[1].task === "Review draft one carefully",
 		);
 		expect(secondStepPending).toBeDefined();
@@ -1262,16 +1292,33 @@ describe("pi-gremlins execute streaming characterization", () => {
 			step: 2,
 			exitCode: -1,
 		});
+		expect(secondStepPending.details.viewerResults).toEqual([
+			expect.objectContaining({
+				agent: "writer",
+				step: 1,
+				exitCode: 0,
+			}),
+			expect.objectContaining({
+				agent: "reviewer",
+				step: 2,
+				task: "Review draft one carefully",
+				exitCode: -1,
+			}),
+			expect.objectContaining({
+				agent: "closer",
+				step: 3,
+				task: "Finalize {previous}",
+				exitCode: -1,
+			}),
+		]);
 		expect(
-			updates.some(
-				(update) =>
-					update.details.results.length === 2 &&
-					update.details.results[1].viewerEntries.some(
-						(entry) =>
-							entry.type === "tool-result" &&
-							entry.streaming === true &&
-							entry.content === "reviewing",
-					),
+			updates.some((update) =>
+				update.details.results[1].viewerEntries.some(
+					(entry) =>
+						entry.type === "tool-result" &&
+						entry.streaming === true &&
+						entry.content === "reviewing",
+				),
 			),
 		).toBe(true);
 		expect(result.isError).toBe(true);
