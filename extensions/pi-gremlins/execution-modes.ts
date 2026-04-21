@@ -5,8 +5,8 @@ import {
 	getFinalOutput,
 	getInvocationStatus,
 	getSingleResultErrorText,
+	getSingleResultStatus,
 	type InvocationMode,
-	isSingleResultError,
 	type PiGremlinsDetails,
 	type SingleResult,
 } from "./execution-shared.js";
@@ -125,13 +125,25 @@ export async function executeChainMode({
 		);
 		results.push(result);
 
-		if (isSingleResultError(result)) {
+		const resultStatus = getSingleResultStatus(result);
+		if (resultStatus === "Failed" || resultStatus === "Canceled") {
 			const details = makeDetails("chain")(results);
 			updateInvocation(
 				toolCallId,
 				details,
 				getInvocationStatus("chain", results),
 			);
+			if (resultStatus === "Canceled") {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Chain canceled at step ${i + 1} (${step.agent}): ${getSingleResultErrorText(result)}`,
+						},
+					],
+					details,
+				};
+			}
 			return {
 				content: [
 					{
@@ -143,18 +155,21 @@ export async function executeChainMode({
 				isError: true,
 			};
 		}
-		previousOutput = getFinalOutput(result.messages);
+		previousOutput = getFinalOutput(result.messages, result.viewerEntries);
 	}
 
 	const details = makeDetails("chain")(results);
+	const finalResult = results.at(-1);
 	updateInvocation(toolCallId, details, getInvocationStatus("chain", results));
 	return {
 		content: [
 			{
 				type: "text",
 				text:
-					getFinalOutput(results[results.length - 1]?.messages ?? []) ||
-					"(no output)",
+					getFinalOutput(
+						finalResult?.messages ?? [],
+						finalResult?.viewerEntries ?? [],
+					) || "(no output)",
 			},
 		],
 		details,
@@ -234,10 +249,20 @@ export async function executeParallelMode({
 		},
 	);
 
-	const successCount = results.filter((result) => result.exitCode === 0).length;
-	const summaries = results.map((result) => {
-		const output = getFinalOutput(result.messages);
-		return `[${result.agent}] ${result.exitCode === 0 ? "completed" : "failed"}: ${output || "(no output)"}`;
+	const statuses = results.map((result) => getSingleResultStatus(result));
+	const successCount = statuses.filter(
+		(status) => status === "Completed",
+	).length;
+	const failedCount = statuses.filter((status) => status === "Failed").length;
+	const canceledCount = statuses.filter(
+		(status) => status === "Canceled",
+	).length;
+	const summaryParts = [`${successCount}/${results.length} succeeded`];
+	if (failedCount > 0) summaryParts.push(`${failedCount} failed`);
+	if (canceledCount > 0) summaryParts.push(`${canceledCount} canceled`);
+	const summaries = results.map((result, index) => {
+		const output = getFinalOutput(result.messages, result.viewerEntries);
+		return `[${result.agent}] ${statuses[index].toLowerCase()}: ${output || "(no output)"}`;
 	});
 	const details = makeDetails("parallel")(results);
 	updateInvocation(
@@ -249,7 +274,7 @@ export async function executeParallelMode({
 		content: [
 			{
 				type: "text",
-				text: `Parallel: ${successCount}/${results.length} succeeded\n\n${summaries.join("\n\n")}`,
+				text: `Parallel: ${summaryParts.join(", ")}\n\n${summaries.join("\n\n")}`,
 			},
 		],
 		details,
@@ -287,7 +312,8 @@ export async function executeSingleMode({
 		getInvocationStatus("single", [result]),
 	);
 
-	if (isSingleResultError(result)) {
+	const resultStatus = getSingleResultStatus(result);
+	if (resultStatus === "Failed") {
 		return {
 			content: [
 				{
@@ -299,12 +325,25 @@ export async function executeSingleMode({
 			isError: true,
 		};
 	}
+	if (resultStatus === "Canceled") {
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Canceled: ${getSingleResultErrorText(result)}`,
+				},
+			],
+			details,
+		};
+	}
 
 	return {
 		content: [
 			{
 				type: "text",
-				text: getFinalOutput(result.messages) || "(no output)",
+				text:
+					getFinalOutput(result.messages, result.viewerEntries) ||
+					"(no output)",
 			},
 		],
 		details,

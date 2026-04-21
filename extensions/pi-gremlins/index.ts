@@ -54,17 +54,25 @@ import {
 	type PiGremlinsToolResult,
 } from "./execution-modes.js";
 import {
+	aggregateUsage,
 	bumpResultDerivedRevision,
 	bumpResultVisibleRevision,
 	cloneSingleResultForSnapshot,
 	createPendingResult,
 	createSingleViewerState,
 	createUsageStats,
+	formatAgentSourceBadgeText,
+	formatStatusBadgeText,
+	getAgentSourceSemantics,
+	getDerivedRenderData,
 	getFinalOutput,
 	getInvocationSnapshotRevision,
 	getInvocationStatus,
 	getResultVisibleRevision,
+	getSingleResultErrorText,
 	getSingleResultStatus,
+	getStatusTone,
+	getUsageTelemetrySegments,
 	type InvocationMode,
 	type InvocationStatus,
 	initializeResultRevisions,
@@ -75,7 +83,10 @@ import {
 	type ViewerEntry,
 	type ViewerToolCallRecord,
 } from "./execution-shared.js";
-import { renderPiGremlinsResult } from "./result-rendering.js";
+import {
+	getResultSummaryLine,
+	renderPiGremlinsResult,
+} from "./result-rendering.js";
 import { getViewerOpenAction } from "./viewer-open-action.js";
 import {
 	buildSelectedResultBodyLines,
@@ -96,7 +107,7 @@ import {
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
 const NO_INVOCATION_TEXT = "No pi-gremlins run available in this session.";
-const VIEWER_TITLE = "pi-gremlins lair";
+const VIEWER_TITLE = "pi-gremlins mission control";
 
 function formatAvailableAgents(agents: AgentConfig[]): string {
 	return (
@@ -533,16 +544,96 @@ function applyChildEventToSingleResult(
 	return false;
 }
 
+function formatViewerStatusBadge(
+	theme: {
+		fg: (color: any, text: string) => string;
+		bold: (text: string) => string;
+	},
+	status: InvocationStatus,
+): string {
+	return theme.fg(getStatusTone(status), formatStatusBadgeText(status));
+}
+
+function formatViewerSourceBadge(
+	theme: {
+		fg: (color: any, text: string) => string;
+		bold: (text: string) => string;
+	},
+	result: SingleResult,
+): string {
+	return theme.fg("muted", formatAgentSourceBadgeText(result.agentSource));
+}
+
+function pushViewerTextBlock(
+	lines: string[],
+	theme: {
+		fg: (color: any, text: string) => string;
+		bold: (text: string) => string;
+	},
+	label: string,
+	text: string,
+	tone: string,
+	badges: string[] = [],
+): void {
+	const normalized = text.trim();
+	const badgeSuffix = badges.length > 0 ? ` ${badges.join(" ")}` : "";
+	if (!normalized) {
+		lines.push(theme.fg(tone, `${label}${badgeSuffix}`));
+		return;
+	}
+	const contentLines = normalized.split("\n");
+	const [firstLine, ...rest] = contentLines;
+	lines.push(theme.fg(tone, `${label} · ${firstLine}${badgeSuffix}`));
+	for (const line of rest) {
+		lines.push(theme.fg(tone, `  ${line}`));
+	}
+}
+
+function buildViewerStateLines(
+	result: SingleResult,
+	status: InvocationStatus,
+	theme: {
+		fg: (color: any, text: string) => string;
+		bold: (text: string) => string;
+	},
+): string[] {
+	switch (status) {
+		case "Running":
+			return [theme.fg("warning", "running · Awaiting first gremlin event.")];
+		case "Failed":
+			return [theme.fg("error", `error · ${getSingleResultErrorText(result)}`)];
+		case "Canceled":
+			return [
+				theme.fg("warning", `canceled · ${getSingleResultErrorText(result)}`),
+			];
+		case "Completed":
+		default:
+			return [theme.fg("muted", "quiet · No output captured.")];
+	}
+}
+
 function buildViewerFallbackLines(
 	result: SingleResult,
 	status: InvocationStatus,
+	theme: {
+		fg: (color: any, text: string) => string;
+		bold: (text: string) => string;
+	},
 ): string[] {
-	const fallback =
-		getFinalOutput(result.messages).trim() ||
-		result.errorMessage ||
-		result.stderr.trim() ||
-		(status === "Running" ? "(running...)" : "(no output)");
-	return fallback.split("\n");
+	const derived = getDerivedRenderData(result);
+	const finalOutput = derived.finalOutput.trim();
+	if (finalOutput) {
+		const lines: string[] = [];
+		pushViewerTextBlock(lines, theme, "assistant", finalOutput, "toolOutput");
+		return lines;
+	}
+	if (derived.displayItems.length > 0) {
+		const summary = getResultSummaryLine(result, (toolName, args, themeFg) =>
+			formatToolCall(toolName, args, themeFg),
+		);
+		return [theme.fg(summary.tone, `${summary.label} · ${summary.text}`)];
+	}
+	return buildViewerStateLines(result, status, theme);
 }
 
 function buildViewerEntryLines(
@@ -555,31 +646,44 @@ function buildViewerEntryLines(
 	const lines: string[] = [];
 	for (const entry of entries) {
 		if (entry.type === "assistant-text") {
-			for (const line of entry.text.split("\n")) {
-				lines.push(theme.fg("toolOutput", line));
-			}
-			if (entry.streaming) lines.push(theme.fg("warning", "▍"));
+			pushViewerTextBlock(
+				lines,
+				theme,
+				"assistant",
+				entry.text.trim() || "Awaiting assistant output.",
+				entry.streaming ? "warning" : "toolOutput",
+				entry.streaming ? [theme.fg("warning", "[live]")] : [],
+			);
 			continue;
 		}
 		if (entry.type === "tool-call") {
 			lines.push(
-				theme.fg("muted", "→ ") +
+				theme.fg("muted", "tool call · ") +
 					formatToolCall(entry.toolName, entry.args, theme.fg.bind(theme)),
 			);
 			continue;
 		}
-		const header = entry.isError
-			? theme.fg("error", "↳ error")
-			: entry.streaming
-				? theme.fg("warning", "↳ streaming result")
-				: theme.fg("dim", "↳ result");
-		lines.push(
-			header + (entry.truncated ? theme.fg("dim", " (truncated)") : ""),
+		const badges: string[] = [];
+		if (entry.streaming) badges.push(theme.fg("warning", "[live]"));
+		if (entry.truncated) badges.push(theme.fg("muted", "[truncated]"));
+		if (entry.isError) badges.push(theme.fg("error", "[error]"));
+		pushViewerTextBlock(
+			lines,
+			theme,
+			entry.isError ? "tool error" : "tool result",
+			entry.toolName,
+			entry.isError ? "error" : entry.streaming ? "warning" : "dim",
+			badges,
 		);
-		for (const line of entry.content.split("\n")) {
-			lines.push(
-				`  ${entry.isError ? theme.fg("error", line) : theme.fg("dim", line)}`,
-			);
+		if (entry.content.trim()) {
+			for (const line of entry.content.split("\n")) {
+				lines.push(
+					(entry.isError ? theme.fg("error", "  ") : theme.fg("dim", "  ")) +
+						(entry.isError ? theme.fg("error", line) : theme.fg("dim", line)),
+				);
+			}
+		} else if (entry.streaming) {
+			lines.push(theme.fg("warning", "  streaming…"));
 		}
 	}
 	return lines;
@@ -595,11 +699,16 @@ function buildInvocationBodyLines(
 ): string[] {
 	if (!snapshot) {
 		return [
-			theme.fg("muted", "Invocation no longer available in this session."),
+			theme.fg(
+				"muted",
+				"stale · Invocation no longer available in this session.",
+			),
 		];
 	}
 	if (snapshot.results.length === 0) {
-		return [theme.fg("muted", "(waiting for subagent output...)")];
+		return snapshot.status === "Running"
+			? [theme.fg("warning", "running · Awaiting first gremlin event.")]
+			: [theme.fg("muted", "quiet · No gremlin results recorded.")];
 	}
 
 	const resolvedResultIndex = Math.max(
@@ -608,11 +717,113 @@ function buildInvocationBodyLines(
 	);
 	const result = snapshot.results[resolvedResultIndex];
 	const resultStatus = getSingleResultStatus(result);
-	return buildSelectedResultBodyLines(
-		theme.fg("muted", "Task: ") + theme.fg("dim", result.task),
+	const bodyLines =
 		result.viewerEntries.length > 0
 			? buildViewerEntryLines(result.viewerEntries, theme)
-			: buildViewerFallbackLines(result, resultStatus),
+			: buildViewerFallbackLines(result, resultStatus, theme);
+	const lines = buildSelectedResultBodyLines(
+		theme.fg("muted", "task · ") + theme.fg("dim", result.task),
+		bodyLines,
+	);
+	if (result.agentSource !== "user") {
+		const source = getAgentSourceSemantics(result.agentSource);
+		lines.splice(
+			1,
+			0,
+			theme.fg("muted", "trust · ") + theme.fg("dim", source.trustLabel),
+		);
+	}
+	return lines;
+}
+
+function buildViewerTitleLine(
+	theme: {
+		fg: (color: any, text: string) => string;
+		bold: (text: string) => string;
+	},
+	status: InvocationStatus,
+	mode: InvocationMode,
+): string {
+	return [
+		theme.fg("accent", theme.bold(VIEWER_TITLE)),
+		theme.fg("muted", "·"),
+		formatViewerStatusBadge(theme, status),
+		theme.fg("muted", mode),
+	].join(" ");
+}
+
+function buildViewerMetadataLine(
+	theme: {
+		fg: (color: any, text: string) => string;
+		bold: (text: string) => string;
+	},
+	result: SingleResult | undefined,
+): string {
+	if (!result) {
+		return theme.fg("muted", "focus · awaiting result selection");
+	}
+	return [
+		theme.fg("muted", "focus ·"),
+		theme.fg("toolTitle", theme.bold(result.agent)),
+		formatViewerSourceBadge(theme, result),
+		theme.fg("muted", "· result"),
+		formatViewerStatusBadge(theme, getSingleResultStatus(result)),
+	].join(" ");
+}
+
+function buildViewerTelemetryLine(
+	theme: {
+		fg: (color: any, text: string) => string;
+		bold: (text: string) => string;
+	},
+	snapshot: InvocationSnapshot | undefined,
+	selectedResultIndex: number,
+): string {
+	if (!snapshot || snapshot.results.length === 0) {
+		return theme.fg("muted", "telemetry · idle");
+	}
+	const resolvedResultIndex = Math.max(
+		0,
+		Math.min(selectedResultIndex, snapshot.results.length - 1),
+	);
+	const selectedResult = snapshot.results[resolvedResultIndex];
+	const usage =
+		snapshot.results.length > 1
+			? aggregateUsage(snapshot.results)
+			: selectedResult.usage;
+	const models = [
+		...new Set(snapshot.results.map((result) => result.model).filter(Boolean)),
+	];
+	const selectedModel = selectedResult.model?.trim() || undefined;
+	const model =
+		snapshot.results.length === 1
+			? selectedModel
+			: models.length === 1
+				? models[0]
+				: selectedModel
+					? `${selectedModel} (focus)`
+					: models.length > 1
+						? "mixed"
+						: undefined;
+	const segments = getUsageTelemetrySegments(usage, model);
+	if (segments.length === 0) {
+		return theme.fg("muted", "telemetry · idle");
+	}
+	return (
+		theme.fg("muted", "telemetry · ") + theme.fg("dim", segments.join(" · "))
+	);
+}
+
+function buildViewerInvocationLine(
+	theme: {
+		fg: (color: any, text: string) => string;
+		bold: (text: string) => string;
+	},
+	toolCallId: string | undefined,
+): string {
+	return (
+		theme.fg("muted", "invocation · ") +
+		theme.fg("dim", toolCallId ?? "(missing)")
 	);
 }
 
@@ -840,7 +1051,7 @@ export function getCachedWrappedBodyLines(
 	};
 }
 
-class PiGremlinsViewerOverlay extends Container implements Focusable {
+export class PiGremlinsViewerOverlay extends Container implements Focusable {
 	private readonly tui: TUI;
 	private readonly theme: {
 		fg: (color: any, text: string) => string;
@@ -855,9 +1066,10 @@ class PiGremlinsViewerOverlay extends Container implements Focusable {
 	private titleLine = VIEWER_TITLE;
 	private invocationLine = "";
 	private metadataLine = "";
-	private resultContextLine = "";
-	private navigationHintLine = "";
+	private telemetryLine = "";
 	private resultCount = 0;
+	private snapshotMode: InvocationMode = "single";
+	private selectedResult: SingleResult | undefined;
 	private selectedResultIndex = 0;
 	private scrollOffset = 0;
 	private viewportHeight = 8;
@@ -897,7 +1109,7 @@ class PiGremlinsViewerOverlay extends Container implements Focusable {
 	): string {
 		const innerWidth = Math.max(1, dialogWidth - (showFrame ? 2 : 0));
 		const normalizedContent = normalizeViewerTabs(content);
-		const truncated = truncateToWidth(normalizedContent, innerWidth, "");
+		const truncated = truncateToWidth(normalizedContent, innerWidth, "…");
 		const padding = Math.max(0, innerWidth - visibleWidth(truncated));
 		if (!showFrame) return `${truncated}${" ".repeat(padding)}`;
 		return `${this.theme.fg("borderMuted", "│")}${truncated}${" ".repeat(padding)}${this.theme.fg("borderMuted", "│")}`;
@@ -1001,8 +1213,16 @@ class PiGremlinsViewerOverlay extends Container implements Focusable {
 		this.wrapCache = wrappedBodyState.cache;
 		const wrappedBody = wrappedBodyState.lines;
 		const dialogHeight = this.getDialogHeight();
-		const chromeState = getViewerChromeState(this.resultCount, dialogHeight);
-		const bodyHeight = getViewerBodyHeight(dialogHeight, this.resultCount);
+		const chromeState = getViewerChromeState(
+			this.resultCount,
+			dialogHeight,
+			dialogWidth,
+		);
+		const bodyHeight = getViewerBodyHeight(
+			dialogHeight,
+			this.resultCount,
+			dialogWidth,
+		);
 		this.viewportHeight = Math.max(1, bodyHeight);
 		const maxScroll = Math.max(0, wrappedBody.length - bodyHeight);
 		this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxScroll));
@@ -1010,42 +1230,60 @@ class PiGremlinsViewerOverlay extends Container implements Focusable {
 			this.scrollOffset,
 			this.scrollOffset + bodyHeight,
 		);
+		const resultContextLine =
+			this.selectedResult && chromeState.showResultContext
+				? (getResultContextLabel(
+						this.snapshotMode,
+						this.selectedResultIndex,
+						this.resultCount,
+						{
+							agent: this.selectedResult.agent,
+							status: getSingleResultStatus(this.selectedResult),
+							step: this.selectedResult.step,
+							sourceBadge: formatViewerSourceBadge(
+								this.theme,
+								this.selectedResult,
+							),
+						},
+						innerWidth,
+					) ?? "")
+				: "";
+		const navigationHintLine = chromeState.showNavigationHint
+			? (getViewerNavigationHint(this.resultCount, innerWidth) ?? "")
+			: "";
 		const lines: string[] = [];
 		if (chromeState.showFrame) {
 			lines.push(this.borderLine(innerWidth, "top"));
 		}
 		lines.push(
-			this.contentLine(
-				this.theme.fg("accent", this.theme.bold(this.titleLine)),
-				dialogWidth,
-				chromeState.showFrame,
-			),
+			this.contentLine(this.titleLine, dialogWidth, chromeState.showFrame),
 		);
+		if (chromeState.showMetadata) {
+			lines.push(
+				this.contentLine(this.metadataLine, dialogWidth, chromeState.showFrame),
+			);
+		}
+		if (chromeState.showTelemetry) {
+			lines.push(
+				this.contentLine(
+					this.telemetryLine,
+					dialogWidth,
+					chromeState.showFrame,
+				),
+			);
+		}
 		if (chromeState.showInvocation) {
 			lines.push(
 				this.contentLine(
-					this.theme.fg("dim", this.invocationLine),
+					this.invocationLine,
 					dialogWidth,
 					chromeState.showFrame,
 				),
 			);
 		}
-		if (chromeState.showMetadata) {
+		if (chromeState.showResultContext && resultContextLine) {
 			lines.push(
-				this.contentLine(
-					this.theme.fg("dim", this.metadataLine),
-					dialogWidth,
-					chromeState.showFrame,
-				),
-			);
-		}
-		if (chromeState.showResultContext && this.resultContextLine) {
-			lines.push(
-				this.contentLine(
-					this.theme.fg("muted", this.resultContextLine),
-					dialogWidth,
-					chromeState.showFrame,
-				),
+				this.contentLine(resultContextLine, dialogWidth, chromeState.showFrame),
 			);
 		}
 		if (chromeState.showTopRule) {
@@ -1060,10 +1298,10 @@ class PiGremlinsViewerOverlay extends Container implements Focusable {
 		if (chromeState.showBottomRule) {
 			lines.push(this.ruleLine(innerWidth));
 		}
-		if (chromeState.showNavigationHint && this.navigationHintLine) {
+		if (chromeState.showNavigationHint && navigationHintLine) {
 			lines.push(
 				this.contentLine(
-					this.theme.fg("dim", this.navigationHintLine),
+					navigationHintLine,
 					dialogWidth,
 					chromeState.showFrame,
 				),
@@ -1078,10 +1316,6 @@ class PiGremlinsViewerOverlay extends Container implements Focusable {
 	refresh(): void {
 		const snapshot = this.readSnapshot();
 		const resultCount = snapshot?.results.length ?? 0;
-		const chromeState = getViewerChromeState(
-			resultCount,
-			this.getDialogHeight(),
-		);
 		const nextSelection = getRefreshedViewerSelection(
 			{
 				selectedResultIndex: this.selectedResultIndex,
@@ -1092,30 +1326,29 @@ class PiGremlinsViewerOverlay extends Container implements Focusable {
 		this.selectedResultIndex = nextSelection.selectedResultIndex;
 		this.scrollOffset = nextSelection.scrollOffset;
 		this.resultCount = resultCount;
-		const snapshotMode = snapshot?.mode ?? "single";
-		this.invocationLine = `Invocation: ${snapshot?.toolCallId ?? "(missing)"}`;
-		this.metadataLine = `Mode: ${snapshotMode} · Status: ${snapshot?.status ?? "Running"}`;
-
-		const selectedResult =
+		this.snapshotMode = snapshot?.mode ?? "single";
+		this.selectedResult =
 			snapshot && resultCount > 0
 				? snapshot.results[this.selectedResultIndex]
 				: undefined;
-		this.resultContextLine =
-			selectedResult && chromeState.showResultContext
-				? (getResultContextLabel(
-						snapshotMode,
-						this.selectedResultIndex,
-						resultCount,
-						{
-							agent: selectedResult.agent,
-							status: getSingleResultStatus(selectedResult),
-							step: selectedResult.step,
-						},
-					) ?? "")
-				: "";
-		this.navigationHintLine = chromeState.showNavigationHint
-			? (getViewerNavigationHint(resultCount) ?? "")
-			: "";
+		this.titleLine = buildViewerTitleLine(
+			this.theme,
+			snapshot?.status ?? "Running",
+			this.snapshotMode,
+		);
+		this.metadataLine = buildViewerMetadataLine(
+			this.theme,
+			this.selectedResult,
+		);
+		this.telemetryLine = buildViewerTelemetryLine(
+			this.theme,
+			snapshot,
+			this.selectedResultIndex,
+		);
+		this.invocationLine = buildViewerInvocationLine(
+			this.theme,
+			snapshot?.toolCallId,
+		);
 		const bodyState = getCachedInvocationBodyLines(
 			this.bodyCache,
 			snapshot,
@@ -1248,7 +1481,11 @@ async function runSingleAgent(
 			content: [
 				{
 					type: "text",
-					text: getFinalOutput(currentResult.messages) || "(running...)",
+					text:
+						getFinalOutput(
+							currentResult.messages,
+							currentResult.viewerEntries,
+						) || "(running...)",
 				},
 			],
 			details: makeDetails([currentResult]),
@@ -1889,7 +2126,8 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("pi-gremlins:view", {
-		description: "Open popup lair for latest pi-gremlins run in this session.",
+		description:
+			"Open popup viewer for latest pi-gremlins run in this session.",
 		handler: async (_args, ctx) => {
 			await openViewer(ctx);
 		},

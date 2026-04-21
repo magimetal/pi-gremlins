@@ -1,3 +1,4 @@
+![Gizmo](docs/gremlins.png)
 # pi-gremlins
 
 Pi package. Adds `pi-gremlins` tool for summoning mischievous specialist workers in isolated Pi subprocesses.

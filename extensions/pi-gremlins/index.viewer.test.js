@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import {
 	createMockProcess,
 	createWorkspace,
+	flattenRenderedNode,
 	jsonLine,
 	parseFrontmatter,
 	writeAgentFile,
@@ -93,9 +94,11 @@ const {
 	default: registerPiGremlins,
 	getCachedInvocationBodyLines,
 	getCachedWrappedBodyLines,
+	PiGremlinsViewerOverlay,
 } = await import("./index.ts");
 const {
 	bumpResultDerivedRevision,
+	bumpResultVisibleRevision,
 	createPendingResult,
 	getInvocationSnapshotRevision,
 } = await import("./execution-shared.ts");
@@ -146,6 +149,15 @@ function createTheme() {
 	};
 }
 
+function renderEmbeddedText(tool, result, options = {}, context = {}) {
+	return flattenRenderedNode(
+		tool.renderResult(result, { expanded: false, ...options }, createTheme(), {
+			toolCallId: "viewer-parity",
+			...context,
+		}),
+	);
+}
+
 async function seedInvocation(tool, workspace, toolCallId = "viewer-seeded") {
 	writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
 	spawnPlans.push(() =>
@@ -177,6 +189,34 @@ async function seedInvocation(tool, workspace, toolCallId = "viewer-seeded") {
 		undefined,
 		createExecutionContext(workspace.repoRoot),
 	);
+}
+
+function renderOverlayText(
+	snapshot,
+	{ width = 72, rows = 24, selectedResultIndex = 0 } = {},
+) {
+	const originalRows = process.stdout.rows;
+	Object.defineProperty(process.stdout, "rows", {
+		value: rows,
+		configurable: true,
+	});
+	try {
+		const overlay = new PiGremlinsViewerOverlay(
+			{ requestRender: () => {} },
+			createTheme(),
+			{ matches: () => false },
+			() => snapshot,
+			() => {},
+		);
+		overlay.selectedResultIndex = selectedResultIndex;
+		overlay.refresh();
+		return overlay.render(width).join("\n");
+	} finally {
+		Object.defineProperty(process.stdout, "rows", {
+			value: originalRows,
+			configurable: true,
+		});
+	}
 }
 
 let workspaceRoot = null;
@@ -362,6 +402,480 @@ describe("pi-gremlins viewer command", () => {
 		expect(invalidatedBody.cacheHit).toBe(false);
 		expect(invalidatedWrap.cacheHit).toBe(false);
 		expect(invalidatedBody.lines.join("\n")).toContain("alpha new line");
+	});
+
+	test("retains popup fallback body lines when viewer entries are absent", () => {
+		const result = createPendingResult(
+			"tars",
+			"Fallback task",
+			undefined,
+			"user",
+		);
+		result.exitCode = 0;
+		result.messages.push({
+			role: "assistant",
+			content: [{ type: "text", text: "message fallback retained" }],
+		});
+		bumpResultVisibleRevision(result);
+		bumpResultDerivedRevision(result);
+
+		const snapshot = createInvocationSnapshot(
+			"viewer-fallback-retained",
+			createDetails("single", [result]),
+			"Completed",
+		);
+		const body = getCachedInvocationBodyLines(null, snapshot, 0, createTheme());
+
+		expect(body.cacheHit).toBe(false);
+		expect(body.lines.join("\n")).toContain("message fallback retained");
+	});
+
+	test("aligns completed no-entry tool-call-only fallback semantics across embedded and popup", () => {
+		const { tool } = createExtensionHarness();
+		const result = createPendingResult(
+			"tars",
+			"Inspect tool-call-only fallback",
+			undefined,
+			"user",
+		);
+		result.exitCode = 0;
+		result.messages.push({
+			role: "assistant",
+			content: [
+				{
+					type: "toolCall",
+					id: "read-1",
+					name: "read",
+					arguments: { path: "/tmp/report.md" },
+				},
+			],
+		});
+		bumpResultVisibleRevision(result);
+		bumpResultDerivedRevision(result);
+		const details = createDetails("single", [result]);
+		const snapshot = createInvocationSnapshot(
+			"viewer-tool-call-fallback-completed",
+			details,
+			"Completed",
+		);
+
+		const embedded = renderEmbeddedText(tool, {
+			content: [{ type: "text", text: "unused" }],
+			details,
+		});
+		const popup = renderOverlayText(snapshot);
+
+		expect(embedded).toContain("[Completed] tars · single · [user]");
+		expect(embedded).toContain("tool call · read /tmp/report.md");
+		expect(embedded).not.toContain(
+			"active tool · read /tmp/report.md → waiting",
+		);
+		expect(popup).toContain("[Completed] single");
+		expect(popup).toContain("tool call · read /tmp/report.md");
+		expect(popup).not.toContain("active tool · read /tmp/report.md → waiting");
+	});
+
+	test("aligns running no-entry tool-call-only fallback semantics across embedded and popup", () => {
+		const { tool } = createExtensionHarness();
+		const result = createPendingResult(
+			"tars",
+			"Inspect live tool-call-only fallback",
+			undefined,
+			"user",
+		);
+		result.messages.push({
+			role: "assistant",
+			content: [
+				{
+					type: "toolCall",
+					id: "read-1",
+					name: "read",
+					arguments: { path: "/tmp/report.md" },
+				},
+			],
+		});
+		bumpResultVisibleRevision(result);
+		bumpResultDerivedRevision(result);
+		const details = createDetails("single", [result]);
+		const snapshot = createInvocationSnapshot(
+			"viewer-tool-call-fallback-running",
+			details,
+			"Running",
+		);
+
+		const embedded = renderEmbeddedText(tool, {
+			content: [{ type: "text", text: "unused" }],
+			details,
+		});
+		const popup = renderOverlayText(snapshot);
+
+		expect(embedded).toContain("[Running] tars · single · [user]");
+		expect(embedded).toContain("active tool · read /tmp/report.md → waiting");
+		expect(popup).toContain("[Running] single");
+		expect(popup).toContain("active tool · read /tmp/report.md → waiting");
+	});
+
+	test("preserves canceled popup semantics in fallback body state", () => {
+		const result = createPendingResult(
+			"tars",
+			"Canceled task",
+			undefined,
+			"user",
+		);
+		result.exitCode = 130;
+		result.stopReason = "aborted";
+		result.errorMessage = "pi-gremlins run was aborted";
+		bumpResultVisibleRevision(result);
+
+		const snapshot = createInvocationSnapshot(
+			"viewer-canceled-state",
+			createDetails("single", [result]),
+			"Canceled",
+		);
+		const body = getCachedInvocationBodyLines(null, snapshot, 0, createTheme());
+
+		expect(snapshot.status).toBe("Canceled");
+		expect(body.lines.join("\n")).toContain("pi-gremlins run was aborted");
+	});
+
+	test("renders popup body with differentiated assistant tool and error lines", () => {
+		const result = createPendingResult(
+			"tars",
+			"Inspect mission telemetry",
+			undefined,
+			"user",
+		);
+		result.viewerEntries.push(
+			{
+				type: "assistant-text",
+				text: "Streaming mission update",
+				streaming: true,
+			},
+			{
+				type: "tool-call",
+				toolCallId: "read-1",
+				toolName: "read",
+				args: { path: "/tmp/report.md" },
+			},
+			{
+				type: "tool-result",
+				toolCallId: "read-1",
+				toolName: "read",
+				content: "Telemetry packet",
+				streaming: false,
+				truncated: true,
+				isError: false,
+			},
+			{
+				type: "tool-result",
+				toolCallId: "bash-1",
+				toolName: "bash",
+				content: "fatal: boom",
+				streaming: false,
+				truncated: false,
+				isError: true,
+			},
+		);
+		bumpResultDerivedRevision(result);
+
+		const snapshot = createInvocationSnapshot(
+			"viewer-body-phase3",
+			createDetails("single", [result]),
+			"Running",
+		);
+		const body = getCachedInvocationBodyLines(null, snapshot, 0, createTheme());
+		const text = body.lines.join("\n");
+
+		expect(text).toContain("task · Inspect mission telemetry");
+		expect(text).toContain("assistant · Streaming mission update [live]");
+		expect(text).toContain("tool call · read /tmp/report.md");
+		expect(text).toContain("tool result · read [truncated]");
+		expect(text).toContain("Telemetry packet");
+		expect(text).toContain("tool error · bash [error]");
+		expect(text).toContain("fatal: boom");
+	});
+
+	test("renders popup empty state with themed idle telemetry", () => {
+		const snapshot = createInvocationSnapshot(
+			"viewer-empty-phase3",
+			createDetails("single", []),
+			"Completed",
+		);
+		const text = renderOverlayText(snapshot);
+
+		expect(text).toContain("pi-gremlins mission control");
+		expect(text).toContain("[Completed] single");
+		expect(text).toContain("focus · awaiting result selection");
+		expect(text).toContain("telemetry · idle");
+		expect(text).toContain("quiet · No gremlin results recorded.");
+	});
+
+	test("renders popup running state before first viewer entry arrives", () => {
+		const result = createPendingResult(
+			"tars",
+			"Track live run",
+			undefined,
+			"user",
+		);
+		const snapshot = createInvocationSnapshot(
+			"viewer-running-phase3",
+			createDetails("single", [result]),
+			"Running",
+		);
+		const text = renderOverlayText(snapshot);
+
+		expect(text).toContain("[Running] single");
+		expect(text).toContain("focus · tars [user] · result [Running]");
+		expect(text).toContain("telemetry · idle");
+		expect(text).toContain("task · Track live run");
+		expect(text).toContain("running · Awaiting first gremlin event.");
+	});
+
+	test("renders popup error state with semantic failure copy", () => {
+		const result = createPendingResult(
+			"tars",
+			"Inspect failed route",
+			undefined,
+			"project",
+		);
+		result.exitCode = 1;
+		result.stderr = "fatal: popup viewer crashed";
+		bumpResultVisibleRevision(result);
+		const snapshot = createInvocationSnapshot(
+			"viewer-error-phase3",
+			createDetails("single", [result]),
+			"Failed",
+		);
+		const text = renderOverlayText(snapshot);
+
+		expect(text).toContain("[Failed] single");
+		expect(text).toContain("focus · tars [project] · result [Failed]");
+		expect(text).toContain("task · Inspect failed route");
+		expect(text).toContain("error · fatal: popup viewer crashed");
+	});
+
+	test("keeps embedded and popup fallback vocabulary aligned for failed project results without viewer entries", () => {
+		const { tool } = createExtensionHarness();
+		const result = createPendingResult(
+			"tars",
+			"Inspect fallback parity",
+			undefined,
+			"project",
+		);
+		result.exitCode = 1;
+		result.stderr = "fatal: fallback mismatch";
+		bumpResultVisibleRevision(result);
+		const details = createDetails("single", [result]);
+		const snapshot = createInvocationSnapshot(
+			"viewer-fallback-parity",
+			details,
+			"Failed",
+		);
+
+		const embedded = renderEmbeddedText(tool, {
+			content: [{ type: "text", text: "unused" }],
+			details,
+		});
+		const popup = renderOverlayText(snapshot);
+
+		expect(embedded).toContain("[Failed] tars · single · [project]");
+		expect(embedded).toContain("trust · Project agent");
+		expect(embedded).toContain("stderr · fatal: fallback mismatch");
+		expect(popup).toContain("[Failed] single");
+		expect(popup).toContain("focus · tars [project] · result [Failed]");
+		expect(popup).toContain("trust · Project agent");
+		expect(popup).toContain("error · fatal: fallback mismatch");
+	});
+
+	test("renders popup narrow-width layout with essential chrome only", () => {
+		const planner = createPendingResult("planner", "Plan route", 1, "project");
+		planner.exitCode = 0;
+		planner.usage = {
+			input: 100,
+			output: 20,
+			cacheRead: 0,
+			cacheWrite: 0,
+			cost: 0.1,
+			contextTokens: 120,
+			turns: 1,
+		};
+		planner.model = "claude-3-7-sonnet";
+		planner.viewerEntries.push({
+			type: "assistant-text",
+			text: "Route locked.",
+			streaming: false,
+		});
+
+		const reviewer = createPendingResult(
+			"reviewer",
+			"Review route",
+			2,
+			"package",
+		);
+		reviewer.usage = {
+			input: 40,
+			output: 8,
+			cacheRead: 2,
+			cacheWrite: 0,
+			cost: 0.02,
+			contextTokens: 64,
+			turns: 2,
+		};
+		reviewer.model = "gpt-5-mini";
+		reviewer.viewerEntries.push({
+			type: "tool-call",
+			toolCallId: "read-1",
+			toolName: "read",
+			args: { path: "/tmp/route.md" },
+		});
+		bumpResultDerivedRevision(planner);
+		bumpResultDerivedRevision(reviewer);
+
+		const snapshot = createInvocationSnapshot(
+			"viewer-overlay-phase3-narrow",
+			createDetails("chain", [planner, reviewer]),
+			"Running",
+		);
+		const text = renderOverlayText(snapshot, {
+			width: 38,
+			rows: 24,
+			selectedResultIndex: 1,
+		});
+
+		expect(text).toContain("pi-gremlins mission control");
+		expect(text).toContain("[Running] chain");
+		expect(text).toContain("focus · reviewer [package] · result [Running]");
+		expect(text).toContain("telemetry · turns:3 · input:140");
+		expect(text).not.toContain("invocation ·");
+		expect(text).not.toContain("step 2/2");
+		expect(text).not.toContain("←/→ result");
+	});
+
+	test("renders popup short-height layout with body retained after chrome suppression", () => {
+		const planner = createPendingResult("planner", "Plan route", 1, "project");
+		planner.exitCode = 0;
+		planner.usage = {
+			input: 100,
+			output: 20,
+			cacheRead: 0,
+			cacheWrite: 0,
+			cost: 0.1,
+			contextTokens: 120,
+			turns: 1,
+		};
+		planner.viewerEntries.push({
+			type: "assistant-text",
+			text: "Route locked.",
+			streaming: false,
+		});
+
+		const reviewer = createPendingResult(
+			"reviewer",
+			"Review route",
+			2,
+			"package",
+		);
+		reviewer.usage = {
+			input: 40,
+			output: 8,
+			cacheRead: 2,
+			cacheWrite: 0,
+			cost: 0.02,
+			contextTokens: 64,
+			turns: 2,
+		};
+		reviewer.viewerEntries.push({
+			type: "tool-call",
+			toolCallId: "read-1",
+			toolName: "read",
+			args: { path: "/tmp/route.md" },
+		});
+		bumpResultDerivedRevision(planner);
+		bumpResultDerivedRevision(reviewer);
+
+		const snapshot = createInvocationSnapshot(
+			"viewer-overlay-phase3-short",
+			createDetails("chain", [planner, reviewer]),
+			"Running",
+		);
+		const text = renderOverlayText(snapshot, {
+			width: 72,
+			rows: 10,
+			selectedResultIndex: 1,
+		});
+
+		expect(text).toContain("[Running] chain");
+		expect(text).toContain("focus · reviewer [package] · result [Running]");
+		expect(text).toContain("telemetry · turns:3 · input:140");
+		expect(text).toContain("task · Review route");
+		expect(text).not.toContain("invocation ·");
+		expect(text).not.toContain("step 2/2");
+		expect(text).not.toContain("←/→ result");
+	});
+
+	test("renders mission-control chrome with focused mixed-model telemetry visible", () => {
+		const planner = createPendingResult("planner", "Plan route", 1, "project");
+		planner.exitCode = 0;
+		planner.usage = {
+			input: 100,
+			output: 20,
+			cacheRead: 0,
+			cacheWrite: 0,
+			cost: 0.1,
+			contextTokens: 120,
+			turns: 1,
+		};
+		planner.model = "claude-3-7-sonnet";
+		planner.viewerEntries.push({
+			type: "assistant-text",
+			text: "Route locked.",
+			streaming: false,
+		});
+
+		const reviewer = createPendingResult(
+			"reviewer",
+			"Review route",
+			2,
+			"package",
+		);
+		reviewer.usage = {
+			input: 40,
+			output: 8,
+			cacheRead: 2,
+			cacheWrite: 0,
+			cost: 0.02,
+			contextTokens: 64,
+			turns: 2,
+		};
+		reviewer.model = "gpt-5-mini";
+		reviewer.viewerEntries.push({
+			type: "tool-call",
+			toolCallId: "read-1",
+			toolName: "read",
+			args: { path: "/tmp/route.md" },
+		});
+		bumpResultDerivedRevision(planner);
+		bumpResultDerivedRevision(reviewer);
+
+		const snapshot = createInvocationSnapshot(
+			"viewer-overlay-phase3",
+			createDetails("chain", [planner, reviewer]),
+			"Running",
+		);
+		const text = renderOverlayText(snapshot, {
+			width: 72,
+			rows: 24,
+			selectedResultIndex: 1,
+		});
+
+		expect(text).toContain("pi-gremlins mission control");
+		expect(text).toContain("[Running] chain");
+		expect(text).toContain("focus · reviewer [package] · result [Running]");
+		expect(text).toContain("telemetry · turns:3 · input:140");
+		expect(text).toContain("model:gpt-5-mini");
+		expect(text).not.toContain("model:claude-3-7-sonnet");
+		expect(text).toContain("invocation · viewer-overlay-phase3");
+		expect(text).toContain("focus · step 2/2 · reviewer [package] · Running");
 	});
 
 	test("focuses existing overlay instead of opening duplicate viewer", async () => {

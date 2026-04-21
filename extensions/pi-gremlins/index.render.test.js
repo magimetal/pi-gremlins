@@ -80,7 +80,10 @@ const {
 	bumpResultDerivedRevision,
 	bumpResultVisibleRevision,
 	cloneSingleResultForSnapshot,
+	getAgentSourceSemantics,
 	getDerivedRenderData,
+	getSingleResultSemantics,
+	getUsageTelemetrySemantics,
 	initializeResultRevisions,
 } = await import("./execution-shared.ts");
 
@@ -205,6 +208,34 @@ afterEach(() => {
 });
 
 describe("pi-gremlins renderResult characterization", () => {
+	test("exposes shared semantic helper vocabulary for status source trust and usage", () => {
+		expect(
+			getSingleResultSemantics(createSingleResult({ exitCode: -1 })),
+		).toMatchObject({
+			lifecycle: "pending",
+			label: "Running",
+			badgeText: "Running",
+		});
+		expect(
+			getSingleResultSemantics(createSingleResult({ exitCode: 0 })),
+		).toMatchObject({
+			lifecycle: "completed",
+			label: "Completed",
+			badgeText: "Completed",
+		});
+		expect(getAgentSourceSemantics("project")).toMatchObject({
+			badgeText: "project",
+			trustLabel: "Project agent",
+		});
+		expect(getUsageTelemetrySemantics()).toMatchObject({
+			turns: "turns",
+			input: "input",
+			output: "output",
+			cost: "cost",
+			model: "model",
+		});
+	});
+
 	test("falls back to tool text when details are missing", () => {
 		const tool = createRegisteredTool();
 		expect(
@@ -214,7 +245,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		).toBe("plain fallback");
 	});
 
-	test("renders single collapsed overflow with expand hint and without viewer hint when no snapshot exists", () => {
+	test("renders single collapsed summary as status-first digest with readable usage and local expand hint", () => {
 		const tool = createRegisteredTool();
 		const overflowMessage = {
 			role: "assistant",
@@ -233,17 +264,17 @@ describe("pi-gremlins renderResult characterization", () => {
 			]),
 		});
 
-		expect(text).toContain("tars (user)");
-		expect(text).toContain("... 1 earlier items");
-		expect(text).toContain("line 11");
-		expect(text).toContain("(Ctrl+O to expand)");
-		expect(text).toContain("2 turns ↑10 ↓20");
+		expect(text).toContain("[Completed] tars · single · [user]");
+		expect(text).toContain("digest · line 11");
+		expect(text).toContain("… 8 earlier events");
+		expect(text).toContain("Ctrl+O expands embedded view.");
+		expect(text).toContain("usage · turns:2 · input:10 · output:20");
 		expect(text).not.toContain(
-			"Hint: /pi-gremlins:view opens latest gremlin lair.",
+			"viewer · /pi-gremlins:view opens mission control.",
 		);
 	});
 
-	test("renders single expanded output, tool calls, usage, error markers, and viewer hint when snapshot exists", async () => {
+	test("renders single expanded output as task-first digest with inline tool summary and viewer hint", async () => {
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;
 		mockAgentDir = workspace.userRoot;
@@ -289,30 +320,359 @@ describe("pi-gremlins renderResult characterization", () => {
 			{ toolCallId },
 		);
 
-		expect(text).toContain("tars (user) [error]");
-		expect(text).toContain("Error: boom");
-		expect(text).toContain("─── Task ───");
-		expect(text).toContain("Inspect task");
-		expect(text).toContain("─── Output ───");
-		expect(text).toContain("read /tmp/report.md");
-		expect(text).toContain("Summarized result");
-		expect(text).toContain("3 turns ↑1.5k ↓40 R10 W5 $1.2345 ctx:2.2k gpt-5");
+		expect(text).toContain("[Failed] tars · single · [user]");
+		expect(text).toContain("task · Inspect task");
+		expect(text).toContain("error · boom");
+		expect(text).toContain("tool call · read /tmp/report.md");
+		expect(text).not.toContain("active tool · read /tmp/report.md → waiting");
+		expect(text).toContain("digest · Summarized result");
 		expect(text).toContain(
-			"Hint: /pi-gremlins:view opens latest gremlin lair.",
+			"usage · turns:3 · input:1.5k · output:40 · cacheRead:10 · cacheWrite:5 · cost:$1.2345 · context:2.2k · model:gpt-5",
 		);
+		expect(text).toContain("viewer · /pi-gremlins:view opens mission control.");
 	});
 
-	test("renders single no-output branch", () => {
+	test("renders themed single quiet state when no output captured", () => {
 		const tool = createRegisteredTool();
 		const text = renderToText(tool, {
 			content: [{ type: "text", text: "unused" }],
 			details: createDetails("single", [createSingleResult()]),
 		});
 
-		expect(text).toContain("(no output)");
+		expect(text).toContain("quiet · No output captured.");
 	});
 
-	test("renders chain collapsed with per-step summaries, no-output markers, total usage, and expand hint", () => {
+	test("treats viewerEntries as canonical embedded feed when present and does not render running as failure", () => {
+		const tool = createRegisteredTool();
+		const text = renderToText(tool, {
+			content: [{ type: "text", text: "unused" }],
+			details: createDetails("single", [
+				createSingleResult({
+					exitCode: -1,
+					messages: [
+						{
+							role: "assistant",
+							content: [{ type: "text", text: "message fallback only" }],
+						},
+					],
+					viewerEntries: [
+						{
+							type: "tool-call",
+							toolCallId: "read-1",
+							toolName: "read",
+							args: { path: "/tmp/report.md" },
+						},
+						{
+							type: "tool-result",
+							toolCallId: "read-1",
+							toolName: "read",
+							content: "viewer entry output",
+							streaming: true,
+							truncated: false,
+							isError: false,
+						},
+					],
+				}),
+			]),
+		});
+
+		expect(text).toContain("[Running]");
+		expect(text).toContain("read /tmp/report.md");
+		expect(text).toContain("viewer entry output");
+		expect(text).not.toContain("message fallback only");
+		expect(text).not.toContain("✗ tars");
+	});
+
+	test("keeps no-entry tool-call-only single summaries terminal-safe and running-live", () => {
+		const tool = createRegisteredTool();
+		const completed = renderToText(tool, {
+			content: [{ type: "text", text: "unused" }],
+			details: createDetails("single", [
+				createSingleResult({
+					messages: [
+						{
+							role: "assistant",
+							content: [
+								{
+									type: "toolCall",
+									id: "read-1",
+									name: "read",
+									arguments: { path: "/tmp/report.md" },
+								},
+							],
+						},
+					],
+				}),
+			]),
+		});
+		const running = renderToText(tool, {
+			content: [{ type: "text", text: "unused" }],
+			details: createDetails("single", [
+				createSingleResult({
+					exitCode: -1,
+					messages: [
+						{
+							role: "assistant",
+							content: [
+								{
+									type: "toolCall",
+									id: "read-1",
+									name: "read",
+									arguments: { path: "/tmp/report.md" },
+								},
+							],
+						},
+					],
+				}),
+			]),
+		});
+
+		expect(completed).toContain("[Completed] tars · single · [user]");
+		expect(completed).toContain("tool call · read /tmp/report.md");
+		expect(completed).not.toContain(
+			"active tool · read /tmp/report.md → waiting",
+		);
+		expect(running).toContain("[Running] tars · single · [user]");
+		expect(running).toContain("active tool · read /tmp/report.md → waiting");
+	});
+
+	test("pairs repeated same-name tool calls by toolCallId and preserves derived ids", () => {
+		const tool = createRegisteredTool();
+		const result = createSingleResult({
+			viewerEntries: [
+				{
+					type: "tool-call",
+					toolCallId: "read-1",
+					toolName: "read",
+					args: { path: "/tmp/alpha.md" },
+				},
+				{
+					type: "tool-call",
+					toolCallId: "read-2",
+					toolName: "read",
+					args: { path: "/tmp/beta.md" },
+				},
+				{
+					type: "tool-result",
+					toolCallId: "read-1",
+					toolName: "read",
+					content: "alpha summary",
+					streaming: false,
+					truncated: false,
+					isError: false,
+				},
+				{
+					type: "tool-result",
+					toolCallId: "read-2",
+					toolName: "read",
+					content: "beta summary",
+					streaming: false,
+					truncated: false,
+					isError: false,
+				},
+			],
+		});
+
+		const derived = getDerivedRenderData(result);
+		expect(derived.displayItems).toEqual([
+			expect.objectContaining({
+				type: "toolCall",
+				name: "read",
+				toolCallId: "read-1",
+			}),
+			expect.objectContaining({
+				type: "toolCall",
+				name: "read",
+				toolCallId: "read-2",
+			}),
+			expect.objectContaining({
+				type: "toolResult",
+				toolName: "read",
+				toolCallId: "read-1",
+			}),
+			expect.objectContaining({
+				type: "toolResult",
+				toolName: "read",
+				toolCallId: "read-2",
+			}),
+		]);
+
+		const text = renderToText(
+			tool,
+			{
+				content: [{ type: "text", text: "unused" }],
+				details: createDetails("single", [result]),
+			},
+			{ expanded: true },
+		);
+
+		expect(text).toContain("tool · read /tmp/alpha.md → alpha summary");
+		expect(text).toContain("tool · read /tmp/beta.md → beta summary");
+		expect(text).not.toContain("read /tmp/beta.md → alpha summary");
+		expect(text).not.toContain("active tool · read /tmp/alpha.md → waiting");
+	});
+
+	test("compresses single embedded summary deterministically at narrow width", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		const tool = createRegisteredTool();
+		const toolCallId = await seedViewerSnapshot(
+			tool,
+			workspace,
+			"single-narrow",
+		);
+		const width = 44;
+		const text = renderToText(
+			tool,
+			{
+				content: [{ type: "text", text: "unused" }],
+				details: createDetails("single", [
+					createSingleResult({
+						agent: "architect-of-very-long-project-agent-name",
+						agentSource: "project",
+						exitCode: -1,
+						task: "Review embedded summary width pressure for project trust context and long labels",
+						viewerEntries: [
+							{
+								type: "assistant-text",
+								text: "live project review output still streaming through narrow panel",
+								streaming: true,
+							},
+						],
+						usage: createUsage({
+							turns: 3,
+							input: 1200,
+							output: 80,
+							cacheRead: 10,
+							contextTokens: 2100,
+						}),
+					}),
+				]),
+			},
+			{ expanded: true },
+			{ toolCallId, width },
+		);
+
+		for (const line of text.split("\n")) {
+			expect(line.length).toBeLessThanOrEqual(width);
+		}
+		expect(text).toContain("[Running]");
+		expect(text).toContain("[project]");
+		expect(text).toContain("trust · Project agent");
+		expect(text).toContain("viewer · /pi-gremlins:view");
+	});
+
+	test("compresses chain embedded summary deterministically at narrow width", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		const tool = createRegisteredTool();
+		const toolCallId = await seedViewerSnapshot(
+			tool,
+			workspace,
+			"chain-narrow",
+		);
+		const width = 46;
+		const text = renderToText(
+			tool,
+			{
+				content: [{ type: "text", text: "unused" }],
+				details: createDetails("chain", [
+					createSingleResult({
+						agent: "writer-with-very-long-name",
+						agentSource: "project",
+						step: 1,
+						exitCode: -1,
+						task: "Draft long plan status for narrow chain summary",
+						viewerEntries: [
+							{
+								type: "assistant-text",
+								text: "drafting first chain step now",
+								streaming: true,
+							},
+						],
+					}),
+					createSingleResult({
+						agent: "reviewer-with-very-long-name",
+						agentSource: "package",
+						step: 2,
+						task: "Review long plan follow-up",
+					}),
+				]),
+			},
+			{ expanded: false },
+			{ toolCallId, width },
+		);
+
+		for (const line of text.split("\n")) {
+			expect(line.length).toBeLessThanOrEqual(width);
+		}
+		expect(text).toContain("[Running] chain");
+		expect(text).toContain("active ·");
+		expect(text).toContain("[project]");
+		expect(text).toContain("viewer · /pi-gremlins:view");
+	});
+
+	test("compresses parallel embedded summary deterministically at narrow width", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		const tool = createRegisteredTool();
+		const toolCallId = await seedViewerSnapshot(
+			tool,
+			workspace,
+			"parallel-narrow",
+		);
+		const width = 46;
+		const text = renderToText(
+			tool,
+			{
+				content: [{ type: "text", text: "unused" }],
+				details: createDetails("parallel", [
+					createSingleResult({
+						agent: "alpha-with-very-long-name",
+						agentSource: "project",
+						exitCode: -1,
+						task: "Run long alpha narrow summary",
+						viewerEntries: [
+							{
+								type: "tool-call",
+								toolCallId: "bash-1",
+								toolName: "bash",
+								args: {
+									command: "echo alpha narrow summary output still running",
+								},
+							},
+						],
+					}),
+					createSingleResult({
+						agent: "beta-with-very-long-name",
+						agentSource: "package",
+						exitCode: 0,
+						messages: [
+							{
+								role: "assistant",
+								content: [{ type: "text", text: "beta complete" }],
+							},
+						],
+					}),
+				]),
+			},
+			{ expanded: false },
+			{ toolCallId, width },
+		);
+
+		for (const line of text.split("\n")) {
+			expect(line.length).toBeLessThanOrEqual(width);
+		}
+		expect(text).toContain("[Running] parallel");
+		expect(text).toContain("active ·");
+		expect(text).toContain("[project]");
+		expect(text).toContain("viewer · /pi-gremlins:view");
+	});
+
+	test("renders chain collapsed with status-first rows, active-free summary, and readable totals", () => {
 		const tool = createRegisteredTool();
 		const text = renderToText(tool, {
 			content: [{ type: "text", text: "unused" }],
@@ -337,16 +697,60 @@ describe("pi-gremlins renderResult characterization", () => {
 			]),
 		});
 
-		expect(text).toContain("chain 1/2 steps");
-		expect(text).toContain("─── Step 1: writer");
-		expect(text).toContain("draft ready");
-		expect(text).toContain("─── Step 2: reviewer");
-		expect(text).toContain("(no output)");
-		expect(text).toContain("Total: 3 turns ↑15 ↓12");
-		expect(text).toContain("(Ctrl+O to expand)");
+		expect(text).toContain("[Failed] chain 1 done · 1 failed");
+		expect(text).toContain("[Completed] step 1 · writer [user]");
+		expect(text).toContain("digest · draft ready");
+		expect(text).toContain("[Failed] step 2 · reviewer [user]");
+		expect(text).toContain("quiet · No output captured.");
+		expect(text).toContain("usage total · turns:3 · input:15 · output:12");
+		expect(text).toContain("Ctrl+O expands embedded view.");
 	});
 
-	test("renders chain expanded with task labels and total usage", () => {
+	test("renders chain running and canceled states with semantic badges instead of failure markers", () => {
+		const tool = createRegisteredTool();
+		const text = renderToText(tool, {
+			content: [{ type: "text", text: "unused" }],
+			details: createDetails("chain", [
+				createSingleResult({
+					agent: "writer",
+					step: 1,
+					messages: [
+						{
+							role: "assistant",
+							content: [{ type: "text", text: "draft ready" }],
+						},
+					],
+				}),
+				createSingleResult({
+					agent: "reviewer",
+					step: 2,
+					exitCode: -1,
+					viewerEntries: [
+						{
+							type: "assistant-text",
+							text: "review in progress",
+							streaming: true,
+						},
+					],
+				}),
+				createSingleResult({
+					agent: "closer",
+					step: 3,
+					exitCode: 130,
+					stopReason: "aborted",
+					errorMessage: "pi-gremlins run was aborted",
+				}),
+			]),
+		});
+
+		expect(text).toContain("review in progress");
+		expect(text).toContain("[Running]");
+		expect(text).toContain("[Canceled]");
+		expect(text).not.toContain("reviewer ✗");
+		expect(text).not.toContain("closer ✗");
+	});
+
+	test("renders chain expanded with task labels, readable totals, and compact trace rows", () => {
 		const tool = createRegisteredTool();
 		const text = renderToText(
 			tool,
@@ -382,15 +786,16 @@ describe("pi-gremlins renderResult characterization", () => {
 			{ expanded: true },
 		);
 
-		expect(text).toContain("chain 2/2 steps");
-		expect(text).toContain("Task: Write plan");
-		expect(text).toContain("Task: Review plan");
-		expect(text).toContain("plan done");
-		expect(text).toContain("review done");
-		expect(text).toContain("Total: 2 turns ↑20 ↓10");
+		expect(text).toContain("[Completed] chain 2 done");
+		expect(text).toContain("[Completed] step 1 · writer [user]");
+		expect(text).toContain("task · Write plan");
+		expect(text).toContain("digest · plan done");
+		expect(text).toContain("task · Review plan");
+		expect(text).toContain("digest · review done");
+		expect(text).toContain("usage total · turns:2 · input:20 · output:10");
 	});
 
-	test("renders parallel running state with running marker and no total usage", () => {
+	test("renders parallel running state with active row and readable aggregate usage", () => {
 		const tool = createRegisteredTool();
 		const text = renderToText(tool, {
 			content: [{ type: "text", text: "unused" }],
@@ -412,16 +817,17 @@ describe("pi-gremlins renderResult characterization", () => {
 			]),
 		});
 
-		expect(text).toContain("parallel 1/2 done, 1 running");
-		expect(text).toContain("─── alpha ⏳");
-		expect(text).toContain("(running...)");
-		expect(text).toContain("─── beta ✓");
-		expect(text).toContain("beta complete");
-		expect(text).not.toContain("Total:");
-		expect(text).toContain("(Ctrl+O to expand)");
+		expect(text).toContain("[Running] parallel 1 done · 1 pending");
+		expect(text).toContain("active · alpha · Inspect task");
+		expect(text).toContain("[Running] alpha [user]");
+		expect(text).toContain("pending · Inspect task");
+		expect(text).toContain("[Completed] beta [user]");
+		expect(text).toContain("digest · beta complete");
+		expect(text).toContain("usage total · turns:1 · input:9 · output:3");
+		expect(text).toContain("Ctrl+O expands embedded view.");
 	});
 
-	test("renders parallel completed collapsed state with totals and expand hint", () => {
+	test("renders parallel completed collapsed state with explicit failure count and totals", () => {
 		const tool = createRegisteredTool();
 		const text = renderToText(tool, {
 			content: [{ type: "text", text: "unused" }],
@@ -450,11 +856,13 @@ describe("pi-gremlins renderResult characterization", () => {
 			]),
 		});
 
-		expect(text).toContain("parallel 1/2 tasks");
-		expect(text).toContain("─── alpha ✓");
-		expect(text).toContain("─── beta ✗");
-		expect(text).toContain("Total: 3 turns ↑10 ↓6");
-		expect(text).toContain("(Ctrl+O to expand)");
+		expect(text).toContain("[Failed] parallel 1 done · 1 failed");
+		expect(text).toContain("[Completed] alpha [user]");
+		expect(text).toContain("[Failed] beta [user]");
+		expect(text).toContain("digest · alpha collapsed");
+		expect(text).toContain("digest · beta collapsed");
+		expect(text).toContain("usage total · turns:3 · input:10 · output:6");
+		expect(text).toContain("Ctrl+O expands embedded view.");
 	});
 
 	test("reuses derived render cache for same revision and invalidates when messages append", () => {
@@ -507,7 +915,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(getDerivedRenderData(cloned).finalOutput).toBe("stable output");
 	});
 
-	test("renders parallel completed expanded state with totals and no-output branch", () => {
+	test("renders parallel completed expanded state with explicit failure count and compact quiet branch", () => {
 		const tool = createRegisteredTool();
 		const text = renderToText(
 			tool,
@@ -536,10 +944,13 @@ describe("pi-gremlins renderResult characterization", () => {
 			{ expanded: true },
 		);
 
-		expect(text).toContain("parallel 1/2 tasks");
-		expect(text).toContain("Task: Run alpha");
-		expect(text).toContain("Task: Run beta");
-		expect(text).toContain("alpha result");
-		expect(text).toContain("Total: 3 turns ↑10 ↓6");
+		expect(text).toContain("[Failed] parallel 1 done · 1 failed");
+		expect(text).toContain("[Completed] alpha [user]");
+		expect(text).toContain("task · Run alpha");
+		expect(text).toContain("digest · alpha result");
+		expect(text).toContain("[Failed] beta [user]");
+		expect(text).toContain("task · Run beta");
+		expect(text).toContain("quiet · No output captured.");
+		expect(text).toContain("usage total · turns:3 · input:10 · output:6");
 	});
 });

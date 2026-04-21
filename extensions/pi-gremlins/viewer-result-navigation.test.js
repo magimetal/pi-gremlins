@@ -60,39 +60,42 @@ describe("viewer result navigation", () => {
 		expect(hasMultiResultNavigation(2)).toBe(true);
 		expect(getViewerChromeState(0)).toEqual({
 			showFrame: true,
-			showInvocation: true,
 			showMetadata: true,
+			showTelemetry: true,
+			showInvocation: true,
 			showResultContext: false,
 			showTopRule: true,
 			showBottomRule: true,
 			showNavigationHint: false,
-			chromeRowCount: 7,
+			chromeRowCount: 8,
 		});
 		expect(getViewerChromeState(1)).toEqual({
 			showFrame: true,
-			showInvocation: true,
 			showMetadata: true,
+			showTelemetry: true,
+			showInvocation: true,
 			showResultContext: false,
 			showTopRule: true,
 			showBottomRule: true,
 			showNavigationHint: false,
-			chromeRowCount: 7,
+			chromeRowCount: 8,
 		});
 		expect(getViewerChromeState(3)).toEqual({
 			showFrame: true,
-			showInvocation: true,
 			showMetadata: true,
+			showTelemetry: true,
+			showInvocation: true,
 			showResultContext: true,
 			showTopRule: true,
 			showBottomRule: true,
 			showNavigationHint: true,
-			chromeRowCount: 9,
+			chromeRowCount: 10,
 		});
-		expect(getViewerChromeRowCount(1)).toBe(7);
-		expect(getViewerChromeRowCount(3)).toBe(9);
-		expect(getViewerBodyHeight(24, 1)).toBe(17);
-		expect(getViewerBodyHeight(24, 3)).toBe(15);
-		expect(getViewerBodyHeight(12, 3)).toBe(3);
+		expect(getViewerChromeRowCount(1)).toBe(8);
+		expect(getViewerChromeRowCount(3)).toBe(10);
+		expect(getViewerBodyHeight(24, 1)).toBe(16);
+		expect(getViewerBodyHeight(24, 3)).toBe(14);
+		expect(getViewerBodyHeight(12, 3)).toBe(2);
 	});
 
 	test("keeps rendered chrome and body within overlay height budget for all terminal sizes", () => {
@@ -115,8 +118,9 @@ describe("viewer result navigation", () => {
 				expected: {
 					dialogHeight: 5,
 					showFrame: true,
-					showInvocation: false,
 					showMetadata: true,
+					showTelemetry: false,
+					showInvocation: false,
 					showResultContext: false,
 					showTopRule: false,
 					showBottomRule: false,
@@ -130,8 +134,9 @@ describe("viewer result navigation", () => {
 				expected: {
 					dialogHeight: 6,
 					showFrame: true,
-					showInvocation: true,
 					showMetadata: true,
+					showTelemetry: true,
+					showInvocation: false,
 					showResultContext: false,
 					showTopRule: false,
 					showBottomRule: false,
@@ -145,12 +150,13 @@ describe("viewer result navigation", () => {
 				expected: {
 					dialogHeight: 8,
 					showFrame: true,
-					showInvocation: true,
 					showMetadata: true,
+					showTelemetry: true,
+					showInvocation: true,
 					showResultContext: true,
 					showTopRule: false,
 					showBottomRule: false,
-					showNavigationHint: true,
+					showNavigationHint: false,
 					chromeRowCount: 7,
 					bodyHeight: 1,
 				},
@@ -160,12 +166,13 @@ describe("viewer result navigation", () => {
 				expected: {
 					dialogHeight: 9,
 					showFrame: true,
-					showInvocation: true,
 					showMetadata: true,
+					showTelemetry: true,
+					showInvocation: true,
 					showResultContext: true,
 					showTopRule: false,
 					showBottomRule: false,
-					showNavigationHint: true,
+					showNavigationHint: false,
 					chromeRowCount: 7,
 					bodyHeight: 2,
 				},
@@ -179,8 +186,9 @@ describe("viewer result navigation", () => {
 			expect(dialogHeight).toBe(testCase.expected.dialogHeight);
 			expect(chromeState).toEqual({
 				showFrame: testCase.expected.showFrame,
-				showInvocation: testCase.expected.showInvocation,
 				showMetadata: testCase.expected.showMetadata,
+				showTelemetry: testCase.expected.showTelemetry,
+				showInvocation: testCase.expected.showInvocation,
 				showResultContext: testCase.expected.showResultContext,
 				showTopRule: testCase.expected.showTopRule,
 				showBottomRule: testCase.expected.showBottomRule,
@@ -192,15 +200,18 @@ describe("viewer result navigation", () => {
 		}
 	});
 
-	test("surfaces full popup hints and keeps overlay keyboard-capturing", () => {
+	test("surfaces width-aware popup hints and overlay sizing", () => {
 		expect(getViewerNavigationHint(1)).toBeNull();
 		expect(getViewerNavigationHint(3)).toBe(
-			"←/→ result · ↑/↓ scroll · PgUp/PgDn page · Home/End/Ctrl+↑/Ctrl+↓ · Esc close",
+			"←/→ result · ↑/↓ scroll · PgUp/PgDn · Home/End · Esc close",
+		);
+		expect(getViewerNavigationHint(3, 40)).toBe(
+			"←/→ result · ↑/↓ scroll · Esc close",
 		);
 		expect(VIEWER_SCROLL_LINE_STEP).toBe(3);
 		expect(getViewerOverlayOptions()).toEqual({
 			width: "78%",
-			minWidth: 72,
+			minWidth: 60,
 			maxHeight: "78%",
 			anchor: "top-center",
 			margin: { top: 1, left: 2, right: 2 },
@@ -336,20 +347,34 @@ describe("viewer result navigation", () => {
 		});
 	});
 
-	test("formats chain and parallel context labels only for multi-result runs", () => {
+	test("formats chain and parallel context labels with width-aware focus summaries", () => {
 		expect(
 			getResultContextLabel("chain", 1, 3, {
 				agent: "researcher",
 				status: "Running",
 				step: 2,
+				sourceBadge: "[project]",
 			}),
-		).toBe("Result: Step 2/3 · researcher · Running");
+		).toBe("focus · step 2/3 · researcher [project] · Running");
 		expect(
 			getResultContextLabel("parallel", 1, 3, {
 				agent: "reviewer",
 				status: "Completed",
 			}),
-		).toBe("Result: Task 2/3 · reviewer · Completed");
+		).toBe("focus · task 2/3 · reviewer · Completed");
+		expect(
+			getResultContextLabel(
+				"parallel",
+				1,
+				3,
+				{
+					agent: "reviewer-with-very-long-name",
+					status: "Completed",
+					sourceBadge: "[project]",
+				},
+				30,
+			),
+		).toBe("task 2/3 · reviewer-with-very…");
 		expect(
 			getResultContextLabel("single", 0, 1, {
 				agent: "writer",

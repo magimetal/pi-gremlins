@@ -121,6 +121,8 @@ const {
 	bumpResultDerivedRevision,
 	bumpResultVisibleRevision,
 	createPendingResult,
+	getInvocationStatus,
+	getSingleResultStatus,
 } = await import("./execution-shared.ts");
 
 function createRegisteredTool() {
@@ -175,6 +177,69 @@ afterEach(() => {
 });
 
 describe("pi-gremlins execute streaming characterization", () => {
+	test("treats aborted pending results as canceled instead of running", () => {
+		const canceled = createPendingResult(
+			"alpha",
+			"Do alpha",
+			undefined,
+			"user",
+		);
+		canceled.stopReason = "aborted";
+		canceled.errorMessage = "pi-gremlins run was aborted";
+
+		expect(getSingleResultStatus(canceled)).toBe("Canceled");
+		expect(getInvocationStatus("single", [canceled])).toBe("Canceled");
+	});
+
+	test("single mode returns explicit canceled terminal text", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					jsonLine({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [{ type: "text", text: "run stopped by operator" }],
+							usage: {
+								input: 2,
+								output: 1,
+								cacheRead: 0,
+								cacheWrite: 0,
+								cost: { total: 0.01 },
+								totalTokens: 3,
+							},
+							stopReason: "aborted",
+						},
+					}),
+				],
+				closeCode: 130,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const result = await tool.execute(
+			"single-canceled-terminal",
+			{ agent: "tars", task: "Stop cleanly" },
+			undefined,
+			undefined,
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(result.isError).toBeUndefined();
+		expect(result.content[0].text).toBe("Canceled: run stopped by operator");
+		expect(result.details.status).toBe("Canceled");
+		expect(result.details.results[0]).toMatchObject({
+			agent: "tars",
+			exitCode: 130,
+			stopReason: "aborted",
+		});
+	});
+
 	test("single mode streams running updates before final result", async () => {
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;
@@ -250,8 +315,8 @@ describe("pi-gremlins execute streaming characterization", () => {
 
 		expect(updates.map((update) => update.content[0].text)).toEqual([
 			"(running...)",
-			"(running...)",
-			"(running...)",
+			"reading chunk",
+			"file contents",
 			"final single answer",
 		]);
 		expect(
@@ -360,7 +425,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 		);
 
 		expect(updates).toHaveLength(3);
-		expect(updates[0].content[0].text).toBe("(running...)");
+		expect(updates[0].content[0].text).toBe("draft");
 		expect(updates[0].details.results[0].viewerEntries).toEqual([
 			expect.objectContaining({
 				type: "assistant-text",
@@ -465,7 +530,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 				toolName: "read",
 			}),
 		]);
-		expect(updates[2].content[0].text).toBe("(running...)");
+		expect(updates[2].content[0].text).toBe("draft final");
 		expect(updates[2].details.results[0].viewerEntries).toEqual([
 			expect.objectContaining({
 				type: "tool-call",
@@ -618,7 +683,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 		);
 
 		expect(updates.map((update) => update.content[0].text)).toEqual([
-			"(running...)",
+			"drafting",
 			"final answer",
 		]);
 		expect(updates[0].details.results[0].viewerEntries).toEqual([
@@ -635,6 +700,54 @@ describe("pi-gremlins execute streaming characterization", () => {
 			}),
 		]);
 		expect(result.content[0].text).toBe("final answer");
+	});
+
+	test("single mode derives terminal output from viewer entries when messages are empty", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					jsonLine({
+						type: "tool_execution_end",
+						toolCallId: "read-1",
+						toolName: "read",
+						args: { path: "/tmp/report.md" },
+						result: {
+							content: [{ type: "text", text: "viewer-only output" }],
+						},
+					}),
+				],
+				closeCode: 0,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const result = await tool.execute(
+			"single-viewer-entries-final-output",
+			{ agent: "tars", task: "Read report" },
+			undefined,
+			(partial) => updates.push(cloneForAssertion(partial)),
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(updates.at(-1).content[0].text).toBe("viewer-only output");
+		expect(result.content[0].text).toBe("viewer-only output");
+		expect(result.details.results[0].viewerEntries).toEqual([
+			expect.objectContaining({
+				type: "tool-call",
+				toolCallId: "read-1",
+			}),
+			expect.objectContaining({
+				type: "tool-result",
+				content: "viewer-only output",
+				streaming: false,
+			}),
+		]);
 	});
 
 	test("chain mode emits pending snapshots, previous substitution, and stops on error", async () => {
@@ -784,6 +897,86 @@ describe("pi-gremlins execute streaming characterization", () => {
 			exitCode: 2,
 		});
 		expect(spawnCalls).toHaveLength(2);
+	});
+
+	test("chain mode carries forward viewer-entry output and stops on canceled results", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "writer.md", "writer");
+		writeAgentFile(workspace.userAgentsDir, "reviewer.md", "reviewer");
+		writeAgentFile(workspace.userAgentsDir, "closer.md", "closer");
+
+		spawnPlans.push(
+			() =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "tool_execution_end",
+							toolCallId: "write-1",
+							toolName: "write",
+							args: { path: "/tmp/draft.md" },
+							result: {
+								content: [{ type: "text", text: "carry-forward draft" }],
+							},
+						}),
+					],
+					closeCode: 0,
+				}),
+			() =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "review canceled" }],
+								usage: {
+									input: 2,
+									output: 1,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 3,
+								},
+								stopReason: "aborted",
+							},
+						}),
+					],
+					closeCode: 130,
+				}),
+		);
+
+		const tool = createRegisteredTool();
+		const result = await tool.execute(
+			"chain-canceled-stop",
+			{
+				chain: [
+					{ agent: "writer", task: "Draft initial answer" },
+					{ agent: "reviewer", task: "Review {previous} carefully" },
+					{ agent: "closer", task: "Finalize {previous}" },
+				],
+			},
+			undefined,
+			undefined,
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(spawnCalls).toHaveLength(2);
+		expect(spawnCalls[1][1]).toContain(
+			"Task: Review carry-forward draft carefully",
+		);
+		expect(result.isError).toBeUndefined();
+		expect(result.content[0].text).toBe(
+			"Chain canceled at step 2 (reviewer): review canceled",
+		);
+		expect(result.details.status).toBe("Canceled");
+		expect(result.details.results).toHaveLength(2);
+		expect(result.details.results[1]).toMatchObject({
+			agent: "reviewer",
+			exitCode: 130,
+			stopReason: "aborted",
+		});
 	});
 
 	test("coalesces repeated progress-only updates and flushes latest before next content-bearing update", () => {
@@ -1050,7 +1243,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 		);
 
 		expect(result.content[0].text).toBe(
-			"Parallel: 1/2 succeeded\n\n[alpha] completed: alpha done\n\n[beta] failed: beta failed",
+			"Parallel: 1/2 succeeded, 1 failed\n\n[alpha] completed: alpha done\n\n[beta] failed: beta failed",
 		);
 		expect(result.details.results[0]).toMatchObject({
 			agent: "alpha",
@@ -1197,7 +1390,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 			),
 		).toBe(true);
 		expect(result.content[0].text).toBe(
-			"Parallel: 1/2 succeeded\n\n[alpha] completed: alpha done\n\n[beta] failed: beta failed",
+			"Parallel: 1/2 succeeded, 1 failed\n\n[alpha] completed: alpha done\n\n[beta] failed: beta failed",
 		);
 		expect(result.details.results).toHaveLength(2);
 		expect(result.details.results[0]).toMatchObject({
@@ -1209,5 +1402,86 @@ describe("pi-gremlins execute streaming characterization", () => {
 			exitCode: 1,
 		});
 		expect(spawnCalls).toHaveLength(2);
+	});
+
+	test("parallel mode reports canceled children without labeling them failed", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "alpha.md", "alpha");
+		writeAgentFile(workspace.userAgentsDir, "beta.md", "beta");
+
+		spawnPlans.push(
+			createSpawnPlanForTask("Do alpha", () =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "alpha done" }],
+								usage: {
+									input: 1,
+									output: 1,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 2,
+								},
+							},
+						}),
+					],
+					closeCode: 0,
+				}),
+			),
+			createSpawnPlanForTask("Do beta", () =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "beta canceled" }],
+								usage: {
+									input: 1,
+									output: 1,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 2,
+								},
+								stopReason: "aborted",
+							},
+						}),
+					],
+					closeCode: 130,
+				}),
+			),
+		);
+
+		const tool = createRegisteredTool();
+		const result = await tool.execute(
+			"parallel-canceled-summary",
+			{
+				tasks: [
+					{ agent: "alpha", task: "Do alpha" },
+					{ agent: "beta", task: "Do beta" },
+				],
+			},
+			undefined,
+			undefined,
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(result.isError).toBeUndefined();
+		expect(result.details.status).toBe("Canceled");
+		expect(result.content[0].text).toBe(
+			"Parallel: 1/2 succeeded, 1 canceled\n\n[alpha] completed: alpha done\n\n[beta] canceled: beta canceled",
+		);
+		expect(result.details.results[1]).toMatchObject({
+			agent: "beta",
+			exitCode: 130,
+			stopReason: "aborted",
+		});
 	});
 });

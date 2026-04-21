@@ -13,6 +13,36 @@ export interface UsageStats {
 
 export type InvocationMode = "single" | "parallel" | "chain";
 export type InvocationStatus = "Running" | "Completed" | "Failed" | "Canceled";
+export type ResultLifecycle = "pending" | "completed" | "failed" | "canceled";
+
+export interface StatusSemantics {
+	status: InvocationStatus;
+	lifecycle: ResultLifecycle;
+	label: InvocationStatus;
+	badgeText: InvocationStatus;
+	icon: string;
+	isTerminal: boolean;
+	isError: boolean;
+}
+
+export interface AgentSourceSemantics {
+	source: AgentSource | "unknown";
+	badgeText: string;
+	trustLabel: string;
+}
+
+export interface UsageTelemetrySemantics {
+	turns: string;
+	input: string;
+	output: string;
+	cacheRead: string;
+	cacheWrite: string;
+	cost: string;
+	contextTokens: string;
+	model: string;
+}
+
+export type StatusTone = "warning" | "success" | "error";
 
 export type ViewerEntry =
 	| { type: "assistant-text"; text: string; streaming: boolean }
@@ -65,11 +95,26 @@ export interface SingleRunViewerState {
 }
 
 export type DisplayItem =
-	| { type: "text"; text: string }
-	| { type: "toolCall"; name: string; args: Record<string, unknown> };
+	| { type: "text"; text: string; streaming?: boolean }
+	| {
+			type: "toolCall";
+			name: string;
+			args: Record<string, unknown>;
+			toolCallId?: string;
+	  }
+	| {
+			type: "toolResult";
+			toolName: string;
+			content: string;
+			streaming: boolean;
+			truncated: boolean;
+			isError: boolean;
+			toolCallId?: string;
+	  };
 
 export interface DerivedRenderData {
 	revision: number;
+	source: "messages" | "viewerEntries";
 	finalOutput: string;
 	displayItems: DisplayItem[];
 }
@@ -106,7 +151,218 @@ function formatTokens(count: number): string {
 	return `${(count / 1000000).toFixed(1)}M`;
 }
 
-function buildDerivedRenderData(
+export function getUsageTelemetrySegments(
+	usage: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+		cost: number;
+		contextTokens?: number;
+		turns?: number;
+	},
+	model?: string,
+): string[] {
+	const parts: string[] = [];
+	if (usage.turns) {
+		parts.push(`${USAGE_TELEMETRY_SEMANTICS.turns}:${usage.turns}`);
+	}
+	if (usage.input) {
+		parts.push(
+			`${USAGE_TELEMETRY_SEMANTICS.input}:${formatTokens(usage.input)}`,
+		);
+	}
+	if (usage.output) {
+		parts.push(
+			`${USAGE_TELEMETRY_SEMANTICS.output}:${formatTokens(usage.output)}`,
+		);
+	}
+	if (usage.cacheRead) {
+		parts.push(
+			`${USAGE_TELEMETRY_SEMANTICS.cacheRead}:${formatTokens(usage.cacheRead)}`,
+		);
+	}
+	if (usage.cacheWrite) {
+		parts.push(
+			`${USAGE_TELEMETRY_SEMANTICS.cacheWrite}:${formatTokens(usage.cacheWrite)}`,
+		);
+	}
+	if (usage.cost) {
+		parts.push(`${USAGE_TELEMETRY_SEMANTICS.cost}:$${usage.cost.toFixed(4)}`);
+	}
+	if (usage.contextTokens && usage.contextTokens > 0) {
+		parts.push(
+			`${USAGE_TELEMETRY_SEMANTICS.contextTokens}:${formatTokens(usage.contextTokens)}`,
+		);
+	}
+	if (model) {
+		parts.push(`${USAGE_TELEMETRY_SEMANTICS.model}:${model}`);
+	}
+	return parts;
+}
+
+const USAGE_TELEMETRY_SEMANTICS: UsageTelemetrySemantics = {
+	turns: "turns",
+	input: "input",
+	output: "output",
+	cacheRead: "cacheRead",
+	cacheWrite: "cacheWrite",
+	cost: "cost",
+	contextTokens: "context",
+	model: "model",
+};
+
+export function getUsageTelemetrySemantics(): UsageTelemetrySemantics {
+	return USAGE_TELEMETRY_SEMANTICS;
+}
+
+export function getAgentSourceSemantics(
+	source: AgentSource | "unknown",
+): AgentSourceSemantics {
+	switch (source) {
+		case "user":
+			return { source, badgeText: "user", trustLabel: "User agent" };
+		case "project":
+			return { source, badgeText: "project", trustLabel: "Project agent" };
+		case "package":
+			return { source, badgeText: "package", trustLabel: "Package agent" };
+		default:
+			return {
+				source: "unknown",
+				badgeText: "unknown",
+				trustLabel: "Unknown agent source",
+			};
+	}
+}
+
+export function formatAgentSourceBadgeText(
+	source: AgentSource | "unknown",
+): string {
+	return `[${getAgentSourceSemantics(source).badgeText}]`;
+}
+
+export function getStatusTone(status: InvocationStatus): StatusTone {
+	switch (status) {
+		case "Completed":
+			return "success";
+		case "Failed":
+			return "error";
+		case "Canceled":
+		case "Running":
+		default:
+			return "warning";
+	}
+}
+
+export function getStatusSemantics(status: InvocationStatus): StatusSemantics {
+	switch (status) {
+		case "Running":
+			return {
+				status,
+				lifecycle: "pending",
+				label: status,
+				badgeText: status,
+				icon: "⏳",
+				isTerminal: false,
+				isError: false,
+			};
+		case "Completed":
+			return {
+				status,
+				lifecycle: "completed",
+				label: status,
+				badgeText: status,
+				icon: "✓",
+				isTerminal: true,
+				isError: false,
+			};
+		case "Canceled":
+			return {
+				status,
+				lifecycle: "canceled",
+				label: status,
+				badgeText: status,
+				icon: "⊘",
+				isTerminal: true,
+				isError: false,
+			};
+		case "Failed":
+		default:
+			return {
+				status: "Failed",
+				lifecycle: "failed",
+				label: "Failed",
+				badgeText: "Failed",
+				icon: "✗",
+				isTerminal: true,
+				isError: true,
+			};
+	}
+}
+
+export function formatStatusBadgeText(status: InvocationStatus): string {
+	return `[${getStatusSemantics(status).badgeText}]`;
+}
+
+export function getSingleResultSemantics(
+	result: SingleResult,
+): StatusSemantics {
+	return getStatusSemantics(getSingleResultStatus(result));
+}
+
+export function getInvocationSemantics(
+	mode: InvocationMode,
+	results: SingleResult[],
+): StatusSemantics {
+	return getStatusSemantics(getInvocationStatus(mode, results));
+}
+
+function buildDerivedRenderDataFromViewerEntries(
+	viewerEntries: ViewerEntry[],
+): Omit<DerivedRenderData, "revision"> {
+	const displayItems: DisplayItem[] = [];
+	let finalAssistantOutput = "";
+	let finalToolResultOutput = "";
+
+	for (const entry of viewerEntries) {
+		if (entry.type === "assistant-text") {
+			displayItems.push({
+				type: "text",
+				text: entry.text,
+				streaming: entry.streaming || undefined,
+			});
+			if (entry.text.trim()) finalAssistantOutput = entry.text;
+			continue;
+		}
+		if (entry.type === "tool-call") {
+			displayItems.push({
+				type: "toolCall",
+				name: entry.toolName,
+				args: entry.args,
+				toolCallId: entry.toolCallId,
+			});
+			continue;
+		}
+		displayItems.push({
+			type: "toolResult",
+			toolName: entry.toolName,
+			content: entry.content,
+			streaming: entry.streaming,
+			truncated: entry.truncated,
+			isError: entry.isError,
+			toolCallId: entry.toolCallId,
+		});
+		if (entry.content.trim()) finalToolResultOutput = entry.content;
+	}
+
+	return {
+		source: "viewerEntries",
+		finalOutput: finalAssistantOutput || finalToolResultOutput,
+		displayItems,
+	};
+}
+
+function buildDerivedRenderDataFromMessages(
 	messages: Message[],
 ): Omit<DerivedRenderData, "revision"> {
 	const displayItems: DisplayItem[] = [];
@@ -127,12 +383,23 @@ function buildDerivedRenderData(
 					type: "toolCall",
 					name: part.name,
 					args: part.arguments,
+					toolCallId: part.id,
 				});
 			}
 		}
 	}
 
-	return { finalOutput, displayItems };
+	return { source: "messages", finalOutput, displayItems };
+}
+
+function buildDerivedRenderData(
+	messages: Message[],
+	viewerEntries: ViewerEntry[],
+): Omit<DerivedRenderData, "revision"> {
+	if (viewerEntries.length > 0) {
+		return buildDerivedRenderDataFromViewerEntries(viewerEntries);
+	}
+	return buildDerivedRenderDataFromMessages(messages);
 }
 
 export function formatUsageStats(
@@ -147,23 +414,14 @@ export function formatUsageStats(
 	},
 	model?: string,
 ): string {
-	const parts: string[] = [];
-	if (usage.turns)
-		parts.push(`${usage.turns} turn${usage.turns > 1 ? "s" : ""}`);
-	if (usage.input) parts.push(`↑${formatTokens(usage.input)}`);
-	if (usage.output) parts.push(`↓${formatTokens(usage.output)}`);
-	if (usage.cacheRead) parts.push(`R${formatTokens(usage.cacheRead)}`);
-	if (usage.cacheWrite) parts.push(`W${formatTokens(usage.cacheWrite)}`);
-	if (usage.cost) parts.push(`$${usage.cost.toFixed(4)}`);
-	if (usage.contextTokens && usage.contextTokens > 0) {
-		parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
-	}
-	if (model) parts.push(model);
-	return parts.join(" ");
+	return getUsageTelemetrySegments(usage, model).join(" · ");
 }
 
-export function getFinalOutput(messages: Message[]): string {
-	return buildDerivedRenderData(messages).finalOutput;
+export function getFinalOutput(
+	messages: Message[],
+	viewerEntries: ViewerEntry[] = [],
+): string {
+	return buildDerivedRenderData(messages, viewerEntries).finalOutput;
 }
 
 export function getDerivedRenderData(result: SingleResult): DerivedRenderData {
@@ -171,7 +429,7 @@ export function getDerivedRenderData(result: SingleResult): DerivedRenderData {
 	const internal = getInternalResult(result);
 	const cached = internal[RESULT_DERIVED_CACHE];
 	if (cached && cached.revision === revision) return cached;
-	const derived = buildDerivedRenderData(result.messages);
+	const derived = buildDerivedRenderData(result.messages, result.viewerEntries);
 	const nextCache: DerivedRenderData = {
 		revision,
 		...derived,
@@ -323,8 +581,8 @@ export function createPendingResult(
 }
 
 export function getSingleResultStatus(result: SingleResult): InvocationStatus {
-	if (result.exitCode === -1) return "Running";
 	if (result.stopReason === "aborted") return "Canceled";
+	if (result.exitCode === -1) return "Running";
 	if (result.exitCode !== 0 || result.stopReason === "error") return "Failed";
 	return "Completed";
 }
@@ -334,32 +592,19 @@ export function getInvocationStatus(
 	results: SingleResult[],
 ): InvocationStatus {
 	if (results.length === 0) return "Running";
-	if (results.some((result) => getSingleResultStatus(result) === "Running")) {
-		return "Running";
-	}
-	if (results.some((result) => getSingleResultStatus(result) === "Failed")) {
-		return "Failed";
-	}
-	if (results.some((result) => getSingleResultStatus(result) === "Canceled")) {
-		return "Canceled";
-	}
-	if (mode === "chain" && results.length > 0) return "Completed";
+	const statuses = results.map((result) => getSingleResultStatus(result));
+	if (statuses.includes("Running")) return "Running";
+	if (statuses.includes("Failed")) return "Failed";
+	if (statuses.includes("Canceled")) return "Canceled";
+	void mode;
 	return "Completed";
-}
-
-export function isSingleResultError(result: SingleResult): boolean {
-	return (
-		result.exitCode !== 0 ||
-		result.stopReason === "error" ||
-		result.stopReason === "aborted"
-	);
 }
 
 export function getSingleResultErrorText(result: SingleResult): string {
 	return (
 		result.errorMessage ||
 		result.stderr ||
-		getFinalOutput(result.messages) ||
+		getFinalOutput(result.messages, result.viewerEntries) ||
 		"(no output)"
 	);
 }
@@ -372,6 +617,7 @@ export function aggregateUsage(results: SingleResult[]): UsageStats {
 		total.cacheRead += result.usage.cacheRead;
 		total.cacheWrite += result.usage.cacheWrite;
 		total.cost += result.usage.cost;
+		total.contextTokens += result.usage.contextTokens;
 		total.turns += result.usage.turns;
 	}
 	return total;

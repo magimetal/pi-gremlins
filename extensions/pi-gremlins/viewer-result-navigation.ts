@@ -1,4 +1,9 @@
-import { Key, parseKey } from "@mariozechner/pi-tui";
+import {
+	Key,
+	parseKey,
+	truncateToWidth,
+	visibleWidth,
+} from "@mariozechner/pi-tui";
 
 export type ViewerResultContextMode = "single" | "parallel" | "chain";
 
@@ -6,6 +11,7 @@ export interface ViewerResultContext {
 	agent: string;
 	status: string;
 	step?: number;
+	sourceBadge?: string;
 }
 
 export interface ViewerSelectionState {
@@ -19,8 +25,9 @@ export interface ViewerSelectionTransition extends ViewerSelectionState {
 
 export interface ViewerChromeState {
 	showFrame: boolean;
-	showInvocation: boolean;
 	showMetadata: boolean;
+	showTelemetry: boolean;
+	showInvocation: boolean;
 	showResultContext: boolean;
 	showTopRule: boolean;
 	showBottomRule: boolean;
@@ -28,7 +35,7 @@ export interface ViewerChromeState {
 	chromeRowCount: number;
 }
 
-const BASE_VIEWER_CHROME_ROW_COUNT = 7;
+const BASE_VIEWER_CHROME_ROW_COUNT = 8;
 const MULTI_RESULT_EXTRA_CHROME_ROW_COUNT = 2;
 const VIEWER_DIALOG_MAX_HEIGHT = 32;
 const VIEWER_TAB_REPLACEMENT = "    ";
@@ -36,13 +43,17 @@ const VIEWER_OVERLAY_MAX_HEIGHT_RATIO = 0.78;
 const VIEWER_OVERLAY_TOP_MARGIN = 1;
 const MIN_DIALOG_HEIGHT_FOR_FRAME = 3;
 const MIN_DIALOG_HEIGHT_FOR_METADATA = 5;
-const MIN_DIALOG_HEIGHT_FOR_INVOCATION = 6;
-const MIN_DIALOG_HEIGHT_FOR_RESULT_CONTEXT = 7;
-const MIN_DIALOG_HEIGHT_FOR_NAVIGATION_HINT = 8;
+const MIN_DIALOG_HEIGHT_FOR_TELEMETRY = 6;
+const MIN_DIALOG_HEIGHT_FOR_INVOCATION = 7;
+const MIN_DIALOG_HEIGHT_FOR_RESULT_CONTEXT = 8;
+const MIN_DIALOG_HEIGHT_FOR_NAVIGATION_HINT = 10;
 const MIN_DIALOG_HEIGHT_FOR_FULL_SINGLE_CHROME =
 	BASE_VIEWER_CHROME_ROW_COUNT + 1;
 const MIN_DIALOG_HEIGHT_FOR_FULL_MULTI_CHROME =
 	BASE_VIEWER_CHROME_ROW_COUNT + MULTI_RESULT_EXTRA_CHROME_ROW_COUNT + 1;
+const MIN_DIALOG_WIDTH_FOR_INVOCATION = 40;
+const MIN_DIALOG_WIDTH_FOR_RESULT_CONTEXT = 44;
+const MIN_DIALOG_WIDTH_FOR_NAVIGATION_HINT = 64;
 
 export const VIEWER_SCROLL_LINE_STEP = 3;
 
@@ -57,6 +68,18 @@ const VIEWER_SCROLL_TO_END_KEYS: string[] = [
 	Key.ctrl(Key.end),
 	Key.ctrl(Key.down),
 ];
+
+function clampLine(text: string, width: number): string {
+	if (visibleWidth(text) <= width) return text;
+	return truncateToWidth(text, Math.max(1, width), "…");
+}
+
+function pickLineVariant(width: number, variants: readonly string[]): string {
+	for (const variant of variants) {
+		if (visibleWidth(variant) <= width) return variant;
+	}
+	return clampLine(variants.at(-1) ?? "", width);
+}
 
 export function clampSelectedResultIndex(
 	selectedResultIndex: number,
@@ -73,19 +96,25 @@ export function hasMultiResultNavigation(resultCount: number): boolean {
 export function getViewerChromeState(
 	resultCount: number,
 	dialogHeight = VIEWER_DIALOG_MAX_HEIGHT,
+	dialogWidth = 72,
 ): ViewerChromeState {
 	const boundedDialogHeight = Math.max(1, dialogHeight);
+	const boundedDialogWidth = Math.max(24, dialogWidth);
 	const showMultiResultChrome = hasMultiResultNavigation(resultCount);
 	const showFrame = boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_FRAME;
 	const showMetadata = boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_METADATA;
+	const showTelemetry = boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_TELEMETRY;
 	const showInvocation =
-		boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_INVOCATION;
+		boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_INVOCATION &&
+		boundedDialogWidth >= MIN_DIALOG_WIDTH_FOR_INVOCATION;
 	const showResultContext =
 		showMultiResultChrome &&
-		boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_RESULT_CONTEXT;
+		boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_RESULT_CONTEXT &&
+		boundedDialogWidth >= MIN_DIALOG_WIDTH_FOR_RESULT_CONTEXT;
 	const showNavigationHint =
 		showMultiResultChrome &&
-		boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_NAVIGATION_HINT;
+		boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_NAVIGATION_HINT &&
+		boundedDialogWidth >= MIN_DIALOG_WIDTH_FOR_NAVIGATION_HINT;
 	const showFullChromeRules =
 		showFrame &&
 		boundedDialogHeight >=
@@ -95,16 +124,18 @@ export function getViewerChromeState(
 	const chromeRowCount =
 		1 +
 		(showFrame ? 2 : 0) +
-		(showInvocation ? 1 : 0) +
 		(showMetadata ? 1 : 0) +
+		(showTelemetry ? 1 : 0) +
+		(showInvocation ? 1 : 0) +
 		(showResultContext ? 1 : 0) +
 		(showFullChromeRules ? 2 : 0) +
 		(showNavigationHint ? 1 : 0);
 
 	return {
 		showFrame,
-		showInvocation,
 		showMetadata,
+		showTelemetry,
+		showInvocation,
 		showResultContext,
 		showTopRule: showFullChromeRules,
 		showBottomRule: showFullChromeRules,
@@ -171,8 +202,10 @@ export function getRefreshedViewerSelection(
 export function getViewerChromeRowCount(
 	resultCount: number,
 	dialogHeight = VIEWER_DIALOG_MAX_HEIGHT,
+	dialogWidth = 72,
 ): number {
-	return getViewerChromeState(resultCount, dialogHeight).chromeRowCount;
+	return getViewerChromeState(resultCount, dialogHeight, dialogWidth)
+		.chromeRowCount;
 }
 
 export function getViewerDialogHeight(terminalRows: number): number {
@@ -190,10 +223,12 @@ export function getViewerDialogHeight(terminalRows: number): number {
 export function getViewerBodyHeight(
 	dialogHeight: number,
 	resultCount: number,
+	dialogWidth = 72,
 ): number {
 	return Math.max(
 		0,
-		dialogHeight - getViewerChromeRowCount(resultCount, dialogHeight),
+		dialogHeight -
+			getViewerChromeRowCount(resultCount, dialogHeight, dialogWidth),
 	);
 }
 
@@ -219,15 +254,22 @@ export function isViewerScrollToEndKey(data: string): boolean {
 	return parsedKey ? VIEWER_SCROLL_TO_END_KEYS.includes(parsedKey) : false;
 }
 
-export function getViewerNavigationHint(resultCount: number): string | null {
+export function getViewerNavigationHint(
+	resultCount: number,
+	dialogWidth = 72,
+): string | null {
 	if (!hasMultiResultNavigation(resultCount)) return null;
-	return "←/→ result · ↑/↓ scroll · PgUp/PgDn page · Home/End/Ctrl+↑/Ctrl+↓ · Esc close";
+	return pickLineVariant(dialogWidth, [
+		"←/→ result · ↑/↓ scroll · PgUp/PgDn page · Home/End/Ctrl+↑/Ctrl+↓ · Esc close",
+		"←/→ result · ↑/↓ scroll · PgUp/PgDn · Home/End · Esc close",
+		"←/→ result · ↑/↓ scroll · Esc close",
+	]);
 }
 
 export function getViewerOverlayOptions() {
 	return {
 		width: "78%",
-		minWidth: 72,
+		minWidth: 60,
 		maxHeight: "78%",
 		anchor: "top-center",
 		margin: { top: 1, left: 2, right: 2 },
@@ -239,13 +281,19 @@ export function getResultContextLabel(
 	selectedResultIndex: number,
 	resultCount: number,
 	result: ViewerResultContext,
+	dialogWidth = 72,
 ): string | null {
 	if (!hasMultiResultNavigation(resultCount)) return null;
-	if (mode === "chain") {
-		return `Result: Step ${result.step ?? selectedResultIndex + 1}/${resultCount} · ${result.agent} · ${result.status}`;
-	}
-	if (mode === "parallel") {
-		return `Result: Task ${selectedResultIndex + 1}/${resultCount} · ${result.agent} · ${result.status}`;
-	}
-	return `Result: Item ${selectedResultIndex + 1}/${resultCount} · ${result.agent} · ${result.status}`;
+	const position =
+		mode === "chain"
+			? `step ${result.step ?? selectedResultIndex + 1}/${resultCount}`
+			: mode === "parallel"
+				? `task ${selectedResultIndex + 1}/${resultCount}`
+				: `item ${selectedResultIndex + 1}/${resultCount}`;
+	const sourceBadge = result.sourceBadge ? ` ${result.sourceBadge}` : "";
+	return pickLineVariant(dialogWidth, [
+		`focus · ${position} · ${result.agent}${sourceBadge} · ${result.status}`,
+		`${position} · ${result.agent}${sourceBadge} · ${result.status}`,
+		`${position} · ${result.agent}${sourceBadge}`,
+	]);
 }
