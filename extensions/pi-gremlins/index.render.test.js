@@ -64,6 +64,7 @@ mock.module("@mariozechner/pi-tui", () => ({
 		up: "up",
 		down: "down",
 		ctrl: (key) => `ctrl-${key}`,
+		alt: (key) => `alt-${key}`,
 	},
 	Markdown: MockMarkdown,
 	Spacer: MockSpacer,
@@ -267,7 +268,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("[Completed] tars · single · [user]");
 		expect(text).toContain("digest · line 11");
 		expect(text).toContain("… 8 earlier events");
-		expect(text).toContain("Ctrl+O expands embedded view.");
+		expect(text).toContain("Alt+O expands embedded view.");
 		expect(text).toContain("usage · turns:2 · input:10 · output:20");
 		expect(text).not.toContain(
 			"viewer · /pi-gremlins:view opens mission control.",
@@ -703,7 +704,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("[Failed] step 2 · reviewer [user]");
 		expect(text).toContain("quiet · No output captured.");
 		expect(text).toContain("usage total · turns:3 · input:15 · output:12");
-		expect(text).toContain("Ctrl+O expands embedded view.");
+		expect(text).toContain("Alt+O expands embedded view.");
 	});
 
 	test("renders chain running and canceled states with semantic badges instead of failure markers", () => {
@@ -824,7 +825,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("[Completed] beta [user]");
 		expect(text).toContain("digest · beta complete");
 		expect(text).toContain("usage total · turns:1 · input:9 · output:3");
-		expect(text).toContain("Ctrl+O expands embedded view.");
+		expect(text).toContain("Alt+O expands embedded view.");
 	});
 
 	test("renders parallel completed collapsed state with explicit failure count and totals", () => {
@@ -862,7 +863,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("digest · alpha collapsed");
 		expect(text).toContain("digest · beta collapsed");
 		expect(text).toContain("usage total · turns:3 · input:10 · output:6");
-		expect(text).toContain("Ctrl+O expands embedded view.");
+		expect(text).toContain("Alt+O expands embedded view.");
 	});
 
 	test("reuses derived render cache for same revision and invalidates when messages append", () => {
