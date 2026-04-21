@@ -24,10 +24,10 @@ const VIEWER_HINT_VARIANTS = [
 	"viewer · /pi-gremlins:view",
 ] as const;
 const EXPAND_HINT_VARIANTS = [
-	"Alt+O expands embedded view.",
-	"Alt+O expands view.",
-	"Alt+O expands.",
-	"Alt+O",
+	"Ctrl+O expands embedded view.",
+	"Ctrl+O expands view.",
+	"Ctrl+O expands.",
+	"Ctrl+O",
 ] as const;
 const WAITING_TEXT = "Waiting for first event.";
 const NO_OUTPUT_TEXT = "No output captured.";
@@ -392,10 +392,10 @@ function createOverflowHint(
 	return theme.fg(
 		"muted",
 		pickLineVariant(width, [
-			`… ${remaining} more ${kind} · Alt+O to expand`,
-			`… ${remaining} more ${kind} · Alt+O`,
-			`… +${remaining} ${kind} · Alt+O`,
-			`… +${remaining} · Alt+O`,
+			`… ${remaining} more ${kind} · Ctrl+O to expand`,
+			`… ${remaining} more ${kind} · Ctrl+O`,
+			`… +${remaining} ${kind} · Ctrl+O`,
+			`… +${remaining} · Ctrl+O`,
 		]),
 	);
 }

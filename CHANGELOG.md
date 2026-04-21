@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `pi-gremlins` now prunes older terminal invocation snapshots while preserving latest and active viewer state, reducing long-session mission-control memory growth.
 - Internal subprocess lifecycle and tool text logic now live in focused modules, reducing `index.ts` responsibility concentration and lowering reliability-fix change risk.
-- Inline `pi-gremlins` expand hints now advertise `Alt+O`, and lair scroll-to-start/end aliases now use `Alt+↑` / `Alt+↓` while preserving `Home` / `End` support.
+- Inline `pi-gremlins` expand hints now advertise `Ctrl+O`, and lair scroll-to-start/end aliases now use `Alt+↑` / `Alt+↓` while preserving `Home` / `End` support.
 - **Immersive Viewer UX and Theming** (PRD-0001, ADR-0001): Overhauled embedded and popup `pi-gremlins` presentation with shared status semantics, `viewerEntries`-driven summaries, clearer source/trust badges, compact live activity rows, narrow-layout hardening, and differentiated tool/result rendering.
 - README now leads with gremlin artwork and refreshed package presentation for the updated viewer experience.
 
