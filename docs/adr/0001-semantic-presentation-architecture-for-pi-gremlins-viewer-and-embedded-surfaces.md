@@ -63,7 +63,7 @@ Rationale: This initiative is no longer only styling or isolated viewer polish o
 
 ## Verification
 
-- **Automated:** `npm run typecheck`; `npm test`; add or update tests covering shared projection/rendering behavior for single, parallel, and chain results across embedded rendering and `/pi-gremlins:view` popup flows.
+- **Automated:** `npm run typecheck`; `npm test`; add or update tests covering shared projection/rendering behavior for single, parallel, and chain results across embedded rendering and `/gremlins:view` popup flows.
 - **Manual:** Run representative single, parallel, and chain gremlin invocations; compare embedded output and popup lair output for tool calls, streaming text, truncated tool results, error states, and navigation context; confirm no cross-session history or persistence artifacts are introduced.
 
 ## Notes

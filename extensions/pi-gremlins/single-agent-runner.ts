@@ -27,7 +27,7 @@ import { formatAgentLookupError } from "./tool-text.js";
 const CHILD_PROCESS_EXIT_GRACE_MS = 50;
 const CHILD_PROCESS_KILL_GRACE_MS = 5000;
 const CHILD_PROTOCOL_ERROR_PREVIEW_LENGTH = 180;
-const CHILD_PROTOCOL_ERROR_PREFIX = "[pi-gremlins]";
+const CHILD_PROTOCOL_ERROR_PREFIX = "[Gremlins🧌]";
 
 function coerceRecord(value: unknown): Record<string, unknown> {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -679,7 +679,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 		}
 		if (wasAborted) {
 			currentResult.stopReason = "aborted";
-			currentResult.errorMessage = "pi-gremlins run was aborted";
+			currentResult.errorMessage = "Gremlins🧌 run was aborted";
 			bumpResultVisibleRevision(currentResult);
 		}
 		if (childProcessErrorMessage) {

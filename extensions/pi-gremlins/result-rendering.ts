@@ -19,9 +19,9 @@ const COLLAPSED_CHILD_COUNT = 4;
 const COLLAPSED_EVENT_COUNT = 3;
 const DIGEST_MAX_LENGTH = 88;
 const VIEWER_HINT_VARIANTS = [
-	"viewer · /pi-gremlins:view opens mission control.",
-	"viewer · /pi-gremlins:view opens viewer.",
-	"viewer · /pi-gremlins:view",
+	"viewer · /gremlins:view opens mission control.",
+	"viewer · /gremlins:view opens viewer.",
+	"viewer · /gremlins:view",
 ] as const;
 const EXPAND_HINT_VARIANTS = [
 	"Ctrl+O expands embedded view.",

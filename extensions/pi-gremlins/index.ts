@@ -95,8 +95,10 @@ import {
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
 const MAX_INVOCATION_SNAPSHOTS = 24;
-const NO_INVOCATION_TEXT = "No pi-gremlins run available in this session.";
-const VIEWER_TITLE = "pi-gremlins mission control";
+const BRAND_NAME = "Gremlins🧌";
+const VIEWER_COMMAND = "gremlins:view";
+const NO_INVOCATION_TEXT = `No ${BRAND_NAME} run available in this session.`;
+const VIEWER_TITLE = `${BRAND_NAME} mission control`;
 
 function formatToolCall(
 	toolName: string,
@@ -1285,7 +1287,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "pi-gremlins",
-		label: "pi-gremlins",
+		label: BRAND_NAME,
 		description: [
 			"Summon specialized gremlins with isolated context.",
 			"Modes: single (one gremlin), parallel (many gremlins), chain (gremlins passing {previous} output along).",
@@ -1498,7 +1500,7 @@ export default function (pi: ExtensionAPI) {
 			const scope: AgentScope = args.agentScope ?? "user";
 			if (args.chain && args.chain.length > 0) {
 				let text =
-					theme.fg("toolTitle", theme.bold("pi-gremlins ")) +
+					theme.fg("toolTitle", theme.bold(`${BRAND_NAME} `)) +
 					theme.fg("accent", `chain (${args.chain.length} steps)`) +
 					theme.fg("muted", ` [${scope}]`);
 				for (let i = 0; i < Math.min(args.chain.length, 3); i++) {
@@ -1520,7 +1522,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			if (args.tasks && args.tasks.length > 0) {
 				let text =
-					theme.fg("toolTitle", theme.bold("pi-gremlins ")) +
+					theme.fg("toolTitle", theme.bold(`${BRAND_NAME} `)) +
 					theme.fg("accent", `parallel (${args.tasks.length} tasks)`) +
 					theme.fg("muted", ` [${scope}]`);
 				for (const t of args.tasks.slice(0, 3)) {
@@ -1539,7 +1541,7 @@ export default function (pi: ExtensionAPI) {
 					: args.task
 				: "...";
 			let text =
-				theme.fg("toolTitle", theme.bold("pi-gremlins ")) +
+				theme.fg("toolTitle", theme.bold(`${BRAND_NAME} `)) +
 				theme.fg("accent", agentName) +
 				theme.fg("muted", ` [${scope}]`);
 			text += `\n  ${theme.fg("dim", preview)}`;
@@ -1554,9 +1556,8 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerCommand("pi-gremlins:view", {
-		description:
-			"Open popup viewer for latest pi-gremlins run in this session.",
+	pi.registerCommand(VIEWER_COMMAND, {
+		description: `Open popup lair for latest ${BRAND_NAME} run in this session.`,
 		handler: async (_args, ctx) => {
 			await openViewer(ctx);
 		},
