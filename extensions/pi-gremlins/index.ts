@@ -416,6 +416,7 @@ function buildViewerMetadataLine(
 		formatViewerSourceBadge(theme, result),
 		theme.fg("muted", "· result"),
 		formatViewerStatusBadge(theme, getSingleResultStatus(result)),
+		theme.fg("muted", `· ${result.gremlinId}`),
 	].join(" ");
 }
 
@@ -494,6 +495,7 @@ function isSameResultSnapshotSlot(
 ): boolean {
 	if (!previousResult) return false;
 	return (
+		previousResult.gremlinId === nextResult.gremlinId &&
 		previousResult.agent === nextResult.agent &&
 		previousResult.agentSource === nextResult.agentSource &&
 		previousResult.task === nextResult.task &&
@@ -887,6 +889,7 @@ export class PiGremlinsViewerOverlay extends Container implements Focusable {
 						{
 							agent: this.selectedResult.agent,
 							status: getSingleResultStatus(this.selectedResult),
+							gremlinId: this.selectedResult.gremlinId,
 							step: this.selectedResult.step,
 							sourceBadge: formatViewerSourceBadge(
 								this.theme,
@@ -1158,6 +1161,7 @@ export default function (pi: ExtensionAPI) {
 	const invocationRegistry = new Map<string, InvocationSnapshot>();
 	let latestToolCallId: string | null = null;
 	let viewerOverlayRuntime: ViewerOverlayRuntime | null = null;
+	let nextGremlinOrdinal = 1;
 
 	const hasViewerSnapshot = (toolCallId: string | undefined): boolean => {
 		return toolCallId ? invocationRegistry.has(toolCallId) : false;
@@ -1197,6 +1201,7 @@ export default function (pi: ExtensionAPI) {
 	const clearViewerState = () => {
 		dismissViewerOverlay();
 		latestToolCallId = null;
+		nextGremlinOrdinal = 1;
 		invocationRegistry.clear();
 	};
 
@@ -1339,6 +1344,7 @@ export default function (pi: ExtensionAPI) {
 			const handleInvocationUpdate = (
 				partial: AgentToolResult<PiGremlinsDetails>,
 			) => invocationUpdates.applyPartial(toolCallId, partial);
+			const allocateGremlinId = () => `g${nextGremlinOrdinal++}`;
 			const finalizeResult = (
 				result: PiGremlinsToolResult,
 			): PiGremlinsToolResult => {
@@ -1419,7 +1425,9 @@ export default function (pi: ExtensionAPI) {
 
 			latestToolCallId = toolCallId;
 			updateInvocation(toolCallId, makeDetails(mode)([]), "Running");
-			if (params.agent && params.task) {
+			const singleGremlinId =
+				params.agent && params.task ? allocateGremlinId() : undefined;
+			if (params.agent && params.task && singleGremlinId) {
 				updateInvocation(
 					toolCallId,
 					makeDetails("single")([
@@ -1428,6 +1436,7 @@ export default function (pi: ExtensionAPI) {
 							params.task,
 							undefined,
 							"unknown",
+							singleGremlinId,
 						),
 					]),
 					"Running",
@@ -1444,6 +1453,7 @@ export default function (pi: ExtensionAPI) {
 						runSingleAgent,
 						handleInvocationUpdate,
 						makeDetails,
+						allocateGremlinId,
 						packageDiscoveryWarning,
 					}),
 				);
@@ -1459,6 +1469,7 @@ export default function (pi: ExtensionAPI) {
 						runSingleAgent,
 						handleInvocationUpdate,
 						makeDetails,
+						allocateGremlinId,
 						maxConcurrency: MAX_CONCURRENCY,
 						mapWithConcurrencyLimit,
 						packageDiscoveryWarning,
@@ -1466,7 +1477,7 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 
-			if (params.agent && params.task) {
+			if (params.agent && params.task && singleGremlinId) {
 				return finalizeResult(
 					await executeSingleMode({
 						agent: params.agent,
@@ -1479,6 +1490,7 @@ export default function (pi: ExtensionAPI) {
 						handleInvocationUpdate,
 						makeDetails,
 						packageDiscoveryWarning,
+						gremlinId: singleGremlinId,
 					}),
 				);
 			}

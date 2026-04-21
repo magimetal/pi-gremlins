@@ -964,6 +964,49 @@ describe("pi-gremlins execute streaming characterization", () => {
 		expect(result.details.status).toBe("Completed");
 	});
 
+	test("single mode assigns stable gremlin id from pending through completion", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					jsonLine({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [{ type: "text", text: "single gremlin done" }],
+							usage: {
+								input: 1,
+								output: 1,
+								cacheRead: 0,
+								cacheWrite: 0,
+								cost: { total: 0.01 },
+								totalTokens: 2,
+							},
+						},
+					}),
+				],
+				closeCode: 0,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const result = await tool.execute(
+			"single-gremlin-id",
+			{ agent: "tars", task: "Track one gremlin id" },
+			undefined,
+			(partial) => updates.push(cloneForAssertion(partial)),
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(updates[0].details.results[0].gremlinId).toBe("g1");
+		expect(result.details.results[0].gremlinId).toBe("g1");
+	});
+
 	test("chain mode emits terminal completion update for one-child runs", async () => {
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;
@@ -1015,6 +1058,83 @@ describe("pi-gremlins execute streaming characterization", () => {
 			}),
 		]);
 		expect(result.details.status).toBe("Completed");
+	});
+
+	test("chain mode assigns stable gremlin ids for repeated agent names", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "writer.md", "writer");
+
+		spawnPlans.push(
+			() =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "first pass" }],
+								usage: {
+									input: 1,
+									output: 1,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 2,
+								},
+							},
+						}),
+					],
+					closeCode: 0,
+				}),
+			() =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "second pass" }],
+								usage: {
+									input: 1,
+									output: 1,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 2,
+								},
+							},
+						}),
+					],
+					closeCode: 0,
+				}),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const result = await tool.execute(
+			"chain-repeated-agent-ids",
+			{
+				chain: [
+					{ agent: "writer", task: "Write first pass" },
+					{ agent: "writer", task: "Write second pass" },
+				],
+			},
+			undefined,
+			(partial) => updates.push(cloneForAssertion(partial)),
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(updates[0].details.results[0].gremlinId).toBe("g1");
+		expect(
+			updates.some((update) => update.details.results[1]?.gremlinId === "g2"),
+		).toBe(true);
+		expect(result.details.results.map((child) => child.gremlinId)).toEqual([
+			"g1",
+			"g2",
+		]);
+		expect(result.content[0].text).toBe("second pass");
 	});
 
 	test("chain mode emits pending snapshots, previous substitution, and stops on error", async () => {
@@ -1435,6 +1555,87 @@ describe("pi-gremlins execute streaming characterization", () => {
 		);
 	});
 
+	test("parallel mode assigns stable gremlin ids for repeated agent names", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "alpha.md", "alpha");
+
+		spawnPlans.push(
+			createSpawnPlanForTask("Do alpha first", () =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "alpha first done" }],
+								usage: {
+									input: 3,
+									output: 2,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 5,
+								},
+							},
+						}),
+					],
+					closeCode: 0,
+				}),
+			),
+			createSpawnPlanForTask("Do alpha second", () =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "alpha second done" }],
+								usage: {
+									input: 4,
+									output: 2,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 6,
+								},
+							},
+						}),
+					],
+					closeCode: 0,
+				}),
+			),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const result = await tool.execute(
+			"parallel-repeated-agent-ids",
+			{
+				tasks: [
+					{ agent: "alpha", task: "Do alpha first" },
+					{ agent: "alpha", task: "Do alpha second" },
+				],
+			},
+			undefined,
+			(partial) => updates.push(cloneForAssertion(partial)),
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(updates[0].details.results.map((child) => child.gremlinId)).toEqual([
+			"g1",
+			"g2",
+		]);
+		expect(result.details.results.map((child) => child.gremlinId)).toEqual([
+			"g1",
+			"g2",
+		]);
+		expect(result.content[0].text).toBe(
+			"Parallel: 2/2 succeeded\n\n[g1 alpha] completed: alpha first done\n\n[g2 alpha] completed: alpha second done",
+		);
+	});
+
 	test("parallel mode keeps task outputs aligned when spawn order differs from task order", async () => {
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;
@@ -1510,7 +1711,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 		);
 
 		expect(result.content[0].text).toBe(
-			"Parallel: 1/2 succeeded, 1 failed\n\n[alpha] completed: alpha done\n\n[beta] failed: beta failed",
+			"Parallel: 1/2 succeeded, 1 failed\n\n[g1 alpha] completed: alpha done\n\n[g2 beta] failed: beta failed",
 		);
 		expect(result.details.results[0]).toMatchObject({
 			agent: "alpha",
@@ -1657,7 +1858,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 			),
 		).toBe(true);
 		expect(result.content[0].text).toBe(
-			"Parallel: 1/2 succeeded, 1 failed\n\n[alpha] completed: alpha done\n\n[beta] failed: beta failed",
+			"Parallel: 1/2 succeeded, 1 failed\n\n[g1 alpha] completed: alpha done\n\n[g2 beta] failed: beta failed",
 		);
 		expect(result.details.results).toHaveLength(2);
 		expect(result.details.results[0]).toMatchObject({
@@ -1820,7 +2021,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 		expect(result.isError).toBeUndefined();
 		expect(result.details.status).toBe("Canceled");
 		expect(result.content[0].text).toBe(
-			"Parallel: 1/2 succeeded, 1 canceled\n\n[alpha] completed: alpha done\n\n[beta] canceled: beta canceled",
+			"Parallel: 1/2 succeeded, 1 canceled\n\n[g1 alpha] completed: alpha done\n\n[g2 beta] canceled: beta canceled",
 		);
 		expect(result.details.results[1]).toMatchObject({
 			agent: "beta",

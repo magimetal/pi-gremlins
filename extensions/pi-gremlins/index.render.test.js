@@ -127,6 +127,7 @@ function createUsage(overrides = {}) {
 
 function createSingleResult(overrides = {}) {
 	return {
+		gremlinId: "g1",
 		agent: "tars",
 		agentSource: "user",
 		task: "Inspect task",
@@ -709,6 +710,44 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("active ·");
 		expect(text).toContain("[project]");
 		expect(text).toContain("viewer · /pi-gremlins:view");
+	});
+
+	test("renders gremlin ids in embedded parallel summaries for repeated agent names", () => {
+		const tool = createRegisteredTool();
+		const text = renderToText(tool, {
+			content: [{ type: "text", text: "unused" }],
+			details: createDetails("parallel", [
+				createSingleResult({
+					gremlinId: "g1",
+					agent: "alpha",
+					exitCode: -1,
+					task: "Do first alpha task",
+					viewerEntries: [
+						{
+							type: "assistant-text",
+							text: "first alpha still running",
+							streaming: true,
+						},
+					],
+				}),
+				createSingleResult({
+					gremlinId: "g2",
+					agent: "alpha",
+					exitCode: 0,
+					task: "Do second alpha task",
+					messages: [
+						{
+							role: "assistant",
+							content: [{ type: "text", text: "second alpha done" }],
+						},
+					],
+				}),
+			]),
+		});
+
+		expect(text).toContain("active · alpha · first alpha still running · g1");
+		expect(text).toContain("[Running] alpha [user] · g1");
+		expect(text).toContain("[Completed] alpha [user] · g2");
 	});
 
 	test("renders chain collapsed with status-first rows, active-free summary, and readable totals", () => {

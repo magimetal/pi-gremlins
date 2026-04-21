@@ -10,6 +10,7 @@ export type ViewerResultContextMode = "single" | "parallel" | "chain";
 export interface ViewerResultContext {
 	agent: string;
 	status: string;
+	gremlinId: string;
 	step?: number;
 	sourceBadge?: string;
 }
@@ -292,8 +293,8 @@ export function getResultContextLabel(
 				: `item ${selectedResultIndex + 1}/${resultCount}`;
 	const sourceBadge = result.sourceBadge ? ` ${result.sourceBadge}` : "";
 	return pickLineVariant(dialogWidth, [
-		`focus · ${position} · ${result.agent}${sourceBadge} · ${result.status}`,
-		`${position} · ${result.agent}${sourceBadge} · ${result.status}`,
-		`${position} · ${result.agent}${sourceBadge}`,
+		`focus · ${position} · ${result.agent}${sourceBadge} · ${result.status} · ${result.gremlinId}`,
+		`${position} · ${result.agent}${sourceBadge} · ${result.status} · ${result.gremlinId}`,
+		`${position} · ${result.agent}${sourceBadge} · ${result.gremlinId}`,
 	]);
 }

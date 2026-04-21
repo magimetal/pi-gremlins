@@ -688,6 +688,51 @@ describe("pi-gremlins viewer command", () => {
 		expect(popup).toContain("error · fatal: fallback mismatch");
 	});
 
+	test("renders gremlin ids in popup focus metadata and navigation context", () => {
+		const alpha = createPendingResult(
+			"alpha",
+			"Inspect first alpha",
+			undefined,
+			"user",
+			"g1",
+		);
+		alpha.viewerEntries.push({
+			type: "assistant-text",
+			text: "first alpha live",
+			streaming: true,
+		});
+		bumpResultDerivedRevision(alpha);
+
+		const beta = createPendingResult(
+			"alpha",
+			"Inspect second alpha",
+			undefined,
+			"project",
+			"g2",
+		);
+		beta.exitCode = 0;
+		beta.messages.push({
+			role: "assistant",
+			content: [{ type: "text", text: "second alpha done" }],
+		});
+		bumpResultVisibleRevision(beta);
+		bumpResultDerivedRevision(beta);
+
+		const snapshot = createInvocationSnapshot(
+			"viewer-gremlin-ids",
+			createDetails("parallel", [alpha, beta]),
+			"Running",
+		);
+		const text = renderOverlayText(snapshot, {
+			width: 72,
+			rows: 24,
+			selectedResultIndex: 1,
+		});
+
+		expect(text).toContain("focus · alpha [project] · result [Completed] · g2");
+		expect(text).toContain("task 2/2 · alpha [project] · Completed · g2");
+	});
+
 	test("renders popup narrow-width layout with essential chrome only", () => {
 		const planner = createPendingResult("planner", "Plan route", 1, "project");
 		planner.exitCode = 0;
