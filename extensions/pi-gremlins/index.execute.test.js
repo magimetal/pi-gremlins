@@ -414,6 +414,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 			"reading chunk",
 			"file contents",
 			"final single answer",
+			"final single answer",
 		]);
 		expect(
 			updates[1].details.results[0].viewerEntries.some(
@@ -423,7 +424,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 					entry.content === "reading chunk",
 			),
 		).toBe(true);
-		expect(updates.at(-1).details.results[0]).toMatchObject({
+		expect(updates.at(-2).details.results[0]).toMatchObject({
 			agent: "tars",
 			agentSource: "user",
 			exitCode: -1,
@@ -437,6 +438,13 @@ describe("pi-gremlins execute streaming characterization", () => {
 				contextTokens: 18,
 				turns: 1,
 			},
+		});
+		expect(updates.at(-1).details.status).toBe("Completed");
+		expect(updates.at(-1).details.results[0]).toMatchObject({
+			agent: "tars",
+			agentSource: "user",
+			exitCode: 0,
+			model: "gpt-5",
 		});
 		expect(result.isError).toBeUndefined();
 		expect(result.content[0].text).toBe("final single answer");
@@ -520,7 +528,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 			createExecutionContext(workspace.repoRoot),
 		);
 
-		expect(updates).toHaveLength(3);
+		expect(updates).toHaveLength(4);
 		expect(updates[0].content[0].text).toBe("draft");
 		expect(updates[0].details.results[0].viewerEntries).toEqual([
 			expect.objectContaining({
@@ -537,6 +545,9 @@ describe("pi-gremlins execute streaming characterization", () => {
 			}),
 		]);
 		expect(updates[2].content[0].text).toBe("final answer");
+		expect(updates[2].details.status).toBe("Running");
+		expect(updates[3].content[0].text).toBe("final answer");
+		expect(updates[3].details.status).toBe("Completed");
 		expect(result.content[0].text).toBe("final answer");
 	});
 
@@ -617,7 +628,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 			createExecutionContext(workspace.repoRoot),
 		);
 
-		expect(updates).toHaveLength(4);
+		expect(updates).toHaveLength(5);
 		expect(updates[0].content[0].text).toBe("(running...)");
 		expect(updates[0].details.results[0].viewerEntries).toEqual([
 			expect.objectContaining({
@@ -638,6 +649,8 @@ describe("pi-gremlins execute streaming characterization", () => {
 				streaming: false,
 			}),
 		]);
+		expect(updates[4].content[0].text).toBe("draft final");
+		expect(updates[4].details.status).toBe("Completed");
 	});
 
 	test("single mode skips duplicate publish for no-op tool_execution_start after assistant tool call", async () => {
@@ -710,6 +723,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 		expect(updates.map((update) => update.content[0].text)).toEqual([
 			"(running...)",
 			"final answer",
+			"final answer",
 		]);
 		expect(updates[0].details.results[0].viewerEntries).toEqual([
 			expect.objectContaining({
@@ -780,6 +794,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 
 		expect(updates.map((update) => update.content[0].text)).toEqual([
 			"drafting",
+			"final answer",
 			"final answer",
 		]);
 		expect(updates[0].details.results[0].viewerEntries).toEqual([
@@ -899,6 +914,107 @@ describe("pi-gremlins execute streaming characterization", () => {
 			agent: "tars",
 			exitCode: 0,
 		});
+	});
+
+	test("single mode emits terminal completion update after child exit", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					jsonLine({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [{ type: "text", text: "final answer" }],
+							usage: {
+								input: 2,
+								output: 3,
+								cacheRead: 0,
+								cacheWrite: 0,
+								cost: { total: 0.01 },
+								totalTokens: 5,
+							},
+						},
+					}),
+				],
+				closeCode: 0,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const result = await tool.execute(
+			"single-terminal-update",
+			{ agent: "tars", task: "Finish cleanly" },
+			undefined,
+			(partial) => updates.push(cloneForAssertion(partial)),
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(updates.at(-1).content[0].text).toBe("final answer");
+		expect(updates.at(-1).details.status).toBe("Completed");
+		expect(updates.at(-1).details.results[0]).toMatchObject({
+			agent: "tars",
+			exitCode: 0,
+		});
+		expect(result.details.status).toBe("Completed");
+	});
+
+	test("chain mode emits terminal completion update for one-child runs", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "writer.md", "writer");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					jsonLine({
+						type: "message_end",
+						message: {
+							role: "assistant",
+							content: [{ type: "text", text: "chain final answer" }],
+							usage: {
+								input: 3,
+								output: 4,
+								cacheRead: 0,
+								cacheWrite: 0,
+								cost: { total: 0.01 },
+								totalTokens: 7,
+							},
+						},
+					}),
+				],
+				closeCode: 0,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const result = await tool.execute(
+			"chain-single-terminal-update",
+			{
+				chain: [{ agent: "writer", task: "Draft once" }],
+			},
+			undefined,
+			(partial) => updates.push(cloneForAssertion(partial)),
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(updates.at(-1).content[0].text).toBe("chain final answer");
+		expect(updates.at(-1).details.status).toBe("Completed");
+		expect(updates.at(-1).details.results).toEqual([
+			expect.objectContaining({
+				agent: "writer",
+				exitCode: 0,
+				step: 1,
+			}),
+		]);
+		expect(result.details.status).toBe("Completed");
 	});
 
 	test("chain mode emits pending snapshots, previous substitution, and stops on error", async () => {

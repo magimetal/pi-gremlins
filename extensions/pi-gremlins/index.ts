@@ -1437,7 +1437,6 @@ export default function (pi: ExtensionAPI) {
 			if (params.chain && params.chain.length > 0) {
 				return finalizeResult(
 					await executeChainMode({
-						toolCallId,
 						chain: params.chain,
 						ctxCwd: ctx.cwd,
 						agents,
@@ -1445,7 +1444,6 @@ export default function (pi: ExtensionAPI) {
 						runSingleAgent,
 						handleInvocationUpdate,
 						makeDetails,
-						updateInvocation,
 						packageDiscoveryWarning,
 					}),
 				);
@@ -1454,7 +1452,6 @@ export default function (pi: ExtensionAPI) {
 			if (params.tasks && params.tasks.length > 0) {
 				return finalizeResult(
 					await executeParallelMode({
-						toolCallId,
 						tasks: params.tasks,
 						ctxCwd: ctx.cwd,
 						agents,
@@ -1462,7 +1459,6 @@ export default function (pi: ExtensionAPI) {
 						runSingleAgent,
 						handleInvocationUpdate,
 						makeDetails,
-						updateInvocation,
 						maxConcurrency: MAX_CONCURRENCY,
 						mapWithConcurrencyLimit,
 						packageDiscoveryWarning,
@@ -1473,7 +1469,6 @@ export default function (pi: ExtensionAPI) {
 			if (params.agent && params.task) {
 				return finalizeResult(
 					await executeSingleMode({
-						toolCallId,
 						agent: params.agent,
 						task: params.task,
 						cwd: params.cwd,
@@ -1483,7 +1478,6 @@ export default function (pi: ExtensionAPI) {
 						runSingleAgent,
 						handleInvocationUpdate,
 						makeDetails,
-						updateInvocation,
 						packageDiscoveryWarning,
 					}),
 				);
