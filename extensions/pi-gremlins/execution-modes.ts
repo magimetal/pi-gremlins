@@ -3,7 +3,6 @@ import type { AgentConfig } from "./agents.js";
 import {
 	createPendingResult,
 	getFinalOutput,
-	getInvocationStatus,
 	getSingleResultErrorText,
 	getSingleResultStatus,
 	type InvocationMode,
@@ -41,7 +40,6 @@ export type OnUpdateCallback = (
 ) => void;
 
 interface ExecutionModeDependencies {
-	toolCallId: string;
 	ctxCwd: string;
 	agents: AgentConfig[];
 	signal: AbortSignal | undefined;
@@ -50,11 +48,6 @@ interface ExecutionModeDependencies {
 	makeDetails: (
 		mode: InvocationMode,
 	) => (results: SingleResult[]) => PiGremlinsDetails;
-	updateInvocation: (
-		toolCallId: string,
-		details: PiGremlinsDetails,
-		status: ReturnType<typeof getInvocationStatus>,
-	) => void;
 	packageDiscoveryWarning?: string;
 }
 
@@ -124,7 +117,6 @@ function applyPreviousOutputToChainTask(
 }
 
 export async function executeChainMode({
-	toolCallId,
 	chain,
 	ctxCwd,
 	agents,
@@ -132,7 +124,6 @@ export async function executeChainMode({
 	runSingleAgent,
 	handleInvocationUpdate,
 	makeDetails,
-	updateInvocation,
 	packageDiscoveryWarning,
 }: ChainExecutionDependencies): Promise<PiGremlinsToolResult> {
 	const results: SingleResult[] = [];
@@ -180,30 +171,31 @@ export async function executeChainMode({
 		const resultStatus = getSingleResultStatus(result);
 		if (resultStatus === "Failed" || resultStatus === "Canceled") {
 			const details = makeDetails("chain")(results);
-			updateInvocation(
-				toolCallId,
-				details,
-				getInvocationStatus("chain", results),
-			);
 			if (resultStatus === "Canceled") {
-				return {
+				const terminalPartial = {
 					content: [
 						{
-							type: "text",
+							type: "text" as const,
 							text: `Chain canceled at step ${i + 1} (${step.agent}): ${getSingleResultErrorText(result)}`,
 						},
 					],
 					details,
 				};
+				handleInvocationUpdate(terminalPartial);
+				return terminalPartial;
 			}
-			return {
+			const terminalPartial = {
 				content: [
 					{
-						type: "text",
+						type: "text" as const,
 						text: `Chain stopped at step ${i + 1} (${step.agent}): ${getSingleResultErrorText(result)}`,
 					},
 				],
 				details,
+			};
+			handleInvocationUpdate(terminalPartial);
+			return {
+				...terminalPartial,
 				isError: true,
 			};
 		}
@@ -212,11 +204,10 @@ export async function executeChainMode({
 
 	const details = makeDetails("chain")(results);
 	const finalResult = results.at(-1);
-	updateInvocation(toolCallId, details, getInvocationStatus("chain", results));
-	return {
+	const terminalPartial = {
 		content: [
 			{
-				type: "text",
+				type: "text" as const,
 				text:
 					getFinalOutput(
 						finalResult?.messages ?? [],
@@ -226,10 +217,11 @@ export async function executeChainMode({
 		],
 		details,
 	};
+	handleInvocationUpdate(terminalPartial);
+	return terminalPartial;
 }
 
 export async function executeParallelMode({
-	toolCallId,
 	tasks,
 	ctxCwd,
 	agents,
@@ -237,7 +229,6 @@ export async function executeParallelMode({
 	runSingleAgent,
 	handleInvocationUpdate,
 	makeDetails,
-	updateInvocation,
 	maxConcurrency,
 	mapWithConcurrencyLimit,
 	packageDiscoveryWarning,
@@ -319,11 +310,6 @@ export async function executeParallelMode({
 		return `[${result.agent}] ${statuses[index].toLowerCase()}: ${output || "(no output)"}`;
 	});
 	const details = makeDetails("parallel")(results);
-	updateInvocation(
-		toolCallId,
-		details,
-		getInvocationStatus("parallel", results),
-	);
 	return {
 		content: [
 			{
@@ -336,7 +322,6 @@ export async function executeParallelMode({
 }
 
 export async function executeSingleMode({
-	toolCallId,
 	agent,
 	task,
 	cwd,
@@ -346,7 +331,6 @@ export async function executeSingleMode({
 	runSingleAgent,
 	handleInvocationUpdate,
 	makeDetails,
-	updateInvocation,
 	packageDiscoveryWarning,
 }: SingleExecutionDependencies): Promise<PiGremlinsToolResult> {
 	const result = await runSingleAgent(
@@ -362,41 +346,41 @@ export async function executeSingleMode({
 		packageDiscoveryWarning,
 	);
 	const details = makeDetails("single")([result]);
-	updateInvocation(
-		toolCallId,
-		details,
-		getInvocationStatus("single", [result]),
-	);
-
 	const resultStatus = getSingleResultStatus(result);
 	if (resultStatus === "Failed") {
-		return {
+		const terminalPartial = {
 			content: [
 				{
-					type: "text",
+					type: "text" as const,
 					text: `Agent ${result.stopReason || "failed"}: ${getSingleResultErrorText(result)}`,
 				},
 			],
 			details,
+		};
+		handleInvocationUpdate(terminalPartial);
+		return {
+			...terminalPartial,
 			isError: true,
 		};
 	}
 	if (resultStatus === "Canceled") {
-		return {
+		const terminalPartial = {
 			content: [
 				{
-					type: "text",
+					type: "text" as const,
 					text: `Canceled: ${getSingleResultErrorText(result)}`,
 				},
 			],
 			details,
 		};
+		handleInvocationUpdate(terminalPartial);
+		return terminalPartial;
 	}
 
-	return {
+	const terminalPartial = {
 		content: [
 			{
-				type: "text",
+				type: "text" as const,
 				text:
 					getFinalOutput(result.messages, result.viewerEntries) ||
 					"(no output)",
@@ -404,4 +388,6 @@ export async function executeSingleMode({
 		],
 		details,
 	};
+	handleInvocationUpdate(terminalPartial);
+	return terminalPartial;
 }
