@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README now leads with gremlin artwork, refreshed `Gremlins🧌` user-facing branding, and `/gremlins:view` command guidance while package/install identifiers remain `pi-gremlins`.
 
 ### Added
+- `pi-gremlins` now assigns stable human-friendly child run ids (`g1`, `g2`, …) at creation time, carries them through result snapshots, and surfaces them in embedded inline summaries, popup viewer chrome, and repeated-agent execution summaries.
 - Product, architecture, and implementation records for viewer overhaul in `docs/prd/0001-pi-gremlins-immersive-theming-and-viewer-ux-overhaul.md`, `docs/adr/0001-semantic-presentation-architecture-for-pi-gremlins-viewer-and-embedded-surfaces.md`, and `docs/plans/pi-gremlins-immersive-theming-viewer-ux-overhaul.md`.
 - PRD/ADR index and template scaffolding under `docs/prd/` and `docs/adr/` for future feature and architecture tracking.
 

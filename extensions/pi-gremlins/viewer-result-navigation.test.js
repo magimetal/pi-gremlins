@@ -360,16 +360,18 @@ describe("viewer result navigation", () => {
 			getResultContextLabel("chain", 1, 3, {
 				agent: "researcher",
 				status: "Running",
+				gremlinId: "g2",
 				step: 2,
 				sourceBadge: "[project]",
 			}),
-		).toBe("focus · step 2/3 · researcher [project] · Running");
+		).toBe("focus · step 2/3 · researcher [project] · Running · g2");
 		expect(
 			getResultContextLabel("parallel", 1, 3, {
 				agent: "reviewer",
 				status: "Completed",
+				gremlinId: "g2",
 			}),
-		).toBe("focus · task 2/3 · reviewer · Completed");
+		).toBe("focus · task 2/3 · reviewer · Completed · g2");
 		expect(
 			getResultContextLabel(
 				"parallel",
@@ -378,6 +380,7 @@ describe("viewer result navigation", () => {
 				{
 					agent: "reviewer-with-very-long-name",
 					status: "Completed",
+					gremlinId: "g2",
 					sourceBadge: "[project]",
 				},
 				30,
@@ -387,6 +390,7 @@ describe("viewer result navigation", () => {
 			getResultContextLabel("single", 0, 1, {
 				agent: "writer",
 				status: "Completed",
+				gremlinId: "g1",
 			}),
 		).toBeNull();
 	});

@@ -444,6 +444,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 	task,
 	cwd,
 	step,
+	gremlinId,
 	signal,
 	onUpdate,
 	makeDetails,
@@ -454,6 +455,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 
 	if (!agent) {
 		const missingAgentResult = initializeResultRevisions({
+			gremlinId,
 			agent: agentName,
 			agentSource: "unknown",
 			task,
@@ -484,6 +486,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 	let tmpPromptPath: string | null = null;
 
 	const currentResult: SingleResult = initializeResultRevisions({
+		gremlinId,
 		agent: agent.name,
 		agentSource: agent.source,
 		task,

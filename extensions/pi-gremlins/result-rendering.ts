@@ -241,17 +241,19 @@ function formatSingleHeader(
 ): string {
 	const status = getSingleResultSemantics(result);
 	const sourceBadge = getSourceBadge(theme, result);
+	const gremlinIdBadge = theme.fg("muted", `· ${result.gremlinId}`);
 	const full = [
 		theme.fg(getStatusTone(status.status), status.icon),
 		formatStatusBadge(theme, status),
 		theme.fg("toolTitle", theme.bold(result.agent)),
 		theme.fg("muted", `· ${modeLabel} ·`),
 		sourceBadge,
+		gremlinIdBadge,
 	].join(" ");
 	const compact = fitMiddleLine(
 		`${formatStatusBadge(theme, status)} `,
 		`${theme.fg("toolTitle", theme.bold(result.agent))}${theme.fg("muted", ` · ${modeLabel}`)}`,
-		` ${sourceBadge}`,
+		` ${sourceBadge} ${gremlinIdBadge}`,
 		width,
 	);
 	return pickLineVariant(width, [full, compact]);
@@ -727,7 +729,7 @@ function buildActiveOverviewLine(
 	return formatLabelLine(
 		theme,
 		"active",
-		`${identity} · ${summary.text}`,
+		`${identity} · ${summary.text} · ${target.gremlinId}`,
 		summary.tone,
 		width,
 	);
@@ -765,7 +767,7 @@ function buildChildRow(
 		fitMiddleLine(
 			`${marker} ${formatStatusBadge(theme, status)} `,
 			theme.fg("accent", identity),
-			` ${sourceBadge}`,
+			` ${sourceBadge} ${theme.fg("muted", `· ${result.gremlinId}`)}`,
 			width,
 		),
 		formatLabelLine(theme, summary.label, summary.text, summary.tone, width),

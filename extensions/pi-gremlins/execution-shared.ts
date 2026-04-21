@@ -63,6 +63,7 @@ export type ViewerEntry =
 	  };
 
 export interface SingleResult {
+	gremlinId: string;
 	agent: string;
 	agentSource: AgentSource | "unknown";
 	task: string;
@@ -566,8 +567,10 @@ export function createPendingResult(
 	task: string,
 	step?: number,
 	agentSource: AgentSource | "unknown" = "unknown",
+	gremlinId: string = "g1",
 ): SingleResult {
 	return initializeResultRevisions({
+		gremlinId,
 		agent,
 		agentSource,
 		task,

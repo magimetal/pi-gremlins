@@ -29,6 +29,7 @@ export type RunSingleAgentFn = (
 	task: string,
 	cwd: string | undefined,
 	step: number | undefined,
+	gremlinId: string,
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => PiGremlinsDetails,
@@ -48,6 +49,7 @@ interface ExecutionModeDependencies {
 	makeDetails: (
 		mode: InvocationMode,
 	) => (results: SingleResult[]) => PiGremlinsDetails;
+	allocateGremlinId: () => string;
 	packageDiscoveryWarning?: string;
 }
 
@@ -65,10 +67,12 @@ interface ParallelExecutionDependencies extends ExecutionModeDependencies {
 	) => Promise<R[]>;
 }
 
-interface SingleExecutionDependencies extends ExecutionModeDependencies {
+interface SingleExecutionDependencies
+	extends Omit<ExecutionModeDependencies, "allocateGremlinId"> {
 	agent: string;
 	task: string;
 	cwd?: string;
+	gremlinId: string;
 }
 
 const MAX_CHAIN_CARRY_FORWARD_CHARS = 8000;
@@ -124,6 +128,7 @@ export async function executeChainMode({
 	runSingleAgent,
 	handleInvocationUpdate,
 	makeDetails,
+	allocateGremlinId,
 	packageDiscoveryWarning,
 }: ChainExecutionDependencies): Promise<PiGremlinsToolResult> {
 	const results: SingleResult[] = [];
@@ -136,6 +141,7 @@ export async function executeChainMode({
 			previousOutput,
 		);
 
+		const gremlinId = allocateGremlinId();
 		const chainUpdate: OnUpdateCallback = (partial) => {
 			const currentResult = partial.details?.results[0];
 			if (!currentResult) return;
@@ -150,7 +156,13 @@ export async function executeChainMode({
 			content: [{ type: "text", text: "(running...)" }],
 			details: makeDetails("chain")([
 				...results,
-				createPendingResult(step.agent, taskWithContext, i + 1, "unknown"),
+				createPendingResult(
+					step.agent,
+					taskWithContext,
+					i + 1,
+					"unknown",
+					gremlinId,
+				),
 			]),
 		});
 
@@ -161,6 +173,7 @@ export async function executeChainMode({
 			taskWithContext,
 			step.cwd,
 			i + 1,
+			gremlinId,
 			signal,
 			chainUpdate,
 			makeDetails("chain"),
@@ -229,12 +242,23 @@ export async function executeParallelMode({
 	runSingleAgent,
 	handleInvocationUpdate,
 	makeDetails,
+	allocateGremlinId,
 	maxConcurrency,
 	mapWithConcurrencyLimit,
 	packageDiscoveryWarning,
 }: ParallelExecutionDependencies): Promise<PiGremlinsToolResult> {
-	const allResults: SingleResult[] = tasks.map((task) =>
-		createPendingResult(task.agent, task.task, undefined, "unknown"),
+	const taskRuns = tasks.map((task) => ({
+		...task,
+		gremlinId: allocateGremlinId(),
+	}));
+	const allResults: SingleResult[] = taskRuns.map((task) =>
+		createPendingResult(
+			task.agent,
+			task.task,
+			undefined,
+			"unknown",
+			task.gremlinId,
+		),
 	);
 	const trackedExitCodes = allResults.map((result) => result.exitCode);
 	let runningCount = allResults.length;
@@ -268,7 +292,7 @@ export async function executeParallelMode({
 	emitParallelUpdate();
 
 	const results = await mapWithConcurrencyLimit(
-		tasks,
+		taskRuns,
 		maxConcurrency,
 		async (task, index) => {
 			const result = await runSingleAgent(
@@ -278,6 +302,7 @@ export async function executeParallelMode({
 				task.task,
 				task.cwd,
 				undefined,
+				task.gremlinId,
 				signal,
 				(partial) => {
 					if (partial.details?.results[0]) {
@@ -307,7 +332,7 @@ export async function executeParallelMode({
 	if (canceledCount > 0) summaryParts.push(`${canceledCount} canceled`);
 	const summaries = results.map((result, index) => {
 		const output = getFinalOutput(result.messages, result.viewerEntries);
-		return `[${result.agent}] ${statuses[index].toLowerCase()}: ${output || "(no output)"}`;
+		return `[${result.gremlinId} ${result.agent}] ${statuses[index].toLowerCase()}: ${output || "(no output)"}`;
 	});
 	const details = makeDetails("parallel")(results);
 	return {
@@ -332,6 +357,7 @@ export async function executeSingleMode({
 	handleInvocationUpdate,
 	makeDetails,
 	packageDiscoveryWarning,
+	gremlinId,
 }: SingleExecutionDependencies): Promise<PiGremlinsToolResult> {
 	const result = await runSingleAgent(
 		ctxCwd,
@@ -340,6 +366,7 @@ export async function executeSingleMode({
 		task,
 		cwd,
 		undefined,
+		gremlinId,
 		signal,
 		handleInvocationUpdate,
 		makeDetails("single"),
