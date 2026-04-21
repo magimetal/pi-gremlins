@@ -39,11 +39,51 @@ export function createMockProcess({
 	exitDelay,
 	omitClose = false,
 	errorAt,
+	onStdinLine,
+	onStdinJson,
 } = {}) {
 	const proc = new EventEmitter();
 	proc.stdout = new EventEmitter();
 	proc.stderr = new EventEmitter();
+	proc.stdinWrites = [];
+	proc.stdinEnded = false;
 	proc.killed = false;
+	proc.emitStdout = (data, delay = 0) => {
+		setTimeout(() => {
+			proc.stdout.emit("data", Buffer.from(data));
+		}, delay);
+	};
+	proc.emitStderr = (data, delay = 0) => {
+		setTimeout(() => {
+			proc.stderr.emit("data", Buffer.from(data));
+		}, delay);
+	};
+	let stdinBuffer = "";
+	proc.stdin = {
+		write(chunk) {
+			const text = Buffer.isBuffer(chunk) ? chunk.toString() : String(chunk);
+			proc.stdinWrites.push(text);
+			stdinBuffer += text;
+			const lines = stdinBuffer.split("\n");
+			stdinBuffer = lines.pop() || "";
+			for (const line of lines) {
+				if (!line.trim()) continue;
+				onStdinLine?.(line, proc);
+				if (onStdinJson) {
+					try {
+						onStdinJson(JSON.parse(line), proc);
+					} catch {
+						/* ignore malformed stdin json in tests */
+					}
+				}
+			}
+			return true;
+		},
+		end(chunk) {
+			if (chunk !== undefined) this.write(chunk);
+			proc.stdinEnded = true;
+		},
+	};
 	proc.kill = () => {
 		proc.killed = true;
 	};
@@ -60,14 +100,10 @@ export function createMockProcess({
 		const finalExitDelay = exitDelay ?? finalCloseDelay;
 
 		for (const event of stdoutEvents) {
-			setTimeout(() => {
-				proc.stdout.emit("data", Buffer.from(event.data));
-			}, event.delay);
+			proc.emitStdout(event.data, event.delay);
 		}
 		for (const event of stderrEvents) {
-			setTimeout(() => {
-				proc.stderr.emit("data", Buffer.from(event.data));
-			}, event.delay);
+			proc.emitStderr(event.data, event.delay);
 		}
 		if (errorAt !== undefined) {
 			setTimeout(() => {

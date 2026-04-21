@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { execSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 
 import {
@@ -18,10 +19,76 @@ let packageResolveError = null;
 
 function createSpawnPlanForTask(task, factory) {
 	return {
+		task,
 		match: (_command, args) =>
 			Array.isArray(args) && args.includes(`Task: ${task}`),
 		factory,
 	};
+}
+
+function createDeferredPromptMatchedProcess(args) {
+	const proc = new EventEmitter();
+	proc.stdout = new EventEmitter();
+	proc.stderr = new EventEmitter();
+	proc.stdinWrites = [];
+	proc.stdinEnded = false;
+	proc.killed = false;
+	let stdinBuffer = "";
+	proc.stdin = {
+		write(chunk) {
+			const text = Buffer.isBuffer(chunk) ? chunk.toString() : String(chunk);
+			proc.stdinWrites.push(text);
+			stdinBuffer += text;
+			const lines = stdinBuffer.split("\n");
+			stdinBuffer = lines.pop() || "";
+			for (const line of lines) {
+				if (!line.trim()) continue;
+				let command;
+				try {
+					command = JSON.parse(line);
+				} catch {
+					continue;
+				}
+				if (typeof command?.message !== "string") continue;
+				const matchedIndex = spawnPlans.findIndex(
+					(plan) =>
+						typeof plan !== "function" &&
+						command.message === `Task: ${plan.task}`,
+				);
+				if (matchedIndex === -1) continue;
+				const [plan] = spawnPlans.splice(matchedIndex, 1);
+				const targetProc = plan.factory(...args);
+				proc.kill = (...killArgs) => {
+					proc.killed = true;
+					return targetProc.kill?.(...killArgs);
+				};
+				targetProc.stdout.on("data", (data) => {
+					proc.stdout.emit("data", data);
+				});
+				targetProc.stderr.on("data", (data) => {
+					proc.stderr.emit("data", data);
+				});
+				targetProc.on("exit", (code) => {
+					proc.emit("exit", code);
+				});
+				targetProc.on("close", (code) => {
+					proc.emit("close", code);
+				});
+				targetProc.on("error", (error) => {
+					proc.emit("error", error);
+				});
+			}
+			return true;
+		},
+		end(chunk) {
+			if (chunk !== undefined) this.write(chunk);
+			proc.stdinEnded = true;
+		},
+	};
+	proc.kill = () => {
+		proc.killed = true;
+	};
+	return proc;
 }
 
 function resolveSpawnPlan(args) {
@@ -34,6 +101,9 @@ function resolveSpawnPlan(args) {
 		const [plan] = spawnPlans.splice(matchedIndex, 1);
 		return plan.factory(...args);
 	}
+	if (spawnPlans.some((plan) => typeof plan !== "function")) {
+		return createDeferredPromptMatchedProcess(args);
+	}
 	const next = spawnPlans.shift();
 	if (!next) return createMockProcess();
 	return typeof next === "function" ? next(...args) : next.factory(...args);
@@ -42,8 +112,9 @@ function resolveSpawnPlan(args) {
 mock.module("node:child_process", () => ({
 	execSync,
 	spawn: (...args) => {
-		spawnCalls.push(args);
-		return resolveSpawnPlan(args);
+		const proc = resolveSpawnPlan(args);
+		spawnCalls.push([...args, proc]);
+		return proc;
 	},
 }));
 
@@ -129,16 +200,23 @@ const {
 	getSingleResultStatus,
 } = await import("./execution-shared.ts");
 
-function createRegisteredTool() {
+function createExtensionHarness() {
 	let registeredTool;
+	const commands = new Map();
 	registerPiGremlins({
 		on: () => {},
-		registerCommand: () => {},
+		registerCommand: (name, command) => {
+			commands.set(name, command);
+		},
 		registerTool: (tool) => {
 			registeredTool = tool;
 		},
 	});
-	return registeredTool;
+	return { tool: registeredTool, commands };
+}
+
+function createRegisteredTool() {
+	return createExtensionHarness().tool;
 }
 
 function createExecutionContext(cwd) {
@@ -1397,8 +1475,9 @@ describe("pi-gremlins execute streaming characterization", () => {
 		);
 
 		expect(spawnCalls).toHaveLength(2);
-		expect(spawnCalls[1][1]).toContain(
-			"Task: Review carry-forward draft carefully",
+		const secondPrompt = spawnCalls[1][3].stdinWrites.join("");
+		expect(secondPrompt).toContain(
+			'"message":"Task: Review carry-forward draft carefully"',
 		);
 		expect(result.isError).toBeUndefined();
 		expect(result.content[0].text).toBe(
@@ -1770,6 +1849,140 @@ describe("pi-gremlins execute streaming characterization", () => {
 		});
 	});
 
+	test("parallel mode steers only targeted gremlin session by id", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "alpha.md", "alpha");
+		writeAgentFile(workspace.userAgentsDir, "beta.md", "beta");
+
+		spawnPlans.push(
+			createSpawnPlanForTask("Do alpha", () =>
+				createMockProcess({
+					stdoutChunks: [
+						{
+							delay: 5,
+							data: jsonLine({
+								type: "message_start",
+								message: {
+									role: "assistant",
+									content: [{ type: "text", text: "alpha drafting" }],
+								},
+							}),
+						},
+						{
+							delay: 45,
+							data: jsonLine({
+								type: "message_end",
+								message: {
+									role: "assistant",
+									content: [{ type: "text", text: "alpha done" }],
+									usage: {
+										input: 2,
+										output: 2,
+										cacheRead: 0,
+										cacheWrite: 0,
+										cost: { total: 0.01 },
+										totalTokens: 4,
+									},
+								},
+							}),
+						},
+					],
+					closeCode: 0,
+					closeDelay: 60,
+				}),
+			),
+			createSpawnPlanForTask("Do beta", () =>
+				createMockProcess({
+					stdoutChunks: [
+						{
+							delay: 5,
+							data: jsonLine({
+								type: "message_start",
+								message: {
+									role: "assistant",
+									content: [{ type: "text", text: "beta drafting" }],
+								},
+							}),
+						},
+						{
+							delay: 50,
+							data: jsonLine({
+								type: "message_end",
+								message: {
+									role: "assistant",
+									content: [{ type: "text", text: "beta done" }],
+									usage: {
+										input: 2,
+										output: 2,
+										cacheRead: 0,
+										cacheWrite: 0,
+										cost: { total: 0.01 },
+										totalTokens: 4,
+									},
+								},
+							}),
+						},
+					],
+					closeCode: 0,
+					closeDelay: 65,
+				}),
+			),
+		);
+
+		const { tool, commands } = createExtensionHarness();
+		const executePromise = tool.execute(
+			"parallel-steer-targeted",
+			{
+				tasks: [
+					{ agent: "alpha", task: "Do alpha" },
+					{ agent: "beta", task: "Do beta" },
+				],
+			},
+			undefined,
+			undefined,
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		await new Promise((resolve) => setTimeout(resolve, 15));
+		const notifications = [];
+		await commands.get("gremlins:steer").handler("g2 update README too", {
+			hasUI: true,
+			ui: {
+				notify: (message, level) => {
+					notifications.push({ message, level });
+				},
+				custom: async () => {},
+			},
+		});
+
+		const result = await executePromise;
+
+		const alphaCommands = spawnCalls[0][3].stdinWrites.join("");
+		const betaCommands = spawnCalls[1][3].stdinWrites.join("");
+		expect(alphaCommands).not.toContain('"type":"steer"');
+		expect(betaCommands).toContain(
+			'"type":"steer","message":"update README too"',
+		);
+		expect(notifications).toContainEqual({
+			message: "Steered g2 (beta): update README too",
+			level: "info",
+		});
+		expect(result.details.results[0].viewerEntries).not.toEqual(
+			expect.arrayContaining([expect.objectContaining({ type: "steer" })]),
+		);
+		expect(result.details.results[1].viewerEntries).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: "steer",
+					text: "update README too",
+					isError: false,
+				}),
+			]),
+		);
+	});
+
 	test("parallel mode streams initial pending state, per-task progress, and final aggregate details", async () => {
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;
@@ -1987,13 +2200,11 @@ describe("pi-gremlins execute streaming characterization", () => {
 		);
 
 		expect(spawnCalls).toHaveLength(2);
-		const secondTaskArg = spawnCalls[1][1].find(
-			(arg) => typeof arg === "string" && arg.startsWith("Task: Review "),
-		);
-		expect(secondTaskArg).toContain(
+		const secondPrompt = spawnCalls[1][3].stdinWrites.join("");
+		expect(secondPrompt).toContain(
 			"...[truncated by Gremlins🧌 chain handoff]",
 		);
-		expect(secondTaskArg.length).toBeLessThanOrEqual(8100);
+		expect(secondPrompt.length).toBeLessThanOrEqual(8200);
 	});
 
 	test("parallel mode reports canceled children without labeling them failed", async () => {

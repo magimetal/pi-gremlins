@@ -41,6 +41,7 @@ import {
 	executeParallelMode,
 	executeSingleMode,
 	type PiGremlinsToolResult,
+	type SteerableGremlinSession,
 } from "./execution-modes.js";
 import {
 	aggregateUsage,
@@ -97,8 +98,10 @@ const MAX_CONCURRENCY = 4;
 const MAX_INVOCATION_SNAPSHOTS = 24;
 const BRAND_NAME = "Gremlins🧌";
 const VIEWER_COMMAND = "gremlins:view";
+const STEER_COMMAND = "gremlins:steer";
 const NO_INVOCATION_TEXT = `No ${BRAND_NAME} run available in this session.`;
 const VIEWER_TITLE = `${BRAND_NAME} mission control`;
+const STEER_USAGE_TEXT = `Usage: /${STEER_COMMAND} <gremlin-id> <message>`;
 
 function formatToolCall(
 	toolName: string,
@@ -183,6 +186,12 @@ interface InvocationSnapshot extends PiGremlinsDetails {
 	toolCallId: string;
 	status: InvocationStatus;
 	updatedAt: number;
+}
+
+interface ActiveGremlinSessionRecord {
+	toolCallId: string;
+	agent: string;
+	session: SteerableGremlinSession;
 }
 
 interface ViewerOverlayRuntime {
@@ -313,6 +322,26 @@ function buildViewerEntryLines(
 			);
 			continue;
 		}
+		if (entry.type === "steer") {
+			const badges: string[] = [];
+			if (entry.streaming) badges.push(theme.fg("warning", "[live]"));
+			if (entry.isError) badges.push(theme.fg("error", "[error]"));
+			const steerTone = entry.isError
+				? "error"
+				: entry.streaming
+					? "warning"
+					: "accent";
+			pushViewerTextBlock(
+				lines,
+				theme,
+				entry.isError ? "steer error" : "steer",
+				entry.text,
+				steerTone,
+				badges,
+			);
+			continue;
+		}
+		if (entry.type !== "tool-result") continue;
 		const badges: string[] = [];
 		if (entry.streaming) badges.push(theme.fg("warning", "[live]"));
 		if (entry.truncated) badges.push(theme.fg("muted", "[truncated]"));
@@ -1162,12 +1191,24 @@ function pruneInvocationRegistry(
 
 export default function (pi: ExtensionAPI) {
 	const invocationRegistry = new Map<string, InvocationSnapshot>();
+	const activeGremlinSessions = new Map<string, ActiveGremlinSessionRecord>();
 	let latestToolCallId: string | null = null;
 	let viewerOverlayRuntime: ViewerOverlayRuntime | null = null;
 	let nextGremlinOrdinal = 1;
 
 	const hasViewerSnapshot = (toolCallId: string | undefined): boolean => {
 		return toolCallId ? invocationRegistry.has(toolCallId) : false;
+	};
+
+	const findGremlinResult = (gremlinId: string) => {
+		const snapshots = Array.from(invocationRegistry.values()).reverse();
+		for (const snapshot of snapshots) {
+			const result = snapshot.results.find(
+				(candidate) => candidate.gremlinId === gremlinId,
+			);
+			if (result) return { snapshot, result };
+		}
+		return null;
 	};
 
 	const publishInvocationSnapshot = (
@@ -1205,6 +1246,7 @@ export default function (pi: ExtensionAPI) {
 		dismissViewerOverlay();
 		latestToolCallId = null;
 		nextGremlinOrdinal = 1;
+		activeGremlinSessions.clear();
 		invocationRegistry.clear();
 	};
 
@@ -1348,6 +1390,19 @@ export default function (pi: ExtensionAPI) {
 				partial: AgentToolResult<PiGremlinsDetails>,
 			) => invocationUpdates.applyPartial(toolCallId, partial);
 			const allocateGremlinId = () => `g${nextGremlinOrdinal++}`;
+			const steerableSessionCallbacks = {
+				register: (gremlinId: string, session: SteerableGremlinSession) => {
+					const knownGremlin = findGremlinResult(gremlinId);
+					activeGremlinSessions.set(gremlinId, {
+						toolCallId,
+						agent: knownGremlin?.result.agent ?? "unknown",
+						session,
+					});
+				},
+				unregister: (gremlinId: string) => {
+					activeGremlinSessions.delete(gremlinId);
+				},
+			};
 			const finalizeResult = (
 				result: PiGremlinsToolResult,
 			): PiGremlinsToolResult => {
@@ -1458,6 +1513,7 @@ export default function (pi: ExtensionAPI) {
 						makeDetails,
 						allocateGremlinId,
 						packageDiscoveryWarning,
+						steerableSessionCallbacks,
 					}),
 				);
 			}
@@ -1476,6 +1532,7 @@ export default function (pi: ExtensionAPI) {
 						maxConcurrency: MAX_CONCURRENCY,
 						mapWithConcurrencyLimit,
 						packageDiscoveryWarning,
+						steerableSessionCallbacks,
 					}),
 				);
 			}
@@ -1494,6 +1551,7 @@ export default function (pi: ExtensionAPI) {
 						makeDetails,
 						packageDiscoveryWarning,
 						gremlinId: singleGremlinId,
+						steerableSessionCallbacks,
 					}),
 				);
 			}
@@ -1573,6 +1631,49 @@ export default function (pi: ExtensionAPI) {
 		description: `Open popup lair for latest ${BRAND_NAME} run in this session.`,
 		handler: async (_args, ctx) => {
 			await openViewer(ctx);
+		},
+	});
+
+	pi.registerCommand(STEER_COMMAND, {
+		description: `Steer one active ${BRAND_NAME} run by gremlin id.`,
+		handler: async (args, ctx) => {
+			if (!ctx.hasUI) return;
+			const argText = Array.isArray(args) ? args.join(" ") : args;
+			const argParts = argText.trim() ? argText.trim().split(/\s+/) : [];
+			const gremlinId = argParts[0]?.trim();
+			const message = argParts.slice(1).join(" ").trim();
+			if (!gremlinId || !message) {
+				ctx.ui.notify(STEER_USAGE_TEXT, "error");
+				return;
+			}
+
+			const activeSession = activeGremlinSessions.get(gremlinId);
+			if (!activeSession) {
+				const knownGremlin = findGremlinResult(gremlinId);
+				if (!knownGremlin) {
+					ctx.ui.notify(`Unknown gremlin id: ${gremlinId}.`, "error");
+					return;
+				}
+				const inactiveMessage =
+					knownGremlin.snapshot.status === "Running"
+						? `Gremlin ${gremlinId} is no longer steerable.`
+						: `Gremlin ${gremlinId} is no longer active.`;
+				ctx.ui.notify(inactiveMessage, "error");
+				return;
+			}
+
+			try {
+				await activeSession.session.steer(message);
+				ctx.ui.notify(
+					`Steered ${gremlinId} (${activeSession.agent}): ${message}`,
+					"info",
+				);
+			} catch (error) {
+				ctx.ui.notify(
+					error instanceof Error ? error.message : String(error),
+					"error",
+				);
+			}
 		},
 	});
 }

@@ -46,6 +46,7 @@ export type StatusTone = "warning" | "success" | "error";
 
 export type ViewerEntry =
 	| { type: "assistant-text"; text: string; streaming: boolean }
+	| { type: "steer"; text: string; streaming: boolean; isError: boolean }
 	| {
 			type: "tool-call";
 			toolCallId: string;
@@ -98,6 +99,7 @@ export interface SingleRunViewerState {
 
 export type DisplayItem =
 	| { type: "text"; text: string; streaming?: boolean }
+	| { type: "steer"; content: string; streaming: boolean; isError: boolean }
 	| {
 			type: "toolCall";
 			name: string;
@@ -334,6 +336,15 @@ function buildDerivedRenderDataFromViewerEntries(
 				streaming: entry.streaming || undefined,
 			});
 			if (entry.text.trim()) finalAssistantOutput = entry.text;
+			continue;
+		}
+		if (entry.type === "steer") {
+			displayItems.push({
+				type: "steer",
+				content: entry.text,
+				streaming: entry.streaming,
+				isError: entry.isError,
+			});
 			continue;
 		}
 		if (entry.type === "tool-call") {

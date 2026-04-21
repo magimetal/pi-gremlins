@@ -107,6 +107,30 @@ Viewer command:
 
 Opens popup lair for latest `Gremlins🧌` run in current session.
 
+Friendly gremlin ids:
+
+- each active child run gets session-local id like `g1`, `g2`, `g3`
+- ids appear in embedded summaries and popup viewer metadata
+- repeated agent names stay steerable because routing keys on gremlin id, not agent name
+
+Targeted steering command:
+
+```text
+/gremlins:steer <gremlin-id> <message>
+```
+
+Example:
+
+```text
+/gremlins:steer g2 update README too
+```
+
+Behavior:
+
+- routes follow-up message only to selected active gremlin session
+- records steering event in inline feed and popup viewer for auditability
+- shows helpful error for missing message, unknown id, or completed/inactive gremlin
+
 ## Repo layout
 
 ```text
