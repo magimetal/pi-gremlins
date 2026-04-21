@@ -129,6 +129,10 @@ export class MockText {
 	constructor(text) {
 		this.text = text;
 	}
+
+	setText(text) {
+		this.text = text;
+	}
 }
 
 export class MockSpacer {

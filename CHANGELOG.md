@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `pi-gremlins` now finalizes child runs on process exit even if `close` never arrives, preserving terminal tool results and parent-session completion for exit-complete gremlin work.
+- Embedded `pi-gremlins` inline expansion now reuses its rendered text component so newly revealed content keeps viewport anchoring stable instead of forcing a jump to bottom.
 
 ### Changed
 - Inline `pi-gremlins` expand hints now advertise `Alt+O`, and lair scroll-to-start/end aliases now use `Alt+↑` / `Alt+↓` while preserving `Home` / `End` support.

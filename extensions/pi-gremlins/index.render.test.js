@@ -333,6 +333,44 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("viewer · /pi-gremlins:view opens mission control.");
 	});
 
+	test("reuses inline result component when expanding so viewport anchoring can stay stable", () => {
+		const tool = createRegisteredTool();
+		const result = {
+			content: [{ type: "text", text: "unused" }],
+			details: createDetails("single", [
+				createSingleResult({
+					messages: [
+						{
+							role: "assistant",
+							content: Array.from({ length: 6 }, (_value, index) => ({
+								type: "text",
+								text: `line ${index + 1}`,
+							})),
+						},
+					],
+				}),
+			]),
+		};
+		const collapsed = tool.renderResult(
+			result,
+			{ expanded: false },
+			createTheme(),
+			{ toolCallId: "render-stability" },
+		);
+		const expanded = tool.renderResult(
+			result,
+			{ expanded: true },
+			createTheme(),
+			{ toolCallId: "render-stability", lastComponent: collapsed },
+		);
+
+		expect(expanded).toBe(collapsed);
+		expect(expanded.text).toContain("digest · line 6");
+		expect(expanded.text).not.toContain("Alt+O expands embedded view.");
+		const lineCount = expanded.text.split("\n").length;
+		expect(lineCount).toBeGreaterThan(6);
+	});
+
 	test("renders themed single quiet state when no output captured", () => {
 		const tool = createRegisteredTool();
 		const text = renderToText(tool, {
