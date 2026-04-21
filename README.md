@@ -51,12 +51,12 @@ pi install -l git:github.com/magimetal/pi-gremlins
 
 ## Use
 
-Important: user-facing tool surface now appears as `Gremlins🧌`. Machine-facing package/runtime identifiers that Pi uses for install and wiring still stay `pi-gremlins`, and API still uses `agent` / `agentScope` because discovery still runs through agent directories.
+Important: UI label and rendered chrome may show `Gremlins🧌` for human-facing branding. Actual tool/package/runtime identifier stays `pi-gremlins` for install, wiring, and invocation. API fields still use `agent` / `agentScope` because discovery still runs through agent directories.
 
 Single summon:
 
 ```text
-Gremlins🧌({
+pi-gremlins({
   agent: "researcher",
   task: "Summarize repo architecture"
 })
@@ -65,7 +65,7 @@ Gremlins🧌({
 Parallel swarm:
 
 ```text
-Gremlins🧌({
+pi-gremlins({
   tasks: [
     { agent: "researcher", task: "Find auth flow" },
     { agent: "reviewer", task: "Review recent changes" }
@@ -76,7 +76,7 @@ Gremlins🧌({
 Chain of gremlins:
 
 ```text
-Gremlins🧌({
+pi-gremlins({
   chain: [
     { agent: "researcher", task: "Gather facts" },
     { agent: "writer", task: "Draft answer from {previous}" },
