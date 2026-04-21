@@ -1,7 +1,7 @@
 ![Gizmo](docs/gremlins.png)
-# pi-gremlins
+# Gremlins🧌 (`pi-gremlins`)
 
-Pi package. Adds `pi-gremlins` tool for summoning mischievous specialist workers in isolated Pi subprocesses.
+Pi package. Adds `Gremlins🧌` user-facing tool branding for summoning mischievous specialist workers in isolated Pi subprocesses.
 
 Forked from and inspired by [`nicobailon/pi-subagents`](https://github.com/nicobailon/pi-subagents).
 
@@ -19,7 +19,7 @@ Fun branding. Same real Pi primitive underneath: agents. That means gremlin defi
 
 ## What tool does
 
-`pi-gremlins` delegates work into isolated subprocesses so each gremlin gets fresh context.
+`Gremlins🧌` delegates work into isolated subprocesses so each gremlin gets fresh context.
 
 Modes:
 
@@ -51,12 +51,12 @@ pi install -l git:github.com/magimetal/pi-gremlins
 
 ## Use
 
-Important: API still uses `agent` and `agentScope` keys because Pi discovery still runs through agent directories.
+Important: user-facing tool surface now appears as `Gremlins🧌`. Machine-facing package/runtime identifiers that Pi uses for install and wiring still stay `pi-gremlins`, and API still uses `agent` / `agentScope` because discovery still runs through agent directories.
 
 Single summon:
 
 ```text
-pi-gremlins({
+Gremlins🧌({
   agent: "researcher",
   task: "Summarize repo architecture"
 })
@@ -65,7 +65,7 @@ pi-gremlins({
 Parallel swarm:
 
 ```text
-pi-gremlins({
+Gremlins🧌({
   tasks: [
     { agent: "researcher", task: "Find auth flow" },
     { agent: "reviewer", task: "Review recent changes" }
@@ -76,7 +76,7 @@ pi-gremlins({
 Chain of gremlins:
 
 ```text
-pi-gremlins({
+Gremlins🧌({
   chain: [
     { agent: "researcher", task: "Gather facts" },
     { agent: "writer", task: "Draft answer from {previous}" },
@@ -102,10 +102,10 @@ UI sessions ask for trust confirmation before running repo-local gremlins by def
 Viewer command:
 
 ```text
-/pi-gremlins:view
+/gremlins:view
 ```
 
-Opens popup lair for latest `pi-gremlins` run in current session.
+Opens popup lair for latest `Gremlins🧌` run in current session.
 
 ## Repo layout
 

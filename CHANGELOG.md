@@ -15,11 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Chain `{previous}` handoff now truncates oversized carry-forward payloads before spawning follow-up gremlin steps, avoiding oversized subprocess task arguments during long chains.
 
 ### Changed
+- User-facing Gremlins🧌 branding now replaces `pi-gremlins` across inline tool chrome, popup viewer copy, viewer hints, README examples, and slash-command help, while machine-facing package/install identifiers stay `pi-gremlins`.
 - `pi-gremlins` now prunes older terminal invocation snapshots while preserving latest and active viewer state, reducing long-session mission-control memory growth.
 - Internal subprocess lifecycle and tool text logic now live in focused modules, reducing `index.ts` responsibility concentration and lowering reliability-fix change risk.
 - Inline `pi-gremlins` expand hints now advertise `Alt+O`, and lair scroll-to-start/end aliases now use `Alt+↑` / `Alt+↓` while preserving `Home` / `End` support.
 - **Immersive Viewer UX and Theming** (PRD-0001, ADR-0001): Overhauled embedded and popup `pi-gremlins` presentation with shared status semantics, `viewerEntries`-driven summaries, clearer source/trust badges, compact live activity rows, narrow-layout hardening, and differentiated tool/result rendering.
-- README now leads with gremlin artwork and refreshed package presentation for the updated viewer experience.
+- README now leads with gremlin artwork, refreshed `Gremlins🧌` user-facing branding, and `/gremlins:view` command guidance while package/install identifiers remain `pi-gremlins`.
 
 ### Added
 - Product, architecture, and implementation records for viewer overhaul in `docs/prd/0001-pi-gremlins-immersive-theming-and-viewer-ux-overhaul.md`, `docs/adr/0001-semantic-presentation-architecture-for-pi-gremlins-viewer-and-embedded-surfaces.md`, and `docs/plans/pi-gremlins-immersive-theming-viewer-ux-overhaul.md`.

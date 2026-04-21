@@ -238,7 +238,13 @@ describe("pi-gremlins viewer command", () => {
 		const { commands, events } = createExtensionHarness();
 		const notifications = [];
 
-		await commands.get("pi-gremlins:view").handler([], {
+		expect(commands.has("gremlins:view")).toBe(true);
+		expect(commands.has("pi-gremlins:view")).toBe(false);
+		expect(commands.get("gremlins:view").description).toBe(
+			"Open popup lair for latest Gremlins🧌 run in this session.",
+		);
+
+		await commands.get("gremlins:view").handler([], {
 			hasUI: true,
 			ui: {
 				notify: (message, level) => {
@@ -250,7 +256,7 @@ describe("pi-gremlins viewer command", () => {
 
 		expect(notifications).toEqual([
 			{
-				message: "No pi-gremlins run available in this session.",
+				message: "No Gremlins🧌 run available in this session.",
 				level: "warning",
 			},
 		]);
@@ -275,7 +281,7 @@ describe("pi-gremlins viewer command", () => {
 			hide() {},
 		};
 
-		await commands.get("pi-gremlins:view").handler([], {
+		await commands.get("gremlins:view").handler([], {
 			hasUI: true,
 			ui: {
 				notify: () => {},
@@ -525,7 +531,7 @@ describe("pi-gremlins viewer command", () => {
 		);
 		result.exitCode = 130;
 		result.stopReason = "aborted";
-		result.errorMessage = "pi-gremlins run was aborted";
+		result.errorMessage = "Gremlins🧌 run was aborted";
 		bumpResultVisibleRevision(result);
 
 		const snapshot = createInvocationSnapshot(
@@ -536,7 +542,7 @@ describe("pi-gremlins viewer command", () => {
 		const body = getCachedInvocationBodyLines(null, snapshot, 0, createTheme());
 
 		expect(snapshot.status).toBe("Canceled");
-		expect(body.lines.join("\n")).toContain("pi-gremlins run was aborted");
+		expect(body.lines.join("\n")).toContain("Gremlins🧌 run was aborted");
 	});
 
 	test("renders popup body with differentiated assistant tool and error lines", () => {
@@ -604,7 +610,7 @@ describe("pi-gremlins viewer command", () => {
 		);
 		const text = renderOverlayText(snapshot);
 
-		expect(text).toContain("pi-gremlins mission control");
+		expect(text).toContain("Gremlins🧌 mission control");
 		expect(text).toContain("[Completed] single");
 		expect(text).toContain("focus · awaiting result selection");
 		expect(text).toContain("telemetry · idle");
@@ -743,7 +749,7 @@ describe("pi-gremlins viewer command", () => {
 			selectedResultIndex: 1,
 		});
 
-		expect(text).toContain("pi-gremlins mission control");
+		expect(text).toContain("Gremlins🧌 mission control");
 		expect(text).toContain("[Running] chain");
 		expect(text).toContain("focus · reviewer [package] · result [Running]");
 		expect(text).toContain("telemetry · turns:3 · input:140");
@@ -869,7 +875,7 @@ describe("pi-gremlins viewer command", () => {
 			selectedResultIndex: 1,
 		});
 
-		expect(text).toContain("pi-gremlins mission control");
+		expect(text).toContain("Gremlins🧌 mission control");
 		expect(text).toContain("[Running] chain");
 		expect(text).toContain("focus · reviewer [package] · result [Running]");
 		expect(text).toContain("telemetry · turns:3 · input:140");
@@ -935,8 +941,8 @@ describe("pi-gremlins viewer command", () => {
 			{ toolCallId: "viewer-prune-25" },
 		);
 
-		expect(prunedText).not.toContain("viewer · /pi-gremlins:view");
-		expect(latestText).toContain("viewer · /pi-gremlins:view");
+		expect(prunedText).not.toContain("viewer · /gremlins:view");
+		expect(latestText).toContain("viewer · /gremlins:view");
 	});
 
 	test("focuses existing overlay instead of opening duplicate viewer", async () => {
@@ -976,8 +982,8 @@ describe("pi-gremlins viewer command", () => {
 			},
 		};
 
-		await commands.get("pi-gremlins:view").handler([], ctx);
-		await commands.get("pi-gremlins:view").handler([], ctx);
+		await commands.get("gremlins:view").handler([], ctx);
+		await commands.get("gremlins:view").handler([], ctx);
 
 		expect(customCalls).toHaveLength(1);
 		expect(handle.focusCalls).toBe(2);

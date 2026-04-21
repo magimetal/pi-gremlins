@@ -237,6 +237,23 @@ describe("pi-gremlins renderResult characterization", () => {
 		});
 	});
 
+	test("registers Gremlins🧌 branding for user-facing tool label and call chrome", () => {
+		const tool = createRegisteredTool();
+		const call = flattenRenderedNode(
+			tool.renderCall(
+				{ agent: "tars", task: "Inspect task" },
+				createTheme(),
+				{},
+				undefined,
+			),
+		);
+
+		expect(tool.name).toBe("pi-gremlins");
+		expect(tool.label).toBe("Gremlins🧌");
+		expect(call).toContain("Gremlins🧌 tars [user]");
+		expect(call).not.toContain("pi-gremlins ");
+	});
+
 	test("falls back to tool text when details are missing", () => {
 		const tool = createRegisteredTool();
 		expect(
@@ -271,7 +288,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("Alt+O expands embedded view.");
 		expect(text).toContain("usage · turns:2 · input:10 · output:20");
 		expect(text).not.toContain(
-			"viewer · /pi-gremlins:view opens mission control.",
+			"viewer · /gremlins:view opens mission control.",
 		);
 	});
 
@@ -330,7 +347,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain(
 			"usage · turns:3 · input:1.5k · output:40 · cacheRead:10 · cacheWrite:5 · cost:$1.2345 · context:2.2k · model:gpt-5",
 		);
-		expect(text).toContain("viewer · /pi-gremlins:view opens mission control.");
+		expect(text).toContain("viewer · /gremlins:view opens mission control.");
 	});
 
 	test("reuses inline result component when expanding so viewport anchoring can stay stable", () => {
@@ -599,7 +616,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("[Running]");
 		expect(text).toContain("[project]");
 		expect(text).toContain("trust · Project agent");
-		expect(text).toContain("viewer · /pi-gremlins:view");
+		expect(text).toContain("viewer · /gremlins:view");
 	});
 
 	test("compresses chain embedded summary deterministically at narrow width", async () => {
@@ -650,7 +667,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("[Running] chain");
 		expect(text).toContain("active ·");
 		expect(text).toContain("[project]");
-		expect(text).toContain("viewer · /pi-gremlins:view");
+		expect(text).toContain("viewer · /gremlins:view");
 	});
 
 	test("compresses parallel embedded summary deterministically at narrow width", async () => {
@@ -708,7 +725,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("[Running] parallel");
 		expect(text).toContain("active ·");
 		expect(text).toContain("[project]");
-		expect(text).toContain("viewer · /pi-gremlins:view");
+		expect(text).toContain("viewer · /gremlins:view");
 	});
 
 	test("renders chain collapsed with status-first rows, active-free summary, and readable totals", () => {
@@ -777,7 +794,7 @@ describe("pi-gremlins renderResult characterization", () => {
 					step: 3,
 					exitCode: 130,
 					stopReason: "aborted",
-					errorMessage: "pi-gremlins run was aborted",
+					errorMessage: "Gremlins🧌 run was aborted",
 				}),
 			]),
 		});

@@ -3,7 +3,7 @@
 - **Status:** Completed
 - **Date:** 2026-04-21
 - **Author:** Magi Metal
-- **Related:** `extensions/pi-gremlins`, `/pi-gremlins:view`, `README.md`, `docs/adr/0001-semantic-presentation-architecture-for-pi-gremlins-viewer-and-embedded-surfaces.md` (ADR-0001)
+- **Related:** `extensions/pi-gremlins`, `/gremlins:view`, `README.md`, `docs/adr/0001-semantic-presentation-architecture-for-pi-gremlins-viewer-and-embedded-surfaces.md` (ADR-0001)
 - **Supersedes:** None
 
 ## Problem Statement
@@ -43,7 +43,7 @@ This work targets people actively dispatching single, parallel, and chain gremli
 - Timeline/tree improvements for chain and parallel result inspection.
 - Usage-stat readability improvements for inline and viewer surfaces.
 - Adaptive narrow-width behavior for embedded and viewer output.
-- Themed discoverability hints, especially around `/pi-gremlins:view`.
+- Themed discoverability hints, especially around `/gremlins:view`.
 - Subtle motion or live affordance polish only if current TUI/runtime makes it safe, readable, and optional.
 - Embedded running-actions enhancements: active action row, inline tool-result summaries, compact-live density tier.
 - Running-state semantics fix so active, pending, completed, failed, and canceled states are presented accurately.

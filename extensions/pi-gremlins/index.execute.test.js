@@ -191,7 +191,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 			"user",
 		);
 		canceled.stopReason = "aborted";
-		canceled.errorMessage = "pi-gremlins run was aborted";
+		canceled.errorMessage = "Gremlins🧌 run was aborted";
 
 		expect(getSingleResultStatus(canceled)).toBe("Canceled");
 		expect(getInvocationStatus("single", [canceled])).toBe("Canceled");

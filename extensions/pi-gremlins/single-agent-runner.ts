@@ -679,7 +679,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 		}
 		if (wasAborted) {
 			currentResult.stopReason = "aborted";
-			currentResult.errorMessage = "pi-gremlins run was aborted";
+			currentResult.errorMessage = "Gremlins🧌 run was aborted";
 			bumpResultVisibleRevision(currentResult);
 		}
 		if (childProcessErrorMessage) {
