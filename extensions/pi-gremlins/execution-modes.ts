@@ -33,6 +33,7 @@ export type RunSingleAgentFn = (
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => PiGremlinsDetails,
+	packageDiscoveryWarning?: string,
 ) => Promise<SingleResult>;
 
 export type OnUpdateCallback = (
@@ -54,6 +55,7 @@ interface ExecutionModeDependencies {
 		details: PiGremlinsDetails,
 		status: ReturnType<typeof getInvocationStatus>,
 	) => void;
+	packageDiscoveryWarning?: string;
 }
 
 interface ChainExecutionDependencies extends ExecutionModeDependencies {
@@ -76,6 +78,51 @@ interface SingleExecutionDependencies extends ExecutionModeDependencies {
 	cwd?: string;
 }
 
+const MAX_CHAIN_CARRY_FORWARD_CHARS = 8000;
+const MAX_CHAIN_TASK_CHARS = 12000;
+const CHAIN_CARRY_FORWARD_TRUNCATION_NOTE =
+	"...[truncated by pi-gremlins chain handoff]";
+const CHAIN_TASK_TRUNCATION_NOTE =
+	"...[task truncated by pi-gremlins chain handoff]";
+
+function clampTextWithNote(
+	text: string,
+	maxLength: number,
+	note: string,
+): { text: string; truncated: boolean } {
+	if (text.length <= maxLength) {
+		return { text, truncated: false };
+	}
+	const separator = text.includes("\n") ? "\n\n" : " ";
+	const suffix = `${separator}${note}`;
+	const sliceLength = Math.max(0, maxLength - suffix.length);
+	return {
+		text: `${text.slice(0, sliceLength).trimEnd()}${suffix}`,
+		truncated: true,
+	};
+}
+
+function applyPreviousOutputToChainTask(
+	task: string,
+	previousOutput: string,
+): string {
+	if (!task.includes("{previous}")) return task;
+	const boundedCarryForward = clampTextWithNote(
+		previousOutput,
+		MAX_CHAIN_CARRY_FORWARD_CHARS,
+		CHAIN_CARRY_FORWARD_TRUNCATION_NOTE,
+	);
+	const substitutedTask = task.replace(
+		/\{previous\}/g,
+		boundedCarryForward.text,
+	);
+	return clampTextWithNote(
+		substitutedTask,
+		MAX_CHAIN_TASK_CHARS,
+		CHAIN_TASK_TRUNCATION_NOTE,
+	).text;
+}
+
 export async function executeChainMode({
 	toolCallId,
 	chain,
@@ -86,13 +133,17 @@ export async function executeChainMode({
 	handleInvocationUpdate,
 	makeDetails,
 	updateInvocation,
+	packageDiscoveryWarning,
 }: ChainExecutionDependencies): Promise<PiGremlinsToolResult> {
 	const results: SingleResult[] = [];
 	let previousOutput = "";
 
 	for (let i = 0; i < chain.length; i++) {
 		const step = chain[i];
-		const taskWithContext = step.task.replace(/\{previous\}/g, previousOutput);
+		const taskWithContext = applyPreviousOutputToChainTask(
+			step.task,
+			previousOutput,
+		);
 
 		const chainUpdate: OnUpdateCallback = (partial) => {
 			const currentResult = partial.details?.results[0];
@@ -122,6 +173,7 @@ export async function executeChainMode({
 			signal,
 			chainUpdate,
 			makeDetails("chain"),
+			packageDiscoveryWarning,
 		);
 		results.push(result);
 
@@ -188,6 +240,7 @@ export async function executeParallelMode({
 	updateInvocation,
 	maxConcurrency,
 	mapWithConcurrencyLimit,
+	packageDiscoveryWarning,
 }: ParallelExecutionDependencies): Promise<PiGremlinsToolResult> {
 	const allResults: SingleResult[] = tasks.map((task) =>
 		createPendingResult(task.agent, task.task, undefined, "unknown"),
@@ -242,6 +295,7 @@ export async function executeParallelMode({
 					}
 				},
 				makeDetails("parallel"),
+				packageDiscoveryWarning,
 			);
 			replaceParallelResult(index, result);
 			emitParallelUpdate();
@@ -293,6 +347,7 @@ export async function executeSingleMode({
 	handleInvocationUpdate,
 	makeDetails,
 	updateInvocation,
+	packageDiscoveryWarning,
 }: SingleExecutionDependencies): Promise<PiGremlinsToolResult> {
 	const result = await runSingleAgent(
 		ctxCwd,
@@ -304,6 +359,7 @@ export async function executeSingleMode({
 		signal,
 		handleInvocationUpdate,
 		makeDetails("single"),
+		packageDiscoveryWarning,
 	);
 	const details = makeDetails("single")([result]);
 	updateInvocation(

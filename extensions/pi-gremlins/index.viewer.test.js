@@ -879,6 +879,66 @@ describe("pi-gremlins viewer command", () => {
 		expect(text).toContain("focus · step 2/2 · reviewer [package] · Running");
 	});
 
+	test("prunes old terminal invocation snapshots while keeping latest viewer access", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+		const { tool } = createExtensionHarness();
+		let firstResult;
+		let lastResult;
+
+		for (let i = 0; i < 26; i++) {
+			spawnPlans.push(() =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: `viewer output ${i}` }],
+								usage: {
+									input: 1,
+									output: 1,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.001 },
+									totalTokens: 2,
+								},
+							},
+						}),
+					],
+					closeCode: 0,
+				}),
+			);
+			const result = await tool.execute(
+				`viewer-prune-${i}`,
+				{ agent: "tars", task: `seed viewer ${i}` },
+				undefined,
+				undefined,
+				createExecutionContext(workspace.repoRoot),
+			);
+			if (i === 0) firstResult = result;
+			if (i === 25) lastResult = result;
+		}
+
+		const prunedText = renderEmbeddedText(
+			tool,
+			firstResult,
+			{ expanded: true },
+			{ toolCallId: "viewer-prune-0" },
+		);
+		const latestText = renderEmbeddedText(
+			tool,
+			lastResult,
+			{ expanded: true },
+			{ toolCallId: "viewer-prune-25" },
+		);
+
+		expect(prunedText).not.toContain("viewer · /pi-gremlins:view");
+		expect(latestText).toContain("viewer · /pi-gremlins:view");
+	});
+
 	test("focuses existing overlay instead of opening duplicate viewer", async () => {
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;

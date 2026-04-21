@@ -10,8 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `pi-gremlins` now finalizes child runs on process exit even if `close` never arrives, preserving terminal tool results and parent-session completion for exit-complete gremlin work.
 - Embedded `pi-gremlins` inline expansion now reuses its rendered text component so newly revealed content keeps viewport anchoring stable instead of forcing a jump to bottom.
+- `pi-gremlins` now surfaces child spawn failures, malformed child JSON protocol output, and package gremlin discovery failures with actionable diagnostics instead of degrading into silent or `(no output)` failure states.
+- Chain `{previous}` handoff now truncates oversized carry-forward payloads before spawning follow-up gremlin steps, avoiding oversized subprocess task arguments during long chains.
 
 ### Changed
+- `pi-gremlins` now prunes older terminal invocation snapshots while preserving latest and active viewer state, reducing long-session mission-control memory growth.
+- Internal subprocess lifecycle and tool text logic now live in focused modules, reducing `index.ts` responsibility concentration and lowering reliability-fix change risk.
 - Inline `pi-gremlins` expand hints now advertise `Alt+O`, and lair scroll-to-start/end aliases now use `Alt+↑` / `Alt+↓` while preserving `Home` / `End` support.
 - **Immersive Viewer UX and Theming** (PRD-0001, ADR-0001): Overhauled embedded and popup `pi-gremlins` presentation with shared status semantics, `viewerEntries`-driven summaries, clearer source/trust badges, compact live activity rows, narrow-layout hardening, and differentiated tool/result rendering.
 - README now leads with gremlin artwork and refreshed package presentation for the updated viewer experience.

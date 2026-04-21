@@ -13,6 +13,8 @@ import {
 let mockAgentDir = "/tmp";
 let spawnCalls = [];
 let spawnPlans = [];
+let packageResolveResult = {};
+let packageResolveError = null;
 
 function createSpawnPlanForTask(task, factory) {
 	return {
@@ -48,7 +50,8 @@ mock.module("node:child_process", () => ({
 mock.module("@mariozechner/pi-coding-agent", () => ({
 	DefaultPackageManager: class {
 		async resolve() {
-			return {};
+			if (packageResolveError) throw packageResolveError;
+			return packageResolveResult;
 		}
 	},
 	SettingsManager: {
@@ -168,6 +171,8 @@ let workspaceRoot = null;
 beforeEach(() => {
 	spawnCalls = [];
 	spawnPlans = [];
+	packageResolveResult = {};
+	packageResolveError = null;
 });
 
 afterEach(() => {
@@ -239,6 +244,96 @@ describe("pi-gremlins execute streaming characterization", () => {
 			exitCode: 130,
 			stopReason: "aborted",
 		});
+	});
+
+	test("single mode surfaces child process spawn errors with actionable text", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				errorAt: 0,
+				closeCode: 1,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const result = await tool.execute(
+			"single-spawn-error",
+			{ agent: "tars", task: "Fail before start" },
+			undefined,
+			undefined,
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(result.isError).toBe(true);
+		expect(result.details.status).toBe("Failed");
+		expect(result.content[0].text).toContain(
+			"Gremlin process error: spawn error",
+		);
+		expect(result.details.results[0]).toMatchObject({
+			agent: "tars",
+			stopReason: "error",
+			errorMessage: "Gremlin process error: spawn error",
+		});
+	});
+
+	test("single mode fails loud on malformed child protocol without valid events", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: ["not-json\n"],
+				closeCode: 0,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const result = await tool.execute(
+			"single-malformed-protocol",
+			{ agent: "tars", task: "Emit malformed output" },
+			undefined,
+			undefined,
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(result.isError).toBe(true);
+		expect(result.details.status).toBe("Failed");
+		expect(result.content[0].text).toContain(
+			"Gremlin protocol error: child emitted 1 malformed JSON stdout line.",
+		);
+		expect(result.details.results[0].stderr).toContain(
+			"[pi-gremlins] dropped malformed child stdout line 1: not-json",
+		);
+	});
+
+	test("single mode includes package discovery warning in unknown gremlin errors", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		packageResolveError = new Error("resolver offline");
+
+		const tool = createRegisteredTool();
+		const result = await tool.execute(
+			"single-package-warning",
+			{ agent: "package-only", task: "Try unknown gremlin" },
+			undefined,
+			undefined,
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain(
+			"Package gremlin discovery warning: Package agent resolution failed: resolver offline",
+		);
+		expect(result.details.results[0].stderr).toContain(
+			"Package gremlin discovery warning: Package agent resolution failed: resolver offline",
+		);
 	});
 
 	test("single mode streams running updates before final result", async () => {
@@ -1458,6 +1553,83 @@ describe("pi-gremlins execute streaming characterization", () => {
 			exitCode: 1,
 		});
 		expect(spawnCalls).toHaveLength(2);
+	});
+
+	test("chain mode truncates oversized carry-forward before spawning next step", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "writer.md", "writer");
+		writeAgentFile(workspace.userAgentsDir, "reviewer.md", "reviewer");
+
+		const hugeDraft = "carry-forward draft ".repeat(600);
+		spawnPlans.push(
+			() =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: hugeDraft }],
+								usage: {
+									input: 5,
+									output: hugeDraft.length,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.02 },
+									totalTokens: hugeDraft.length + 5,
+								},
+							},
+						}),
+					],
+					closeCode: 0,
+				}),
+			() =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "review complete" }],
+								usage: {
+									input: 3,
+									output: 2,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 5,
+								},
+							},
+						}),
+					],
+					closeCode: 0,
+				}),
+		);
+
+		const tool = createRegisteredTool();
+		await tool.execute(
+			"chain-truncated-carry-forward",
+			{
+				chain: [
+					{ agent: "writer", task: "Draft huge answer" },
+					{ agent: "reviewer", task: "Review {previous} carefully" },
+				],
+			},
+			undefined,
+			undefined,
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(spawnCalls).toHaveLength(2);
+		const secondTaskArg = spawnCalls[1][1].find(
+			(arg) => typeof arg === "string" && arg.startsWith("Task: Review "),
+		);
+		expect(secondTaskArg).toContain(
+			"...[truncated by pi-gremlins chain handoff]",
+		);
+		expect(secondTaskArg.length).toBeLessThanOrEqual(8100);
 	});
 
 	test("parallel mode reports canceled children without labeling them failed", async () => {
