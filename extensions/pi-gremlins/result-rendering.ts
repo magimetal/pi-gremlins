@@ -59,6 +59,7 @@ interface RenderContext {
 	toolCallId?: string;
 	width?: number;
 	columns?: number;
+	lastComponent?: unknown;
 }
 
 interface RenderResultLike {
@@ -76,15 +77,14 @@ interface RenderDependencies {
 }
 
 function getRenderWidth(context: RenderContext): number | null {
-	const candidate =
-		typeof context.width === "number"
-			? context.width
-			: typeof context.columns === "number"
-				? context.columns
-				: null;
-	return candidate && Number.isFinite(candidate)
-		? Math.max(12, Math.floor(candidate))
-		: null;
+	let candidate: number | null = null;
+	if (typeof context.width === "number") {
+		candidate = context.width;
+	} else if (typeof context.columns === "number") {
+		candidate = context.columns;
+	}
+	if (!candidate || !Number.isFinite(candidate)) return null;
+	return Math.max(12, Math.floor(candidate));
 }
 
 function fitsWidth(text: string, width: number | null): boolean {
@@ -417,15 +417,16 @@ function describeDigestEntry(
 	}
 	if (entry.kind === "toolCall") {
 		if (status !== "Running") {
+			let tone: "error" | "warning" | "dim" = "dim";
+			if (status === "Failed") {
+				tone = "error";
+			} else if (status === "Canceled") {
+				tone = "warning";
+			}
 			return {
 				label: "tool call",
 				text: entry.text,
-				tone:
-					status === "Failed"
-						? "error"
-						: status === "Canceled"
-							? "warning"
-							: "dim",
+				tone,
 			};
 		}
 		return {
@@ -574,11 +575,20 @@ function buildUsageLine(
 	return formatLabelLine(theme, label, usageText, "dim", width);
 }
 
+function renderTextResult(context: RenderContext, text: string): Text {
+	if (context.lastComponent instanceof Text) {
+		context.lastComponent.setText(text);
+		return context.lastComponent;
+	}
+	return new Text(text, 0, 0);
+}
+
 function buildSingleView(
 	result: SingleResult,
 	theme: RenderTheme,
 	viewerHint: string | null,
 	formatToolCall: RenderDependencies["formatToolCall"],
+	context: RenderContext,
 	{ expanded, width }: { expanded: boolean; width: number | null },
 ): Text {
 	const status = getSingleResultSemantics(result);
@@ -654,7 +664,10 @@ function buildSingleView(
 	);
 	if (usageLine) lines.push(usageLine);
 
-	return new Text(appendHintText(lines.join("\n"), viewerHint), 0, 0);
+	return renderTextResult(
+		context,
+		appendHintText(lines.join("\n"), viewerHint),
+	);
 }
 
 function buildModeSummary(results: SingleResult[]): string {
@@ -738,12 +751,12 @@ function buildChildRow(
 	const summary = getResultSummaryLine(result, formatToolCall);
 	const liveStage = getLiveStage(result);
 	const sourceBadge = getSourceBadge(theme, result);
-	const marker =
-		liveStage === "active"
-			? theme.fg("warning", "▶")
-			: liveStage === "pending"
-				? theme.fg("muted", "○")
-				: theme.fg(status.isError ? "error" : "muted", "•");
+	let marker = theme.fg(status.isError ? "error" : "muted", "•");
+	if (liveStage === "active") {
+		marker = theme.fg("warning", "▶");
+	} else if (liveStage === "pending") {
+		marker = theme.fg("muted", "○");
+	}
 	const identity =
 		kind === "step"
 			? `step ${result.step ?? "?"} · ${result.agent}`
@@ -797,6 +810,7 @@ function buildCollectionView(
 	theme: RenderTheme,
 	viewerHint: string | null,
 	formatToolCall: RenderDependencies["formatToolCall"],
+	context: RenderContext,
 	{ expanded, width }: { expanded: boolean; width: number | null },
 ): Text {
 	const invocationStatus = getInvocationSemantics(mode, results);
@@ -858,7 +872,10 @@ function buildCollectionView(
 		lines.push(usageLine);
 	}
 
-	return new Text(appendHintText(lines.join("\n"), viewerHint), 0, 0);
+	return renderTextResult(
+		context,
+		appendHintText(lines.join("\n"), viewerHint),
+	);
 }
 
 export function renderPiGremlinsResult(
@@ -873,11 +890,9 @@ export function renderPiGremlinsResult(
 		: undefined;
 	if (!details || details.results.length === 0) {
 		const text = result.content[0];
-		return new Text(
-			text?.type === "text" ? (text.text ?? "(no output)") : "(no output)",
-			0,
-			0,
-		);
+		const output =
+			text?.type === "text" ? (text.text ?? "(no output)") : "(no output)";
+		return renderTextResult(context, output);
 	}
 
 	const width = getRenderWidth(context);
@@ -889,6 +904,7 @@ export function renderPiGremlinsResult(
 			theme,
 			viewerHint,
 			formatToolCall,
+			context,
 			{ expanded, width },
 		);
 	}
@@ -900,6 +916,7 @@ export function renderPiGremlinsResult(
 			theme,
 			viewerHint,
 			formatToolCall,
+			context,
 			{ expanded, width },
 		);
 	}
@@ -911,14 +928,13 @@ export function renderPiGremlinsResult(
 			theme,
 			viewerHint,
 			formatToolCall,
+			context,
 			{ expanded, width },
 		);
 	}
 
 	const text = result.content[0];
-	return new Text(
-		text?.type === "text" ? (text.text ?? "(no output)") : "(no output)",
-		0,
-		0,
-	);
+	const output =
+		text?.type === "text" ? (text.text ?? "(no output)") : "(no output)";
+	return renderTextResult(context, output);
 }
