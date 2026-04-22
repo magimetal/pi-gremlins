@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -20,111 +19,6 @@ export function parseFrontmatter(content) {
 		frontmatter,
 		body: match[2],
 	};
-}
-
-function toEvent(chunk, index) {
-	if (typeof chunk === "string") return { data: chunk, delay: index };
-	return {
-		data: chunk.data,
-		delay: chunk.delay ?? index,
-	};
-}
-
-export function createMockProcess({
-	stdoutChunks = [],
-	stderrChunks = [],
-	closeCode = 0,
-	exitCode = closeCode,
-	closeDelay,
-	exitDelay,
-	omitClose = false,
-	errorAt,
-	onStdinLine,
-	onStdinJson,
-} = {}) {
-	const proc = new EventEmitter();
-	proc.stdout = new EventEmitter();
-	proc.stderr = new EventEmitter();
-	proc.stdinWrites = [];
-	proc.stdinEnded = false;
-	proc.killed = false;
-	proc.emitStdout = (data, delay = 0) => {
-		setTimeout(() => {
-			proc.stdout.emit("data", Buffer.from(data));
-		}, delay);
-	};
-	proc.emitStderr = (data, delay = 0) => {
-		setTimeout(() => {
-			proc.stderr.emit("data", Buffer.from(data));
-		}, delay);
-	};
-	let stdinBuffer = "";
-	proc.stdin = {
-		write(chunk) {
-			const text = Buffer.isBuffer(chunk) ? chunk.toString() : String(chunk);
-			proc.stdinWrites.push(text);
-			stdinBuffer += text;
-			const lines = stdinBuffer.split("\n");
-			stdinBuffer = lines.pop() || "";
-			for (const line of lines) {
-				if (!line.trim()) continue;
-				onStdinLine?.(line, proc);
-				if (onStdinJson) {
-					try {
-						onStdinJson(JSON.parse(line), proc);
-					} catch {
-						/* ignore malformed stdin json in tests */
-					}
-				}
-			}
-			return true;
-		},
-		end(chunk) {
-			if (chunk !== undefined) this.write(chunk);
-			proc.stdinEnded = true;
-		},
-	};
-	proc.kill = () => {
-		proc.killed = true;
-	};
-
-	queueMicrotask(() => {
-		const stdoutEvents = stdoutChunks.map(toEvent);
-		const stderrEvents = stderrChunks.map(toEvent);
-		const allDelays = [
-			...stdoutEvents.map((event) => event.delay),
-			...stderrEvents.map((event) => event.delay),
-		];
-		const finalCloseDelay =
-			closeDelay ?? (allDelays.length > 0 ? Math.max(...allDelays) + 1 : 0);
-		const finalExitDelay = exitDelay ?? finalCloseDelay;
-
-		for (const event of stdoutEvents) {
-			proc.emitStdout(event.data, event.delay);
-		}
-		for (const event of stderrEvents) {
-			proc.emitStderr(event.data, event.delay);
-		}
-		if (errorAt !== undefined) {
-			setTimeout(() => {
-				proc.emit("error", new Error("spawn error"));
-			}, errorAt);
-		}
-		setTimeout(() => {
-			proc.emit("exit", exitCode);
-		}, finalExitDelay);
-		if (!omitClose) {
-			setTimeout(() => {
-				proc.emit("close", closeCode);
-			}, finalCloseDelay);
-		}
-	});
-
-	return proc;
-}
-
-export function jsonLine(value) {
-	return `${JSON.stringify(value)}\n`;
 }
 
 export function writeAgentFile(
@@ -183,20 +77,3 @@ export class MockMarkdown {
 	}
 }
 
-export function flattenRenderedNode(node) {
-	if (!node) return "";
-	if (typeof node === "string") return node;
-	if (typeof node.text === "string") return node.text;
-	if (typeof node.lines === "number") return "\n".repeat(node.lines);
-	if (Array.isArray(node.children)) {
-		return node.children.map((child) => flattenRenderedNode(child)).join("\n");
-	}
-	return String(node);
-}
-
-export function createTheme() {
-	return {
-		fg: (_color, text) => text,
-		bold: (text) => text,
-	};
-}

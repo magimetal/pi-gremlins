@@ -1,31 +1,39 @@
 ![Gizmo](docs/gremlins.png)
 # Gremlins🧌 (`pi-gremlins`)
 
-Pi package. Adds `Gremlins🧌` user-facing tool branding for summoning mischievous specialist workers in isolated Pi subprocesses.
-
-Forked from and inspired by [`nicobailon/pi-subagents`](https://github.com/nicobailon/pi-subagents).
+Pi package. Adds `Gremlins🧌` user-facing tool branding for summoning specialized workers through isolated in-process Pi SDK child sessions.
 
 Suggested GitHub About text:
 
-> Gremlin-flavored fork of pi-subagents for isolated Pi subprocess delegation.
-
-See also [`NOTICE.md`](./NOTICE.md) for attribution note.
-
-Fun branding. Same real Pi primitive underneath: agents. That means gremlin definitions still live in:
-
-- `~/.pi/agent/agents`
-- nearest project `.pi/agents`
-- package-provided agent resources when runtime supports them
+> Gremlin-flavored Pi package for isolated in-process SDK child delegation.
 
 ## What tool does
 
-`Gremlins🧌` delegates work into isolated subprocesses so each gremlin gets fresh context.
+`Gremlins🧌` runs one or more gremlins with isolated child-session context.
 
-Modes:
+V1 contract:
 
-- single: one gremlin, one task
-- parallel: many gremlins, many tasks, concurrency-limited
-- chain: step-by-step handoff, with `{previous}` output substitution
+- one tool name: `pi-gremlins`
+- one input shape: `gremlins: [{ agent, context, cwd? }]`
+- array length `1..10`
+- one gremlin = single run
+- multiple gremlins = parallel run
+- no chain mode
+- no popup viewer
+- no `/gremlins:view`
+- no `/gremlins:steer`
+- no package gremlin discovery
+- no scope toggles
+- inline progress only, expand with `Ctrl+O`
+
+Gremlin definitions load from:
+
+- `~/.pi/agent/agents`
+- nearest project `.pi/agents`
+
+If user and project define same gremlin name, project version wins.
+
+Important: UI label may show `Gremlins🧌` for human-facing branding. Actual package/runtime/tool identifier stays `pi-gremlins` for install and invocation wiring.
 
 ## Install
 
@@ -51,14 +59,13 @@ pi install -l git:github.com/magimetal/pi-gremlins
 
 ## Use
 
-Important: UI label and rendered chrome may show `Gremlins🧌` for human-facing branding. Actual tool/package/runtime identifier stays `pi-gremlins` for install, wiring, and invocation. API fields still use `agent` / `agentScope` because discovery still runs through agent directories.
-
 Single summon:
 
 ```text
 pi-gremlins({
-  agent: "researcher",
-  task: "Summarize repo architecture"
+  gremlins: [
+    { agent: "researcher", context: "Summarize repo architecture" }
+  ]
 })
 ```
 
@@ -66,70 +73,33 @@ Parallel swarm:
 
 ```text
 pi-gremlins({
-  tasks: [
-    { agent: "researcher", task: "Find auth flow" },
-    { agent: "reviewer", task: "Review recent changes" }
+  gremlins: [
+    { agent: "researcher", context: "Find auth flow" },
+    { agent: "reviewer", context: "Review recent changes" },
+    { agent: "writer", context: "Draft release note" }
   ]
 })
 ```
 
-Chain of gremlins:
+Per-gremlin working directory override:
 
 ```text
 pi-gremlins({
-  chain: [
-    { agent: "researcher", task: "Gather facts" },
-    { agent: "writer", task: "Draft answer from {previous}" },
-    { agent: "reviewer", task: "Critique {previous}" }
+  gremlins: [
+    { agent: "researcher", context: "Audit frontend auth code", cwd: "apps/web" }
   ]
 })
 ```
 
-Repo-local gremlins disabled by default. To include nearest project `.pi/agents`, set:
+Runtime behavior:
 
-```text
-agentScope: "both"
-```
-
-or
-
-```text
-agentScope: "project"
-```
-
-UI sessions ask for trust confirmation before running repo-local gremlins by default.
-
-Viewer command:
-
-```text
-/gremlins:view
-```
-
-Opens popup lair for latest `Gremlins🧌` run in current session.
-
-Friendly gremlin ids:
-
-- each active child run gets session-local id like `g1`, `g2`, `g3`
-- ids appear in embedded summaries and popup viewer metadata
-- repeated agent names stay steerable because routing keys on gremlin id, not agent name
-
-Targeted steering command:
-
-```text
-/gremlins:steer <gremlin-id> <message>
-```
-
-Example:
-
-```text
-/gremlins:steer g2 update README too
-```
-
-Behavior:
-
-- routes follow-up message only to selected active gremlin session
-- records steering event in inline feed and popup viewer for auditability
-- shows helpful error for missing message, unknown id, or completed/inactive gremlin
+- child sessions run in-process through Pi SDK
+- child sessions inherit parent system prompt snapshot only
+- no nested Pi CLI subprocesses
+- no temp prompt files
+- child sessions do not load extensions, skills, prompts, themes, or AGENTS files
+- collapsed tool row shows source, status, phase, and latest activity
+- expanded tool row shows task, cwd, model, thinking, latest text/tool data, usage, and errors
 
 ## Repo layout
 
@@ -137,15 +107,20 @@ Behavior:
 .
 ├── extensions/pi-gremlins/
 │   ├── index.ts
-│   ├── agents.ts
-│   ├── execution-modes.ts
-│   ├── execution-shared.ts
-│   ├── result-rendering.ts
-│   ├── viewer-open-action.ts
-│   ├── viewer-result-navigation.ts
+│   ├── gremlin-schema.ts
+│   ├── gremlin-definition.ts
+│   ├── gremlin-discovery.ts
+│   ├── gremlin-prompt.ts
+│   ├── gremlin-session-factory.ts
+│   ├── gremlin-runner.ts
+│   ├── gremlin-scheduler.ts
+│   ├── gremlin-progress-store.ts
+│   ├── gremlin-render-components.ts
+│   ├── gremlin-rendering.ts
+│   ├── gremlin-summary.ts
 │   └── *.test.js
+├── docs/
 ├── package.json
-├── NOTICE.md
 └── README.md
 ```
 

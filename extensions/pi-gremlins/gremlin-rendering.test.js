@@ -1,0 +1,202 @@
+import { describe, expect, test } from "bun:test";
+
+describe("gremlin rendering v1 contract", () => {
+	test("renders collapsed summary with per-gremlin status source phase and inline expand hint", async () => {
+		const { renderGremlinInvocationText } = await import(
+			"./gremlin-rendering.ts"
+		);
+
+		const text = renderGremlinInvocationText(
+			{
+				requestedCount: 2,
+				activeCount: 1,
+				completedCount: 0,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: [
+					{
+						gremlinId: "g1",
+						agent: "researcher",
+						source: "project",
+						status: "active",
+						currentPhase: "tool:read",
+						latestText: "Scanning auth entry points",
+						context: "Find auth flow",
+						usage: { turns: 1, input: 10, output: 4 },
+						revision: 2,
+					},
+					{
+						gremlinId: "g2",
+						agent: "reviewer",
+						source: "user",
+						status: "queued",
+						currentPhase: "prompting",
+						latestText: "",
+						context: "Review auth flow",
+						usage: { turns: 0, input: 0, output: 0 },
+						revision: 0,
+					},
+				],
+				revision: 2,
+			},
+			{ expanded: false, width: 80 },
+		);
+
+		expect(text).toContain("Gremlins🧌 · requested:2 · active:1");
+		expect(text).toContain("[Active] · g1 researcher [project] · tool:read · Scanning");
+		expect(text).toContain("[Queued] · g2 reviewer [user] · prompting · Review auth flow");
+		expect(text).toContain("Ctrl+O expands inline detail.");
+		expect(text).not.toContain("/gremlins:view");
+		expect(text).not.toContain("/gremlins:steer");
+		expect(text).not.toContain("popup");
+	});
+
+	test("renders narrow collapsed state readably for repeated agent names by keeping stable gremlin ids", async () => {
+		const { renderGremlinInvocationText } = await import(
+			"./gremlin-rendering.ts"
+		);
+
+		const text = renderGremlinInvocationText(
+			{
+				requestedCount: 3,
+				activeCount: 2,
+				completedCount: 1,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: [
+					{
+						gremlinId: "g1",
+						agent: "researcher",
+						source: "project",
+						status: "active",
+						currentPhase: "tool:read",
+						latestText: "Read src/index.ts and src/app.ts before diffing",
+						context: "Map auth flow",
+						revision: 1,
+					},
+					{
+						gremlinId: "g2",
+						agent: "researcher",
+						source: "user",
+						status: "completed",
+						currentPhase: "settling",
+						latestText: "Summarized login redirect logic",
+						context: "Review redirect flow",
+						revision: 3,
+					},
+					{
+						gremlinId: "g3",
+						agent: "reviewer",
+						source: "project",
+						status: "starting",
+						currentPhase: "prompting",
+						latestText: "",
+						context: "Cross-check findings",
+						revision: 0,
+					},
+				],
+				revision: 4,
+			},
+			{ expanded: false, width: 42 },
+		);
+
+		const lines = text.split("\n");
+		expect(lines).toHaveLength(5);
+		expect(lines[1]).toContain("g1 researcher");
+		expect(lines[2]).toContain("g2 researcher");
+		expect(lines[3]).toContain("g3 reviewer");
+		for (const line of lines) {
+			expect(line.length).toBeLessThanOrEqual(42);
+		}
+	});
+
+	test("renders expanded inline detail with task model usage and no popup chrome", async () => {
+		const { renderGremlinInvocationText } = await import(
+			"./gremlin-rendering.ts"
+		);
+
+		const text = renderGremlinInvocationText(
+			{
+				requestedCount: 1,
+				activeCount: 0,
+				completedCount: 1,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: [
+					{
+						gremlinId: "g1",
+						agent: "researcher",
+						source: "project",
+						status: "completed",
+						currentPhase: "settling",
+						latestText: "Auth flow starts in apps/web/src/main.ts",
+						latestToolCall: "read apps/web/src/main.ts",
+						latestToolResult: "import bootstrap from ./bootstrap",
+						context: "Find auth flow",
+						model: "gpt-5-mini",
+						thinking: "medium",
+						usage: {
+							turns: 2,
+							input: 22,
+							output: 9,
+							cacheRead: 1,
+							contextTokens: 31,
+						},
+						revision: 5,
+					},
+				],
+				revision: 5,
+			},
+			{ expanded: true, width: 100 },
+		);
+
+		expect(text).toContain("[Completed] g1 researcher [project]");
+		expect(text).toContain("task · Find auth flow");
+		expect(text).toContain("tool call · read apps/web/src/main.ts");
+		expect(text).toContain("tool result · import bootstrap from ./bootstrap");
+		expect(text).toContain("model · gpt-5-mini");
+		expect(text).toContain("thinking · medium");
+		expect(text).toContain("usage · turns:2 · input:22 · output:9 · cacheRead:1 · context:31");
+		expect(text).not.toContain("viewer");
+		expect(text).not.toContain("popup");
+	});
+
+	test("reuses cached line computation for identical revision and options", async () => {
+		const renderComponents = await import("./gremlin-render-components.ts");
+		const { renderGremlinInvocationText } = await import(
+			"./gremlin-rendering.ts"
+		);
+
+		const entry = {
+			gremlinId: "g1",
+			agent: "researcher",
+			source: "project",
+			status: "active",
+			currentPhase: "tool:grep",
+			latestText: "Searching auth service",
+			context: "Find auth flow",
+			revision: 7,
+		};
+		const details = {
+			requestedCount: 1,
+			activeCount: 1,
+			completedCount: 0,
+			failedCount: 0,
+			canceledCount: 0,
+			gremlins: [entry],
+			revision: 7,
+		};
+
+		const collapsedA = renderComponents.formatCollapsedGremlinLine(entry);
+		const collapsedB = renderComponents.formatCollapsedGremlinLine(entry);
+		expect(collapsedA).toBe(collapsedB);
+
+		const expandedA = renderComponents.formatExpandedGremlinLines(entry);
+		const expandedB = renderComponents.formatExpandedGremlinLines(entry);
+		expect(expandedA).toBe(expandedB);
+
+		const renderA = renderGremlinInvocationText(details, { expanded: false, width: 90 });
+		const renderB = renderGremlinInvocationText(details, { expanded: false, width: 90 });
+		expect(renderA).toBe(renderB);
+	});
+});

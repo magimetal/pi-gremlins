@@ -1,13 +1,11 @@
 {
 	"name": "pi-gremlins",
 	"version": "0.1.0",
-	"description": "Gremlin-flavored Pi package, forked from pi-subagents, for summoning specialist workers in isolated Pi subprocesses.",
+	"description": "Gremlin-flavored Pi package for summoning specialist workers in isolated in-process Pi SDK child sessions.",
 	"type": "module",
 	"keywords": [
 		"pi-package",
 		"pi-gremlins",
-		"pi-subagents",
-		"subagents",
 		"gremlins",
 		"agents"
 	],
@@ -19,7 +17,6 @@
 	"files": [
 		"extensions",
 		"README.md",
-		"NOTICE.md",
 		"CHANGELOG.md"
 	],
 	"scripts": {
