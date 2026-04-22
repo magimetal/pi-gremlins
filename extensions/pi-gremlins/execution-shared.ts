@@ -44,16 +44,30 @@ export interface UsageTelemetrySemantics {
 
 export type StatusTone = "warning" | "success" | "error";
 
+export interface ViewerEntryTimestamps {
+	createdAt?: number;
+	updatedAt?: number;
+}
+
 export type ViewerEntry =
-	| { type: "assistant-text"; text: string; streaming: boolean }
-	| { type: "steer"; text: string; streaming: boolean; isError: boolean }
-	| {
+	| ({
+			type: "assistant-text";
+			text: string;
+			streaming: boolean;
+	  } & ViewerEntryTimestamps)
+	| ({
+			type: "steer";
+			text: string;
+			streaming: boolean;
+			isError: boolean;
+	  } & ViewerEntryTimestamps)
+	| ({
 			type: "tool-call";
 			toolCallId: string;
 			toolName: string;
 			args: Record<string, unknown>;
-	  }
-	| {
+	  } & ViewerEntryTimestamps)
+	| ({
 			type: "tool-result";
 			toolCallId: string;
 			toolName: string;
@@ -61,7 +75,7 @@ export type ViewerEntry =
 			streaming: boolean;
 			truncated: boolean;
 			isError: boolean;
-	  };
+	  } & ViewerEntryTimestamps);
 
 export interface SingleResult {
 	gremlinId: string;
@@ -99,13 +113,25 @@ export interface SingleRunViewerState {
 }
 
 export type DisplayItem =
-	| { type: "text"; text: string; streaming?: boolean }
-	| { type: "steer"; content: string; streaming: boolean; isError: boolean }
+	| {
+			type: "text";
+			text: string;
+			streaming?: boolean;
+			timestampMs?: number;
+	  }
+	| {
+			type: "steer";
+			content: string;
+			streaming: boolean;
+			isError: boolean;
+			timestampMs?: number;
+	  }
 	| {
 			type: "toolCall";
 			name: string;
 			args: Record<string, unknown>;
 			toolCallId?: string;
+			timestampMs?: number;
 	  }
 	| {
 			type: "toolResult";
@@ -115,6 +141,7 @@ export type DisplayItem =
 			truncated: boolean;
 			isError: boolean;
 			toolCallId?: string;
+			timestampMs?: number;
 	  };
 
 export interface DerivedRenderData {
@@ -147,6 +174,25 @@ function getInternalResult(result: SingleResult): InternalSingleResult {
 
 function getInternalDetails(details: PiGremlinsDetails): InternalDetails {
 	return details as InternalDetails;
+}
+
+export function getViewerEntryTimestampMs(
+	entry: ViewerEntryTimestamps,
+): number | undefined {
+	return entry.updatedAt ?? entry.createdAt;
+}
+
+export function formatViewerEntryTimestamp(
+	timestampMs: number | undefined,
+): string | null {
+	if (typeof timestampMs !== "number" || !Number.isFinite(timestampMs)) {
+		return null;
+	}
+	const date = new Date(timestampMs);
+	const parts = [date.getHours(), date.getMinutes(), date.getSeconds()].map(
+		(value) => value.toString().padStart(2, "0"),
+	);
+	return `[${parts.join(":")}]`;
 }
 
 function formatTokens(count: number): string {
@@ -335,6 +381,7 @@ function buildDerivedRenderDataFromViewerEntries(
 				type: "text",
 				text: entry.text,
 				streaming: entry.streaming || undefined,
+				timestampMs: getViewerEntryTimestampMs(entry),
 			});
 			if (entry.text.trim()) finalAssistantOutput = entry.text;
 			continue;
@@ -345,6 +392,7 @@ function buildDerivedRenderDataFromViewerEntries(
 				content: entry.text,
 				streaming: entry.streaming,
 				isError: entry.isError,
+				timestampMs: getViewerEntryTimestampMs(entry),
 			});
 			continue;
 		}
@@ -354,6 +402,7 @@ function buildDerivedRenderDataFromViewerEntries(
 				name: entry.toolName,
 				args: entry.args,
 				toolCallId: entry.toolCallId,
+				timestampMs: getViewerEntryTimestampMs(entry),
 			});
 			continue;
 		}
@@ -365,6 +414,7 @@ function buildDerivedRenderDataFromViewerEntries(
 			truncated: entry.truncated,
 			isError: entry.isError,
 			toolCallId: entry.toolCallId,
+			timestampMs: getViewerEntryTimestampMs(entry),
 		});
 		if (entry.content.trim()) finalToolResultOutput = entry.content;
 	}

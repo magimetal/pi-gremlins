@@ -942,6 +942,141 @@ describe("pi-gremlins execute streaming characterization", () => {
 		expect(updates[4].details.status).toBe("Completed");
 	});
 
+	test("single mode stamps viewer entries when feed rows are created and updated", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		const originalDateNow = Date.now;
+		let now = 1_000;
+		Date.now = () => {
+			now += 1_000;
+			return now;
+		};
+
+		try {
+			spawnPlans.push(() =>
+				createMockProcess({
+					stdoutChunks: [
+						jsonLine({
+							type: "message_start",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "draft" }],
+							},
+						}),
+						jsonLine({
+							type: "message_update",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "draft reply" }],
+							},
+						}),
+						jsonLine({
+							type: "tool_execution_start",
+							toolCallId: "read-1",
+							toolName: "read",
+							args: { path: "/tmp/report.md" },
+						}),
+						jsonLine({
+							type: "tool_execution_update",
+							toolCallId: "read-1",
+							toolName: "read",
+							args: { path: "/tmp/report.md" },
+							partialResult: {
+								content: [{ type: "text", text: "reading chunk" }],
+							},
+						}),
+						jsonLine({
+							type: "tool_execution_end",
+							toolCallId: "read-1",
+							toolName: "read",
+							args: { path: "/tmp/report.md" },
+							result: {
+								content: [{ type: "text", text: "file contents" }],
+							},
+							isError: false,
+						}),
+						jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "final answer" }],
+								usage: {
+									input: 3,
+									output: 5,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 8,
+								},
+							},
+						}),
+					],
+					closeCode: 0,
+				}),
+			);
+
+			const tool = createRegisteredTool();
+			const result = await tool.execute(
+				"single-timestamped-viewer-entries",
+				{ agent: "tars", task: "Stamp viewer feed rows" },
+				undefined,
+				undefined,
+				createExecutionContext(workspace.repoRoot),
+			);
+
+			const viewerEntries = result.details.results[0].viewerEntries;
+			const assistantEntry = viewerEntries.find(
+				(entry) => entry.type === "assistant-text",
+			);
+			const toolCallEntry = viewerEntries.find(
+				(entry) => entry.type === "tool-call" && entry.toolCallId === "read-1",
+			);
+			const toolResultEntry = viewerEntries.find(
+				(entry) =>
+					entry.type === "tool-result" && entry.toolCallId === "read-1",
+			);
+
+			expect(assistantEntry).toMatchObject({
+				type: "assistant-text",
+				text: "final answer",
+			});
+			expect(typeof assistantEntry?.createdAt).toBe("number");
+			expect(typeof assistantEntry?.updatedAt).toBe("number");
+			expect(assistantEntry?.updatedAt).toBeGreaterThan(
+				assistantEntry?.createdAt ?? 0,
+			);
+
+			expect(toolCallEntry).toMatchObject({
+				type: "tool-call",
+				toolCallId: "read-1",
+			});
+			expect(typeof toolCallEntry?.createdAt).toBe("number");
+			expect(toolCallEntry?.updatedAt).toBe(toolCallEntry?.createdAt);
+
+			expect(toolResultEntry).toMatchObject({
+				type: "tool-result",
+				toolCallId: "read-1",
+				content: "file contents",
+			});
+			expect(typeof toolResultEntry?.createdAt).toBe("number");
+			expect(typeof toolResultEntry?.updatedAt).toBe("number");
+			expect(toolResultEntry?.updatedAt).toBeGreaterThan(
+				toolResultEntry?.createdAt ?? 0,
+			);
+			expect(toolCallEntry?.createdAt).toBeGreaterThan(
+				assistantEntry?.createdAt ?? 0,
+			);
+			expect(toolResultEntry?.createdAt).toBeGreaterThan(
+				toolCallEntry?.createdAt ?? 0,
+			);
+		} finally {
+			Date.now = originalDateNow;
+		}
+	});
+
 	test("single mode skips duplicate publish for no-op tool_execution_start after assistant tool call", async () => {
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;

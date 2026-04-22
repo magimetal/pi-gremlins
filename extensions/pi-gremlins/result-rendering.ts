@@ -5,6 +5,7 @@ import {
 	formatAgentSourceBadgeText,
 	formatStatusBadgeText,
 	formatUsageStats,
+	formatViewerEntryTimestamp,
 	getAgentSourceSemantics,
 	getDerivedRenderData,
 	getInvocationSemantics,
@@ -35,13 +36,25 @@ const NO_OUTPUT_TEXT = "No output captured.";
 type LiveStage = "active" | "pending" | "terminal";
 
 type DigestEntry =
-	| { kind: "assistant"; text: string; streaming: boolean }
-	| { kind: "steer"; text: string; streaming: boolean; isError: boolean }
+	| {
+			kind: "assistant";
+			text: string;
+			streaming: boolean;
+			timestampMs?: number;
+	  }
+	| {
+			kind: "steer";
+			text: string;
+			streaming: boolean;
+			isError: boolean;
+			timestampMs?: number;
+	  }
 	| {
 			kind: "toolCall";
 			text: string;
 			toolName: string;
 			toolCallId?: string;
+			timestampMs?: number;
 	  }
 	| {
 			kind: "toolResult";
@@ -49,6 +62,7 @@ type DigestEntry =
 			streaming: boolean;
 			isError: boolean;
 			toolCallId?: string;
+			timestampMs?: number;
 	  };
 
 interface RenderTheme {
@@ -200,16 +214,19 @@ function formatLabelLine(
 	tone: string = "dim",
 	width: number | null = null,
 ): string {
-	const prefix = theme.fg("muted", `${label} · `);
+	const timestampMatch = text.match(/^(\[\d{2}:\d{2}:\d{2}\])\s+(.*)$/);
+	const timestampPrefix = timestampMatch ? `${timestampMatch[1]} ` : "";
+	const contentText = timestampMatch ? timestampMatch[2] : text;
+	const prefix = theme.fg("muted", `${timestampPrefix}${label} · `);
 	if (width === null) {
-		return `${prefix}${theme.fg(tone, text)}`;
+		return `${prefix}${theme.fg(tone, contentText)}`;
 	}
 	const prefixWidth = visibleWidth(prefix);
 	if (prefixWidth >= width) {
 		return truncateLine(prefix, width);
 	}
 	const available = Math.max(1, width - prefixWidth);
-	return `${prefix}${theme.fg(tone, truncateLine(text, available))}`;
+	return `${prefix}${theme.fg(tone, truncateLine(contentText, available))}`;
 }
 
 function normalizeInlineText(text: string): string {
@@ -224,6 +241,14 @@ function summarizeInlineText(
 	if (!normalized) return "";
 	if (normalized.length <= maxLength) return normalized;
 	return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function withDigestTimestamp(
+	text: string,
+	timestampMs: number | undefined,
+): string {
+	const timestamp = formatViewerEntryTimestamp(timestampMs);
+	return timestamp ? `${timestamp} ${text}` : text;
 }
 
 function createPlainFg(): (color: string, text: string) => string {
@@ -317,6 +342,7 @@ function buildDigestEntries(
 					kind: "assistant",
 					text: summary,
 					streaming: Boolean(item.streaming),
+					timestampMs: item.timestampMs,
 				});
 			}
 			continue;
@@ -328,6 +354,7 @@ function buildDigestEntries(
 				text: summarizeInlineText(item.content),
 				streaming: item.streaming,
 				isError: item.isError,
+				timestampMs: item.timestampMs,
 			});
 			continue;
 		}
@@ -340,6 +367,7 @@ function buildDigestEntries(
 				),
 				toolName: item.name,
 				toolCallId: item.toolCallId,
+				timestampMs: item.timestampMs,
 			});
 			continue;
 		}
@@ -362,6 +390,7 @@ function buildDigestEntries(
 					streaming: item.streaming,
 					isError: item.isError,
 					toolCallId: item.toolCallId,
+					timestampMs: item.timestampMs,
 				};
 				continue;
 			}
@@ -374,6 +403,7 @@ function buildDigestEntries(
 			streaming: item.streaming,
 			isError: item.isError,
 			toolCallId: item.toolCallId,
+			timestampMs: item.timestampMs,
 		});
 	}
 
@@ -426,7 +456,7 @@ function describeDigestEntry(
 	if (entry.kind === "assistant") {
 		return {
 			label: entry.streaming ? "live" : "digest",
-			text: entry.text,
+			text: withDigestTimestamp(entry.text, entry.timestampMs),
 			tone: entry.streaming ? "warning" : "toolOutput",
 		};
 	}
@@ -442,7 +472,7 @@ function describeDigestEntry(
 		}
 		return {
 			label,
-			text: entry.text,
+			text: withDigestTimestamp(entry.text, entry.timestampMs),
 			tone,
 		};
 	}
@@ -456,23 +486,35 @@ function describeDigestEntry(
 			}
 			return {
 				label: "tool call",
-				text: entry.text,
+				text: withDigestTimestamp(entry.text, entry.timestampMs),
 				tone,
 			};
 		}
 		return {
 			label: "active tool",
-			text: `${entry.text} → waiting`,
+			text: withDigestTimestamp(`${entry.text} → waiting`, entry.timestampMs),
 			tone: "warning",
 		};
 	}
 	if (entry.isError) {
-		return { label: "error tool", text: entry.text, tone: "error" };
+		return {
+			label: "error tool",
+			text: withDigestTimestamp(entry.text, entry.timestampMs),
+			tone: "error",
+		};
 	}
 	if (entry.streaming) {
-		return { label: "active tool", text: entry.text, tone: "warning" };
+		return {
+			label: "active tool",
+			text: withDigestTimestamp(entry.text, entry.timestampMs),
+			tone: "warning",
+		};
 	}
-	return { label: "tool", text: entry.text, tone: "dim" };
+	return {
+		label: "tool",
+		text: withDigestTimestamp(entry.text, entry.timestampMs),
+		tone: "dim",
+	};
 }
 
 export function getResultSummaryLine(

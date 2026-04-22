@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `pi-gremlins` now assigns stable human-friendly child run ids (`g1`, `g2`, …) at creation time, carries them through result snapshots, and surfaces them in embedded inline summaries, popup viewer chrome, and repeated-agent execution summaries.
+- Gremlin embedded feed rows and popup mission-control timelines now stamp viewer entries with compact `HH:mm:ss` event times, using latest entry update time for live rows and initial creation time for untouched rows.
 - New `/gremlins:steer <gremlin-id> <message>` command routes a follow-up message to one active gremlin session, records the steering event in embedded/popup output, and reports helpful errors for missing payload, unknown ids, and inactive gremlins.
 - Product, architecture, and implementation records for viewer overhaul in `docs/prd/0001-pi-gremlins-immersive-theming-and-viewer-ux-overhaul.md`, `docs/adr/0001-semantic-presentation-architecture-for-pi-gremlins-viewer-and-embedded-surfaces.md`, and `docs/plans/pi-gremlins-immersive-theming-viewer-ux-overhaul.md`.
 - PRD/ADR index and template scaffolding under `docs/prd/` and `docs/adr/` for future feature and architecture tracking.
