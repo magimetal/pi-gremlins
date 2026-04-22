@@ -55,7 +55,7 @@ const {
 } = await import(viewerNavigationModuleUrl);
 
 describe("viewer result navigation", () => {
-	test("shows result chrome only for multi-result popup states", () => {
+	test("keeps footer hotkey chrome visible for single and multi-result popup states", () => {
 		expect(hasMultiResultNavigation(0)).toBe(false);
 		expect(hasMultiResultNavigation(1)).toBe(false);
 		expect(hasMultiResultNavigation(2)).toBe(true);
@@ -67,8 +67,8 @@ describe("viewer result navigation", () => {
 			showResultContext: false,
 			showTopRule: true,
 			showBottomRule: true,
-			showNavigationHint: false,
-			chromeRowCount: 8,
+			showNavigationHint: true,
+			chromeRowCount: 9,
 		});
 		expect(getViewerChromeState(1)).toEqual({
 			showFrame: true,
@@ -78,8 +78,8 @@ describe("viewer result navigation", () => {
 			showResultContext: false,
 			showTopRule: true,
 			showBottomRule: true,
-			showNavigationHint: false,
-			chromeRowCount: 8,
+			showNavigationHint: true,
+			chromeRowCount: 9,
 		});
 		expect(getViewerChromeState(3)).toEqual({
 			showFrame: true,
@@ -92,11 +92,12 @@ describe("viewer result navigation", () => {
 			showNavigationHint: true,
 			chromeRowCount: 10,
 		});
-		expect(getViewerChromeRowCount(1)).toBe(8);
+		expect(getViewerChromeRowCount(1)).toBe(9);
 		expect(getViewerChromeRowCount(3)).toBe(10);
-		expect(getViewerBodyHeight(24, 1)).toBe(16);
+		expect(getViewerBodyHeight(24, 1)).toBe(15);
 		expect(getViewerBodyHeight(24, 3)).toBe(14);
 		expect(getViewerBodyHeight(12, 3)).toBe(2);
+		expect(getViewerBodyHeight(24, 0)).toBe(15);
 	});
 
 	test("keeps rendered chrome and body within overlay height budget for all terminal sizes", () => {
@@ -154,10 +155,10 @@ describe("viewer result navigation", () => {
 					showMetadata: true,
 					showTelemetry: true,
 					showInvocation: true,
-					showResultContext: true,
+					showResultContext: false,
 					showTopRule: false,
 					showBottomRule: false,
-					showNavigationHint: false,
+					showNavigationHint: true,
 					chromeRowCount: 7,
 					bodyHeight: 1,
 				},
@@ -173,9 +174,9 @@ describe("viewer result navigation", () => {
 					showResultContext: true,
 					showTopRule: false,
 					showBottomRule: false,
-					showNavigationHint: false,
-					chromeRowCount: 7,
-					bodyHeight: 2,
+					showNavigationHint: true,
+					chromeRowCount: 8,
+					bodyHeight: 1,
 				},
 			},
 		];
@@ -202,7 +203,11 @@ describe("viewer result navigation", () => {
 	});
 
 	test("surfaces width-aware popup hints and overlay sizing", () => {
-		expect(getViewerNavigationHint(1)).toBeNull();
+		expect(getViewerNavigationHint(0)).toBe("Esc close");
+		expect(getViewerNavigationHint(1)).toBe(
+			"↑/↓ scroll · PgUp/PgDn page · Home/End/Alt+↑/Alt+↓ · Esc close",
+		);
+		expect(getViewerNavigationHint(1, 32)).toBe("↑/↓ scroll · Esc close");
 		expect(getViewerNavigationHint(3)).toBe(
 			"←/→ result · ↑/↓ scroll · PgUp/PgDn · Home/End · Esc close",
 		);

@@ -51,44 +51,59 @@ mock.module("@sinclair/typebox", () => ({
 	},
 }));
 
-mock.module("@mariozechner/pi-tui", () => ({
-	Container: class {
-		constructor() {
-			this.children = [];
-		}
-		addChild(child) {
-			this.children.push(child);
-		}
-	},
-	Key: {
+mock.module("@mariozechner/pi-tui", () => {
+	const Key = {
 		home: "home",
 		end: "end",
 		up: "up",
 		down: "down",
+		left: "left",
+		right: "right",
+		pageUp: "pageUp",
+		pageDown: "pageDown",
 		ctrl: (key) => `ctrl-${key}`,
 		alt: (key) => `alt-${key}`,
-	},
-	Markdown: class {
-		constructor(text) {
-			this.text = text;
-		}
-	},
-	Spacer: class {
-		constructor(lines = 1) {
-			this.lines = lines;
-		}
-	},
-	Text: class {
-		constructor(text) {
-			this.text = text;
-		}
-	},
-	matchesKey: () => false,
-	parseKey: () => null,
-	truncateToWidth: (text) => text,
-	visibleWidth: (text) => text.length,
-	wrapTextWithAnsi: (text) => [text],
-}));
+	};
+	const keyMap = new Map([
+		["\u001b[A", Key.up],
+		["\u001b[B", Key.down],
+		["\u001b[D", Key.left],
+		["\u001b[C", Key.right],
+		["\u001b[5~", Key.pageUp],
+		["\u001b[6~", Key.pageDown],
+	]);
+	return {
+		Container: class {
+			constructor() {
+				this.children = [];
+			}
+			addChild(child) {
+				this.children.push(child);
+			}
+		},
+		Key,
+		Markdown: class {
+			constructor(text) {
+				this.text = text;
+			}
+		},
+		Spacer: class {
+			constructor(lines = 1) {
+				this.lines = lines;
+			}
+		},
+		Text: class {
+			constructor(text) {
+				this.text = text;
+			}
+		},
+		matchesKey: (data, key) => keyMap.get(data) === key,
+		parseKey: () => null,
+		truncateToWidth: (text) => text,
+		visibleWidth: (text) => text.length,
+		wrapTextWithAnsi: (text) => [text],
+	};
+});
 
 const { default: registerPiGremlins } = await import("./index.ts");
 const { createInvocationSnapshot } = await import("./invocation-state.ts");
@@ -189,16 +204,27 @@ async function seedInvocation(tool, workspace, toolCallId = "viewer-seeded") {
 	);
 }
 
-function renderOverlayText(
-	snapshot,
-	{ width = 72, rows = 24, selectedResultIndex = 0 } = {},
-) {
+function withTerminalRows(rows, callback) {
 	const originalRows = process.stdout.rows;
 	Object.defineProperty(process.stdout, "rows", {
 		value: rows,
 		configurable: true,
 	});
 	try {
+		return callback();
+	} finally {
+		Object.defineProperty(process.stdout, "rows", {
+			value: originalRows,
+			configurable: true,
+		});
+	}
+}
+
+function renderOverlayText(
+	snapshot,
+	{ width = 72, rows = 24, selectedResultIndex = 0 } = {},
+) {
+	return withTerminalRows(rows, () => {
 		const overlay = new PiGremlinsViewerOverlay(
 			{ requestRender: () => {} },
 			createTheme(),
@@ -209,12 +235,7 @@ function renderOverlayText(
 		overlay.selectedResultIndex = selectedResultIndex;
 		overlay.refresh();
 		return overlay.render(width).join("\n");
-	} finally {
-		Object.defineProperty(process.stdout, "rows", {
-			value: originalRows,
-			configurable: true,
-		});
-	}
+	});
 }
 
 let workspaceRoot = null;
@@ -812,6 +833,37 @@ describe("pi-gremlins viewer command", () => {
 		expect(text).toContain("task 2/2 · alpha [project] · Completed · g2");
 	});
 
+	test("renders popup footer hints even for single-result mission-control states", () => {
+		const scout = createPendingResult(
+			"scout",
+			"Inspect mission control footer",
+			undefined,
+			"user",
+			"g1",
+		);
+		scout.viewerEntries.push({
+			type: "assistant-text",
+			text: "footer still visible",
+			streaming: true,
+		});
+		bumpResultDerivedRevision(scout);
+
+		const snapshot = createInvocationSnapshot(
+			"viewer-single-footer-hints",
+			createDetails("single", [scout]),
+			"Running",
+		);
+		const text = renderOverlayText(snapshot, {
+			width: 72,
+			rows: 24,
+		});
+
+		expect(text).toContain("↑/↓ scroll");
+		expect(text).toContain("PgUp/PgDn");
+		expect(text).toContain("Esc close");
+		expect(text).not.toContain("←/→ result");
+	});
+
 	test("renders popup narrow-width layout with essential chrome only", () => {
 		const planner = createPendingResult("planner", "Plan route", 1, "project");
 		planner.exitCode = 0;
@@ -873,7 +925,9 @@ describe("pi-gremlins viewer command", () => {
 		expect(text).toContain("telemetry · turns:3 · input:140");
 		expect(text).not.toContain("invocation ·");
 		expect(text).not.toContain("step 2/2");
-		expect(text).not.toContain("←/→ result");
+		expect(text).toContain("←/→ result");
+		expect(text).toContain("↑/↓ scroll");
+		expect(text).toContain("Esc close");
 	});
 
 	test("renders popup short-height layout with body retained after chrome suppression", () => {
@@ -936,6 +990,134 @@ describe("pi-gremlins viewer command", () => {
 		expect(text).not.toContain("invocation ·");
 		expect(text).not.toContain("step 2/2");
 		expect(text).not.toContain("←/→ result");
+	});
+
+	test("lets ←/→ revisit completed chain steps and parallel siblings", () => {
+		const alpha = createPendingResult(
+			"alpha",
+			"Inspect completed alpha",
+			undefined,
+			"user",
+			"g1",
+		);
+		alpha.exitCode = 0;
+		alpha.messages.push({
+			role: "assistant",
+			content: [{ type: "text", text: "alpha done" }],
+		});
+		bumpResultVisibleRevision(alpha);
+		bumpResultDerivedRevision(alpha);
+
+		const beta = createPendingResult(
+			"beta",
+			"Inspect completed beta",
+			undefined,
+			"project",
+			"g2",
+		);
+		beta.exitCode = 0;
+		beta.messages.push({
+			role: "assistant",
+			content: [{ type: "text", text: "beta done" }],
+		});
+		bumpResultVisibleRevision(beta);
+		bumpResultDerivedRevision(beta);
+
+		const parallelSnapshot = createInvocationSnapshot(
+			"viewer-parallel-completed-navigation",
+			createDetails("parallel", [alpha, beta]),
+			"Completed",
+		);
+
+		withTerminalRows(24, () => {
+			const overlay = new PiGremlinsViewerOverlay(
+				{ requestRender: () => {} },
+				createTheme(),
+				{ matches: () => false },
+				() => parallelSnapshot,
+				() => {},
+			);
+			overlay.selectedResultIndex = 1;
+			overlay.refresh();
+			expect(overlay.render(72).join("\n")).toContain(
+				"task 2/2 · beta [project] · Completed · g2",
+			);
+			overlay.handleInput("\u001b[D");
+			expect(overlay.render(72).join("\n")).toContain(
+				"task 1/2 · alpha [user] · Completed · g1",
+			);
+		});
+
+		const writer = createPendingResult(
+			"writer",
+			"Draft initial answer",
+			1,
+			"user",
+			"g3",
+		);
+		writer.exitCode = 0;
+		writer.messages.push({
+			role: "assistant",
+			content: [{ type: "text", text: "draft ready" }],
+		});
+		bumpResultVisibleRevision(writer);
+		bumpResultDerivedRevision(writer);
+
+		const reviewer = createPendingResult(
+			"reviewer",
+			"Review completed draft",
+			2,
+			"user",
+			"g4",
+		);
+		reviewer.exitCode = 0;
+		reviewer.messages.push({
+			role: "assistant",
+			content: [{ type: "text", text: "review ready" }],
+		});
+		bumpResultVisibleRevision(reviewer);
+		bumpResultDerivedRevision(reviewer);
+
+		const closer = createPendingResult(
+			"closer",
+			"Finalize approved draft",
+			3,
+			"user",
+			"g5",
+		);
+		closer.exitCode = 0;
+		closer.messages.push({
+			role: "assistant",
+			content: [{ type: "text", text: "final ready" }],
+		});
+		bumpResultVisibleRevision(closer);
+		bumpResultDerivedRevision(closer);
+
+		const chainSnapshot = createInvocationSnapshot(
+			"viewer-chain-completed-navigation",
+			createDetails("chain", [writer, reviewer, closer]),
+			"Completed",
+		);
+
+		withTerminalRows(24, () => {
+			const overlay = new PiGremlinsViewerOverlay(
+				{ requestRender: () => {} },
+				createTheme(),
+				{ matches: () => false },
+				() => chainSnapshot,
+				() => {},
+			);
+			overlay.selectedResultIndex = 2;
+			overlay.refresh();
+			expect(overlay.render(72).join("\n")).toContain(
+				"step 3/3 · closer [user] · Completed · g5",
+			);
+			overlay.handleInput("\u001b[D");
+			overlay.handleInput("\u001b[D");
+			expect(overlay.render(72).join("\n")).toContain(
+				"step 1/3 · writer [user] · Completed · g3",
+			);
+		});
 	});
 
 	test("uses full ordered live chain viewer results for navigation beyond active step", () => {
