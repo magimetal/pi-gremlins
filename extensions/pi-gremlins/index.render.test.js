@@ -150,6 +150,10 @@ function createDetails(mode, results) {
 	};
 }
 
+function createTimestamp(hour, minute, second) {
+	return new Date(2026, 0, 1, hour, minute, second).getTime();
+}
+
 function renderToText(tool, result, options = {}, context = {}) {
 	return flattenRenderedNode(
 		tool.renderResult(result, { expanded: false, ...options }, createTheme(), {
@@ -471,6 +475,75 @@ describe("pi-gremlins renderResult characterization", () => {
 
 		expect(text).toContain("steer · update README too");
 		expect(text).toContain("live · drafting answer");
+	});
+
+	test("renders compact timestamps for inline viewer-entry feed rows using last entry update time", () => {
+		const tool = createRegisteredTool();
+		const text = renderToText(
+			tool,
+			{
+				content: [{ type: "text", text: "unused" }],
+				details: createDetails("single", [
+					createSingleResult({
+						exitCode: -1,
+						viewerEntries: [
+							{
+								type: "tool-call",
+								toolCallId: "read-1",
+								toolName: "read",
+								args: { path: "/tmp/pending.md" },
+								createdAt: createTimestamp(14, 32, 8),
+								updatedAt: createTimestamp(14, 32, 8),
+							},
+							{
+								type: "tool-call",
+								toolCallId: "read-2",
+								toolName: "read",
+								args: { path: "/tmp/done.md" },
+								createdAt: createTimestamp(14, 32, 9),
+								updatedAt: createTimestamp(14, 32, 9),
+							},
+							{
+								type: "tool-result",
+								toolCallId: "read-2",
+								toolName: "read",
+								content: "file contents",
+								streaming: false,
+								truncated: false,
+								isError: false,
+								createdAt: createTimestamp(14, 32, 10),
+								updatedAt: createTimestamp(14, 32, 10),
+							},
+							{
+								type: "steer",
+								text: "update README too",
+								streaming: false,
+								isError: false,
+								createdAt: createTimestamp(14, 32, 11),
+								updatedAt: createTimestamp(14, 32, 11),
+							},
+							{
+								type: "assistant-text",
+								text: "drafting answer",
+								streaming: true,
+								createdAt: createTimestamp(14, 32, 12),
+								updatedAt: createTimestamp(14, 32, 13),
+							},
+						],
+					}),
+				]),
+			},
+			{ expanded: true },
+		);
+
+		expect(text).toContain(
+			"[14:32:08] active tool · read /tmp/pending.md → waiting",
+		);
+		expect(text).toContain(
+			"[14:32:10] tool · read /tmp/done.md → file contents",
+		);
+		expect(text).toContain("[14:32:11] steer · update README too");
+		expect(text).toContain("[14:32:13] live · drafting answer");
 	});
 
 	test("keeps no-entry tool-call-only single summaries terminal-safe and running-live", () => {

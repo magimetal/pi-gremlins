@@ -155,6 +155,10 @@ function createDetails(mode, results) {
 	};
 }
 
+function createTimestamp(hour, minute, second) {
+	return new Date(2026, 0, 1, hour, minute, second).getTime();
+}
+
 function createTheme() {
 	return {
 		fg: (_color, text) => text,
@@ -694,6 +698,70 @@ describe("pi-gremlins viewer command", () => {
 		expect(text).toContain("Telemetry packet");
 		expect(text).toContain("tool error · bash [error]");
 		expect(text).toContain("fatal: boom");
+	});
+
+	test("renders popup viewer-entry timestamps with updated-at semantics", () => {
+		const result = createPendingResult(
+			"tars",
+			"Inspect timestamped mission telemetry",
+			undefined,
+			"user",
+		);
+		result.viewerEntries.push(
+			{
+				type: "assistant-text",
+				text: "Streaming mission update",
+				streaming: true,
+				createdAt: createTimestamp(14, 32, 12),
+				updatedAt: createTimestamp(14, 32, 13),
+			},
+			{
+				type: "tool-call",
+				toolCallId: "read-1",
+				toolName: "read",
+				args: { path: "/tmp/report.md" },
+				createdAt: createTimestamp(14, 32, 8),
+				updatedAt: createTimestamp(14, 32, 8),
+			},
+			{
+				type: "tool-result",
+				toolCallId: "read-1",
+				toolName: "read",
+				content: "Telemetry packet",
+				streaming: false,
+				truncated: true,
+				isError: false,
+				createdAt: createTimestamp(14, 32, 10),
+				updatedAt: createTimestamp(14, 32, 10),
+			},
+			{
+				type: "tool-result",
+				toolCallId: "bash-1",
+				toolName: "bash",
+				content: "fatal: boom",
+				streaming: false,
+				truncated: false,
+				isError: true,
+				createdAt: createTimestamp(14, 32, 11),
+				updatedAt: createTimestamp(14, 32, 11),
+			},
+		);
+		bumpResultDerivedRevision(result);
+
+		const snapshot = createInvocationSnapshot(
+			"viewer-body-timestamps",
+			createDetails("single", [result]),
+			"Running",
+		);
+		const body = getCachedInvocationBodyLines(null, snapshot, 0, createTheme());
+		const text = body.lines.join("\n");
+
+		expect(text).toContain(
+			"[14:32:13] assistant · Streaming mission update [live]",
+		);
+		expect(text).toContain("[14:32:08] tool call · read /tmp/report.md");
+		expect(text).toContain("[14:32:10] tool result · read [truncated]");
+		expect(text).toContain("[14:32:11] tool error · bash [error]");
 	});
 
 	test("renders popup empty state with themed idle telemetry", () => {

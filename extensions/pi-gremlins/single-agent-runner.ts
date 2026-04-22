@@ -24,6 +24,7 @@ import {
 	type ResultLifecycle,
 	type SingleResult,
 	type SingleRunViewerState,
+	type ViewerEntry,
 	type ViewerToolCallRecord,
 } from "./execution-shared.js";
 import { formatAgentLookupError } from "./tool-text.js";
@@ -98,6 +99,20 @@ function summarizeToolResult(
 	};
 }
 
+function createViewerEntryTimestamps(): {
+	createdAt: number;
+	updatedAt: number;
+} {
+	const timestamp = Date.now();
+	return { createdAt: timestamp, updatedAt: timestamp };
+}
+
+function touchViewerEntryTimestamp(entry: ViewerEntry): void {
+	const timestamp = Date.now();
+	entry.updatedAt = timestamp;
+	entry.createdAt ??= timestamp;
+}
+
 function upsertAssistantViewerEntry(
 	result: SingleResult,
 	state: SingleRunViewerState,
@@ -114,11 +129,17 @@ function upsertAssistantViewerEntry(
 			}
 			existing.text = text;
 			existing.streaming = streaming;
+			touchViewerEntryTimestamp(existing);
 			return true;
 		}
 	}
 	state.currentAssistantEntryIndex =
-		result.viewerEntries.push({ type: "assistant-text", text, streaming }) - 1;
+		result.viewerEntries.push({
+			type: "assistant-text",
+			text,
+			streaming,
+			...createViewerEntryTimestamps(),
+		}) - 1;
 	return true;
 }
 
@@ -133,6 +154,7 @@ function finishAssistantViewerEntry(
 		const existing = result.viewerEntries[entryIndex];
 		if (existing?.type === "assistant-text" && existing.streaming) {
 			existing.streaming = false;
+			touchViewerEntryTimestamp(existing);
 			changed = true;
 		}
 	}
@@ -152,6 +174,7 @@ function appendSteerViewerEntry(
 		text,
 		streaming: false,
 		isError,
+		...createViewerEntryTimestamps(),
 	});
 	return true || assistantEntryChanged;
 }
@@ -172,6 +195,7 @@ function ensureToolCallViewerEntry(
 			Object.keys(args).length > 0
 		) {
 			entry.args = args;
+			touchViewerEntryTimestamp(entry);
 			return { record: existing, changed: true };
 		}
 		return { record: existing, changed: false };
@@ -182,6 +206,7 @@ function ensureToolCallViewerEntry(
 			toolCallId,
 			toolName,
 			args,
+			...createViewerEntryTimestamps(),
 		}) - 1;
 	const record: ViewerToolCallRecord = { callEntryIndex };
 	state.toolCalls.set(toolCallId, record);
@@ -221,6 +246,7 @@ function upsertToolResultViewerEntry(
 			existing.streaming = streaming;
 			existing.truncated = truncated;
 			existing.isError = isError;
+			touchViewerEntryTimestamp(existing);
 			return true;
 		}
 	}
@@ -233,6 +259,7 @@ function upsertToolResultViewerEntry(
 			streaming,
 			truncated,
 			isError,
+			...createViewerEntryTimestamps(),
 		}) - 1;
 	return true;
 }

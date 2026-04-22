@@ -3,6 +3,7 @@ import {
 	aggregateUsage,
 	formatAgentSourceBadgeText,
 	formatStatusBadgeText,
+	formatViewerEntryTimestamp,
 	getAgentSourceSemantics,
 	getDerivedRenderData,
 	getResultVisibleRevision,
@@ -55,6 +56,16 @@ function formatViewerSourceBadge(
 	result: SingleResult,
 ): string {
 	return theme.fg("muted", formatAgentSourceBadgeText(result.agentSource));
+}
+
+function formatViewerEntryLabel(
+	label: string,
+	entry: Pick<ViewerEntry, "createdAt" | "updatedAt">,
+): string {
+	const timestamp = formatViewerEntryTimestamp(
+		entry.updatedAt ?? entry.createdAt,
+	);
+	return timestamp ? `${timestamp} ${label}` : label;
 }
 
 function pushViewerTextBlock(
@@ -128,7 +139,7 @@ function buildViewerEntryLines(
 			pushViewerTextBlock(
 				lines,
 				theme,
-				"assistant",
+				formatViewerEntryLabel("assistant", entry),
 				entry.text.trim() || "Awaiting assistant output.",
 				entry.streaming ? "warning" : "toolOutput",
 				entry.streaming ? [theme.fg("warning", "[live]")] : [],
@@ -137,7 +148,7 @@ function buildViewerEntryLines(
 		}
 		if (entry.type === "tool-call") {
 			lines.push(
-				theme.fg("muted", "tool call · ") +
+				theme.fg("muted", `${formatViewerEntryLabel("tool call", entry)} · `) +
 					formatToolCall(entry.toolName, entry.args, theme.fg.bind(theme)),
 			);
 			continue;
@@ -152,7 +163,7 @@ function buildViewerEntryLines(
 			pushViewerTextBlock(
 				lines,
 				theme,
-				entry.isError ? "steer error" : "steer",
+				formatViewerEntryLabel(entry.isError ? "steer error" : "steer", entry),
 				entry.text,
 				steerTone,
 				badges,
@@ -171,7 +182,7 @@ function buildViewerEntryLines(
 		pushViewerTextBlock(
 			lines,
 			theme,
-			toolResultLabel,
+			formatViewerEntryLabel(toolResultLabel, entry),
 			entry.toolName,
 			toolResultTone,
 			badges,
