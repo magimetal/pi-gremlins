@@ -69,6 +69,7 @@ export interface SingleResult {
 	agentSource: AgentSource | "unknown";
 	task: string;
 	exitCode: number;
+	lifecycle: ResultLifecycle;
 	messages: Message[];
 	viewerEntries: ViewerEntry[];
 	stderr: string;
@@ -591,6 +592,7 @@ export function createPendingResult(
 		agentSource,
 		task,
 		exitCode: -1,
+		lifecycle: "pending",
 		messages: [],
 		viewerEntries: [],
 		stderr: "",
@@ -599,11 +601,37 @@ export function createPendingResult(
 	});
 }
 
+export function getSingleResultLifecycle(
+	result: SingleResult,
+): ResultLifecycle {
+	if (result.lifecycle && result.lifecycle !== "pending") {
+		return result.lifecycle;
+	}
+	if (result.stopReason === "aborted") return "canceled";
+	if (result.stopReason === "error" && result.exitCode === -1) {
+		return "failed";
+	}
+	if (result.exitCode === -1) return result.lifecycle ?? "pending";
+	if (result.exitCode !== 0 || result.stopReason === "error") return "failed";
+	return "completed";
+}
+
+export function isSingleResultTerminal(result: SingleResult): boolean {
+	return getSingleResultLifecycle(result) !== "pending";
+}
+
 export function getSingleResultStatus(result: SingleResult): InvocationStatus {
-	if (result.stopReason === "aborted") return "Canceled";
-	if (result.exitCode === -1) return "Running";
-	if (result.exitCode !== 0 || result.stopReason === "error") return "Failed";
-	return "Completed";
+	switch (getSingleResultLifecycle(result)) {
+		case "completed":
+			return "Completed";
+		case "failed":
+			return "Failed";
+		case "canceled":
+			return "Canceled";
+		case "pending":
+		default:
+			return "Running";
+	}
 }
 
 export function getInvocationStatus(

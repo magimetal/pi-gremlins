@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `pi-gremlins` child runs now publish prompt terminal lifecycle state after safe protocol completion with a 100ms grace window, so single and parallel invocations stop showing finished children as `Running` while slow subprocess exit/close telemetry trickles in.
 - Gremlins🧌 mission control now keeps full ordered chain result slots in live viewer snapshots, so left/right navigation can reach completed earlier steps and pending later steps while current chain work is still running.
 - `pi-gremlins` now emits explicit terminal completion updates for single-child `single` and one-step `chain` runs after child exit, so parent flows receive terminal status snapshots before final tool results land.
 - `pi-gremlins` now finalizes child runs on process exit even if `close` never arrives, preserving terminal tool results and parent-session completion for exit-complete gremlin work.

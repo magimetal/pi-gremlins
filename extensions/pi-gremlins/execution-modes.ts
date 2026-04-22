@@ -6,6 +6,8 @@ import {
 	getSingleResultErrorText,
 	getSingleResultStatus,
 	type InvocationMode,
+	type InvocationStatus,
+	isSingleResultTerminal,
 	type PiGremlinsDetails,
 	type SingleResult,
 } from "./execution-shared.js";
@@ -56,6 +58,11 @@ interface ExecutionModeDependencies {
 	signal: AbortSignal | undefined;
 	runSingleAgent: RunSingleAgentFn;
 	handleInvocationUpdate: OnUpdateCallback;
+	readInvocationStatus: () => InvocationStatus | undefined;
+	publishInvocationDetails: (
+		details: PiGremlinsDetails,
+		status?: InvocationStatus,
+	) => void;
 	makeDetails: (
 		mode: InvocationMode,
 	) => (results: SingleResult[]) => PiGremlinsDetails;
@@ -131,6 +138,23 @@ function applyPreviousOutputToChainTask(
 	).text;
 }
 
+function emitTerminalOrSyncSnapshot(
+	status: InvocationStatus,
+	partial: AgentToolResult<PiGremlinsDetails>,
+	handleInvocationUpdate: OnUpdateCallback,
+	readInvocationStatus: () => InvocationStatus | undefined,
+	publishInvocationDetails: (
+		details: PiGremlinsDetails,
+		status?: InvocationStatus,
+	) => void,
+): void {
+	if (partial.details && readInvocationStatus() === status) {
+		publishInvocationDetails(partial.details, status);
+		return;
+	}
+	handleInvocationUpdate(partial);
+}
+
 export async function executeChainMode({
 	chain,
 	ctxCwd,
@@ -138,6 +162,8 @@ export async function executeChainMode({
 	signal,
 	runSingleAgent,
 	handleInvocationUpdate,
+	readInvocationStatus,
+	publishInvocationDetails,
 	makeDetails,
 	allocateGremlinId,
 	packageDiscoveryWarning,
@@ -236,7 +262,13 @@ export async function executeChainMode({
 					],
 					details,
 				};
-				handleInvocationUpdate(terminalPartial);
+				emitTerminalOrSyncSnapshot(
+					resultStatus,
+					terminalPartial,
+					handleInvocationUpdate,
+					readInvocationStatus,
+					publishInvocationDetails,
+				);
 				return terminalPartial;
 			}
 			const terminalPartial = {
@@ -248,7 +280,13 @@ export async function executeChainMode({
 				],
 				details,
 			};
-			handleInvocationUpdate(terminalPartial);
+			emitTerminalOrSyncSnapshot(
+				resultStatus,
+				terminalPartial,
+				handleInvocationUpdate,
+				readInvocationStatus,
+				publishInvocationDetails,
+			);
 			return {
 				...terminalPartial,
 				isError: true,
@@ -270,7 +308,13 @@ export async function executeChainMode({
 		],
 		details,
 	};
-	handleInvocationUpdate(terminalPartial);
+	emitTerminalOrSyncSnapshot(
+		"Completed",
+		terminalPartial,
+		handleInvocationUpdate,
+		readInvocationStatus,
+		publishInvocationDetails,
+	);
 	return terminalPartial;
 }
 
@@ -281,6 +325,7 @@ export async function executeParallelMode({
 	signal,
 	runSingleAgent,
 	handleInvocationUpdate,
+	publishInvocationDetails,
 	makeDetails,
 	allocateGremlinId,
 	maxConcurrency,
@@ -301,21 +346,28 @@ export async function executeParallelMode({
 			task.gremlinId,
 		),
 	);
-	const trackedExitCodes = allResults.map((result) => result.exitCode);
+	const trackedTerminalStates = allResults.map((result) =>
+		isSingleResultTerminal(result),
+	);
 	let runningCount = allResults.length;
 	let doneCount = 0;
 
 	const replaceParallelResult = (index: number, nextResult: SingleResult) => {
-		const previousExitCode = trackedExitCodes[index];
-		if (previousExitCode === -1 && nextResult.exitCode !== -1) {
+		const previousResult = allResults[index];
+		const previousStatus = getSingleResultStatus(previousResult);
+		const nextStatus = getSingleResultStatus(nextResult);
+		const previousTerminal = trackedTerminalStates[index];
+		const nextTerminal = isSingleResultTerminal(nextResult);
+		if (!previousTerminal && nextTerminal) {
 			runningCount -= 1;
 			doneCount += 1;
-		} else if (previousExitCode !== -1 && nextResult.exitCode === -1) {
+		} else if (previousTerminal && !nextTerminal) {
 			runningCount += 1;
 			doneCount -= 1;
 		}
-		trackedExitCodes[index] = nextResult.exitCode;
+		trackedTerminalStates[index] = nextTerminal;
 		allResults[index] = nextResult;
+		return previousStatus !== nextStatus;
 	};
 
 	const emitParallelUpdate = () => {
@@ -355,8 +407,12 @@ export async function executeParallelMode({
 				packageDiscoveryWarning,
 				steerableSessionCallbacks,
 			);
-			replaceParallelResult(index, result);
-			emitParallelUpdate();
+			const statusChanged = replaceParallelResult(index, result);
+			if (statusChanged) {
+				emitParallelUpdate();
+			} else {
+				publishInvocationDetails(makeDetails("parallel")(allResults));
+			}
 			return result;
 		},
 	);
@@ -397,6 +453,8 @@ export async function executeSingleMode({
 	signal,
 	runSingleAgent,
 	handleInvocationUpdate,
+	readInvocationStatus,
+	publishInvocationDetails,
 	makeDetails,
 	packageDiscoveryWarning,
 	gremlinId,
@@ -428,7 +486,13 @@ export async function executeSingleMode({
 			],
 			details,
 		};
-		handleInvocationUpdate(terminalPartial);
+		emitTerminalOrSyncSnapshot(
+			resultStatus,
+			terminalPartial,
+			handleInvocationUpdate,
+			readInvocationStatus,
+			publishInvocationDetails,
+		);
 		return {
 			...terminalPartial,
 			isError: true,
@@ -444,7 +508,13 @@ export async function executeSingleMode({
 			],
 			details,
 		};
-		handleInvocationUpdate(terminalPartial);
+		emitTerminalOrSyncSnapshot(
+			resultStatus,
+			terminalPartial,
+			handleInvocationUpdate,
+			readInvocationStatus,
+			publishInvocationDetails,
+		);
 		return terminalPartial;
 	}
 
@@ -457,6 +527,12 @@ export async function executeSingleMode({
 		],
 		details,
 	};
-	handleInvocationUpdate(terminalPartial);
+	emitTerminalOrSyncSnapshot(
+		"Completed",
+		terminalPartial,
+		handleInvocationUpdate,
+		readInvocationStatus,
+		publishInvocationDetails,
+	);
 	return terminalPartial;
 }
