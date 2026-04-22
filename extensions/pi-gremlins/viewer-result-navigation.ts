@@ -36,8 +36,6 @@ export interface ViewerChromeState {
 	chromeRowCount: number;
 }
 
-const BASE_VIEWER_CHROME_ROW_COUNT = 8;
-const MULTI_RESULT_EXTRA_CHROME_ROW_COUNT = 2;
 const VIEWER_DIALOG_MAX_HEIGHT = 32;
 const VIEWER_TAB_REPLACEMENT = "    ";
 const VIEWER_OVERLAY_MAX_HEIGHT_RATIO = 0.78;
@@ -46,15 +44,12 @@ const MIN_DIALOG_HEIGHT_FOR_FRAME = 3;
 const MIN_DIALOG_HEIGHT_FOR_METADATA = 5;
 const MIN_DIALOG_HEIGHT_FOR_TELEMETRY = 6;
 const MIN_DIALOG_HEIGHT_FOR_INVOCATION = 7;
-const MIN_DIALOG_HEIGHT_FOR_RESULT_CONTEXT = 8;
-const MIN_DIALOG_HEIGHT_FOR_NAVIGATION_HINT = 10;
-const MIN_DIALOG_HEIGHT_FOR_FULL_SINGLE_CHROME =
-	BASE_VIEWER_CHROME_ROW_COUNT + 1;
-const MIN_DIALOG_HEIGHT_FOR_FULL_MULTI_CHROME =
-	BASE_VIEWER_CHROME_ROW_COUNT + MULTI_RESULT_EXTRA_CHROME_ROW_COUNT + 1;
+const MIN_DIALOG_HEIGHT_FOR_NAVIGATION_HINT = 8;
+const MIN_DIALOG_HEIGHT_FOR_RESULT_CONTEXT = 9;
+const MIN_DIALOG_HEIGHT_FOR_FULL_SINGLE_CHROME = 10;
+const MIN_DIALOG_HEIGHT_FOR_FULL_MULTI_CHROME = 11;
 const MIN_DIALOG_WIDTH_FOR_INVOCATION = 40;
 const MIN_DIALOG_WIDTH_FOR_RESULT_CONTEXT = 44;
-const MIN_DIALOG_WIDTH_FOR_NAVIGATION_HINT = 64;
 
 export const VIEWER_SCROLL_LINE_STEP = 3;
 
@@ -113,9 +108,7 @@ export function getViewerChromeState(
 		boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_RESULT_CONTEXT &&
 		boundedDialogWidth >= MIN_DIALOG_WIDTH_FOR_RESULT_CONTEXT;
 	const showNavigationHint =
-		showMultiResultChrome &&
-		boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_NAVIGATION_HINT &&
-		boundedDialogWidth >= MIN_DIALOG_WIDTH_FOR_NAVIGATION_HINT;
+		boundedDialogHeight >= MIN_DIALOG_HEIGHT_FOR_NAVIGATION_HINT;
 	const showFullChromeRules =
 		showFrame &&
 		boundedDialogHeight >=
@@ -259,11 +252,20 @@ export function getViewerNavigationHint(
 	resultCount: number,
 	dialogWidth = 72,
 ): string | null {
-	if (!hasMultiResultNavigation(resultCount)) return null;
+	if (resultCount <= 0) {
+		return pickLineVariant(dialogWidth, ["Esc close"]);
+	}
+	if (hasMultiResultNavigation(resultCount)) {
+		return pickLineVariant(dialogWidth, [
+			"←/→ result · ↑/↓ scroll · PgUp/PgDn page · Home/End/Alt+↑/Alt+↓ · Esc close",
+			"←/→ result · ↑/↓ scroll · PgUp/PgDn · Home/End · Esc close",
+			"←/→ result · ↑/↓ scroll · Esc close",
+		]);
+	}
 	return pickLineVariant(dialogWidth, [
-		"←/→ result · ↑/↓ scroll · PgUp/PgDn page · Home/End/Alt+↑/Alt+↓ · Esc close",
-		"←/→ result · ↑/↓ scroll · PgUp/PgDn · Home/End · Esc close",
-		"←/→ result · ↑/↓ scroll · Esc close",
+		"↑/↓ scroll · PgUp/PgDn page · Home/End/Alt+↑/Alt+↓ · Esc close",
+		"↑/↓ scroll · PgUp/PgDn · Home/End · Esc close",
+		"↑/↓ scroll · Esc close",
 	]);
 }
 
@@ -285,12 +287,12 @@ export function getResultContextLabel(
 	dialogWidth = 72,
 ): string | null {
 	if (!hasMultiResultNavigation(resultCount)) return null;
-	const position =
-		mode === "chain"
-			? `step ${result.step ?? selectedResultIndex + 1}/${resultCount}`
-			: mode === "parallel"
-				? `task ${selectedResultIndex + 1}/${resultCount}`
-				: `item ${selectedResultIndex + 1}/${resultCount}`;
+	let position = `item ${selectedResultIndex + 1}/${resultCount}`;
+	if (mode === "chain") {
+		position = `step ${result.step ?? selectedResultIndex + 1}/${resultCount}`;
+	} else if (mode === "parallel") {
+		position = `task ${selectedResultIndex + 1}/${resultCount}`;
+	}
 	const sourceBadge = result.sourceBadge ? ` ${result.sourceBadge}` : "";
 	return pickLineVariant(dialogWidth, [
 		`focus · ${position} · ${result.agent}${sourceBadge} · ${result.status} · ${result.gremlinId}`,
