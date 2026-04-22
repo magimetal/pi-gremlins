@@ -346,6 +346,14 @@ export default function (pi: ExtensionAPI) {
 			const handleInvocationUpdate = (
 				partial: AgentToolResult<PiGremlinsDetails>,
 			) => invocationUpdates.applyPartial(toolCallId, partial);
+			const readInvocationStatus = () =>
+				invocationRegistry.get(toolCallId)?.status;
+			const publishInvocationDetails = (
+				details: PiGremlinsDetails,
+				status = getInvocationStatus(details.mode, details.results),
+			) => {
+				updateInvocation(toolCallId, details, status);
+			};
 			const allocateGremlinId = () => `g${nextGremlinOrdinal++}`;
 			const steerableSessionCallbacks = {
 				register: (gremlinId: string, session: SteerableGremlinSession) => {
@@ -474,6 +482,8 @@ export default function (pi: ExtensionAPI) {
 						runSingleAgent,
 						handleInvocationUpdate,
 						makeDetails,
+						readInvocationStatus,
+						publishInvocationDetails,
 						allocateGremlinId,
 						packageDiscoveryWarning,
 						steerableSessionCallbacks,
@@ -490,6 +500,8 @@ export default function (pi: ExtensionAPI) {
 						signal,
 						runSingleAgent,
 						handleInvocationUpdate,
+						readInvocationStatus,
+						publishInvocationDetails,
 						makeDetails,
 						allocateGremlinId,
 						maxConcurrency: MAX_CONCURRENCY,
@@ -511,6 +523,8 @@ export default function (pi: ExtensionAPI) {
 						signal,
 						runSingleAgent,
 						handleInvocationUpdate,
+						readInvocationStatus,
+						publishInvocationDetails,
 						makeDetails,
 						packageDiscoveryWarning,
 						gremlinId: singleGremlinId,

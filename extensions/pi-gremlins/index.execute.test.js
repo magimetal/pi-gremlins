@@ -245,6 +245,23 @@ function createDetails(mode, results) {
 	};
 }
 
+async function waitForCondition(
+	check,
+	{
+		timeout = 200,
+		interval = 5,
+		errorMessage = "timed out waiting for condition",
+	} = {},
+) {
+	const start = Date.now();
+	while (Date.now() - start <= timeout) {
+		const value = check();
+		if (value) return value;
+		await new Promise((resolve) => setTimeout(resolve, interval));
+	}
+	throw new Error(errorMessage);
+}
+
 let workspaceRoot = null;
 
 beforeEach(() => {
@@ -1235,6 +1252,541 @@ describe("pi-gremlins execute streaming characterization", () => {
 			exitCode: 0,
 		});
 		expect(result.details.status).toBe("Completed");
+	});
+
+	test("single mode completes within protocol grace after agent_end before delayed close", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					{
+						delay: 5,
+						data: jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "agent_end final answer" }],
+								usage: {
+									input: 2,
+									output: 3,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 5,
+								},
+							},
+						}),
+					},
+					{ delay: 10, data: jsonLine({ type: "agent_end" }) },
+				],
+				exitCode: 0,
+				exitDelay: 240,
+				closeCode: 0,
+				closeDelay: 240,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const startedAt = Date.now();
+		const executePromise = tool.execute(
+			"single-agent-end-grace",
+			{ agent: "tars", task: "Finish on agent_end" },
+			undefined,
+			(partial) => {
+				updates.push({ at: Date.now(), partial: cloneForAssertion(partial) });
+			},
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		const completedUpdate = await waitForCondition(
+			() =>
+				updates.find((update) => update.partial.details.status === "Completed"),
+			{
+				timeout: 180,
+				errorMessage: "timed out waiting for prompt completion after agent_end",
+			},
+		);
+
+		expect(completedUpdate.at - startedAt).toBeLessThan(200);
+		expect(completedUpdate.partial.content[0].text).toBe(
+			"agent_end final answer",
+		);
+		expect(completedUpdate.partial.details.results[0].exitCode).toBe(-1);
+
+		const result = await executePromise;
+		expect(result.details.status).toBe("Completed");
+		expect(result.content[0].text).toBe("agent_end final answer");
+	});
+
+	test("single mode completes within protocol grace after safe assistant message_end before delayed close", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					{
+						delay: 5,
+						data: jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "message_end final answer" }],
+								usage: {
+									input: 2,
+									output: 3,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 5,
+								},
+							},
+						}),
+					},
+				],
+				exitCode: 0,
+				exitDelay: 240,
+				closeCode: 0,
+				closeDelay: 240,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const executePromise = tool.execute(
+			"single-message-end-grace",
+			{ agent: "tars", task: "Finish on message_end" },
+			undefined,
+			(partial) => {
+				updates.push({ at: Date.now(), partial: cloneForAssertion(partial) });
+			},
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		const completedUpdate = await waitForCondition(
+			() =>
+				updates.find((update) => update.partial.details.status === "Completed"),
+			{
+				timeout: 180,
+				errorMessage:
+					"timed out waiting for prompt completion after assistant message_end",
+			},
+		);
+
+		expect(completedUpdate.partial.content[0].text).toBe(
+			"message_end final answer",
+		);
+		expect(completedUpdate.partial.details.results[0].exitCode).toBe(-1);
+
+		const result = await executePromise;
+		expect(result.details.status).toBe("Completed");
+		expect(result.content[0].text).toBe("message_end final answer");
+	});
+
+	test("single mode prefers cancellation over optimistic completion when aborted during protocol grace", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					{
+						delay: 5,
+						data: jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "abort before completion" }],
+								usage: {
+									input: 2,
+									output: 3,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 5,
+								},
+							},
+						}),
+					},
+					{ delay: 10, data: jsonLine({ type: "agent_end" }) },
+				],
+				exitCode: 130,
+				exitDelay: 240,
+				closeCode: 130,
+				closeDelay: 240,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const controller = new AbortController();
+		const updates = [];
+		const executePromise = tool.execute(
+			"single-abort-during-grace",
+			{ agent: "tars", task: "Abort before grace completes" },
+			controller.signal,
+			(partial) => {
+				updates.push({ at: Date.now(), partial: cloneForAssertion(partial) });
+			},
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		await new Promise((resolve) => setTimeout(resolve, 35));
+		controller.abort();
+
+		const canceledUpdate = await waitForCondition(
+			() =>
+				updates.find((update) => update.partial.details.status === "Canceled"),
+			{
+				timeout: 140,
+				errorMessage: "timed out waiting for canceled terminal update",
+			},
+		);
+
+		expect(canceledUpdate.partial.content[0].text).toBe(
+			"abort before completion",
+		);
+		expect(
+			updates.some((update) => update.partial.details.status === "Completed"),
+		).toBe(false);
+
+		const result = await executePromise;
+		expect(result.details.status).toBe("Canceled");
+		expect(result.content[0].text).toBe("Canceled: Gremlins🧌 run was aborted");
+	});
+
+	test("single mode fails instead of completing when non-zero exit arrives during protocol grace", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					{
+						delay: 5,
+						data: jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "almost done" }],
+								usage: {
+									input: 2,
+									output: 3,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 5,
+								},
+							},
+						}),
+					},
+					{ delay: 10, data: jsonLine({ type: "agent_end" }) },
+				],
+				exitCode: 2,
+				exitDelay: 40,
+				closeCode: 2,
+				closeDelay: 240,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const result = await tool.execute(
+			"single-failed-during-grace",
+			{ agent: "tars", task: "Fail during protocol grace" },
+			undefined,
+			(partial) => {
+				updates.push({ at: Date.now(), partial: cloneForAssertion(partial) });
+			},
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		expect(
+			updates.some((update) => update.partial.details.status === "Completed"),
+		).toBe(false);
+		expect(
+			updates.some((update) => update.partial.details.status === "Failed"),
+		).toBe(true);
+		expect(result.details.status).toBe("Failed");
+		expect(result.content[0].text).toBe("Agent failed: almost done");
+	});
+
+	test("single mode unregisters steering on first terminal publish before delayed close", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					{
+						delay: 5,
+						data: jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "terminal before close" }],
+								usage: {
+									input: 2,
+									output: 3,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 5,
+								},
+							},
+						}),
+					},
+					{ delay: 10, data: jsonLine({ type: "agent_end" }) },
+				],
+				exitCode: 0,
+				exitDelay: 240,
+				closeCode: 0,
+				closeDelay: 240,
+			}),
+		);
+
+		const { tool, commands } = createExtensionHarness();
+		const updates = [];
+		const executePromise = tool.execute(
+			"single-steer-after-terminal-publish",
+			{ agent: "tars", task: "Complete before close and reject steer" },
+			undefined,
+			(partial) => {
+				updates.push({ at: Date.now(), partial: cloneForAssertion(partial) });
+			},
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		await waitForCondition(
+			() =>
+				updates.find((update) => update.partial.details.status === "Completed"),
+			{
+				timeout: 180,
+				errorMessage:
+					"timed out waiting for terminal publish before steer rejection check",
+			},
+		);
+
+		const notifications = [];
+		await commands.get("gremlins:steer").handler("g1 one more thing", {
+			hasUI: true,
+			ui: {
+				notify: (message, level) => {
+					notifications.push({ message, level });
+				},
+				custom: async () => {},
+			},
+		});
+
+		const result = await executePromise;
+		expect(notifications).toContainEqual({
+			message: "Gremlin g1 is no longer active.",
+			level: "error",
+		});
+		expect(spawnCalls).toHaveLength(1);
+		expect(spawnCalls[0][3].stdinWrites.join("")).not.toContain(
+			'"type":"steer"',
+		);
+		expect(result.details.results[0].viewerEntries).not.toEqual(
+			expect.arrayContaining([expect.objectContaining({ type: "steer" })]),
+		);
+	});
+
+	test("single mode publishes completed status exactly once and keeps it after late non-zero exit", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+
+		spawnPlans.push(() =>
+			createMockProcess({
+				stdoutChunks: [
+					{
+						delay: 5,
+						data: jsonLine({
+							type: "message_end",
+							message: {
+								role: "assistant",
+								content: [{ type: "text", text: "completed before late exit" }],
+								usage: {
+									input: 2,
+									output: 3,
+									cacheRead: 0,
+									cacheWrite: 0,
+									cost: { total: 0.01 },
+									totalTokens: 5,
+								},
+							},
+						}),
+					},
+					{ delay: 10, data: jsonLine({ type: "agent_end" }) },
+				],
+				exitCode: 3,
+				exitDelay: 220,
+				closeCode: 3,
+				closeDelay: 240,
+			}),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const executePromise = tool.execute(
+			"single-late-non-zero-exit",
+			{ agent: "tars", task: "Succeed before late exit" },
+			undefined,
+			(partial) => {
+				updates.push({ at: Date.now(), partial: cloneForAssertion(partial) });
+			},
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		await waitForCondition(
+			() =>
+				updates.find((update) => update.partial.details.status === "Completed"),
+			{
+				timeout: 180,
+				errorMessage:
+					"timed out waiting for completed status before late non-zero exit",
+			},
+		);
+
+		const result = await executePromise;
+		const completedUpdates = updates.filter(
+			(update) => update.partial.details.status === "Completed",
+		);
+		expect(completedUpdates).toHaveLength(1);
+		expect(result.details.status).toBe("Completed");
+		expect(result.content[0].text).toBe("completed before late exit");
+		expect(result.details.results[0].exitCode).toBe(3);
+	});
+
+	test("parallel mode counts lifecycle-terminal children as done before delayed exit telemetry arrives", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "alpha.md", "alpha");
+		writeAgentFile(workspace.userAgentsDir, "beta.md", "beta");
+
+		spawnPlans.push(
+			createSpawnPlanForTask("Do alpha", () =>
+				createMockProcess({
+					stdoutChunks: [
+						{
+							delay: 5,
+							data: jsonLine({
+								type: "message_end",
+								message: {
+									role: "assistant",
+									content: [{ type: "text", text: "alpha done early" }],
+									usage: {
+										input: 2,
+										output: 2,
+										cacheRead: 0,
+										cacheWrite: 0,
+										cost: { total: 0.01 },
+										totalTokens: 4,
+									},
+								},
+							}),
+						},
+						{ delay: 10, data: jsonLine({ type: "agent_end" }) },
+					],
+					exitCode: 0,
+					exitDelay: 240,
+					closeCode: 0,
+					closeDelay: 240,
+				}),
+			),
+			createSpawnPlanForTask("Do beta", () =>
+				createMockProcess({
+					stdoutChunks: [
+						{
+							delay: 5,
+							data: jsonLine({
+								type: "message_start",
+								message: {
+									role: "assistant",
+									content: [{ type: "text", text: "beta still running" }],
+								},
+							}),
+						},
+						{
+							delay: 260,
+							data: jsonLine({
+								type: "message_end",
+								message: {
+									role: "assistant",
+									content: [{ type: "text", text: "beta finally done" }],
+									usage: {
+										input: 2,
+										output: 2,
+										cacheRead: 0,
+										cacheWrite: 0,
+										cost: { total: 0.01 },
+										totalTokens: 4,
+									},
+								},
+							}),
+						},
+					],
+					exitCode: 0,
+					exitDelay: 270,
+					closeCode: 0,
+					closeDelay: 270,
+				}),
+			),
+		);
+
+		const tool = createRegisteredTool();
+		const updates = [];
+		const executePromise = tool.execute(
+			"parallel-lifecycle-progress",
+			{
+				tasks: [
+					{ agent: "alpha", task: "Do alpha" },
+					{ agent: "beta", task: "Do beta" },
+				],
+			},
+			undefined,
+			(partial) => {
+				updates.push({ at: Date.now(), partial: cloneForAssertion(partial) });
+			},
+			createExecutionContext(workspace.repoRoot),
+		);
+
+		const aggregateUpdate = await waitForCondition(
+			() =>
+				updates.find(
+					(update) =>
+						update.partial.content[0].text ===
+						"Parallel: 1/2 done, 1 running...",
+				),
+			{
+				timeout: 180,
+				errorMessage:
+					"timed out waiting for lifecycle-based parallel aggregate progress",
+			},
+		);
+
+		expect(aggregateUpdate.partial.details.results[0].exitCode).toBe(-1);
+
+		const result = await executePromise;
+		expect(result.details.status).toBe("Completed");
+		expect(result.content[0].text).toContain(
+			"[g1 alpha] completed: alpha done early",
+		);
 	});
 
 	test("single mode assigns stable gremlin id from pending through completion", async () => {

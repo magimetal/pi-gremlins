@@ -21,6 +21,7 @@ import {
 	createUsageStats,
 	getResultFinalOutput,
 	initializeResultRevisions,
+	type ResultLifecycle,
 	type SingleResult,
 	type SingleRunViewerState,
 	type ViewerToolCallRecord,
@@ -29,6 +30,7 @@ import { formatAgentLookupError } from "./tool-text.js";
 
 const CHILD_PROCESS_EXIT_GRACE_MS = 50;
 const CHILD_PROCESS_KILL_GRACE_MS = 5000;
+const CHILD_PROTOCOL_TERMINAL_GRACE_MS = 100;
 const CHILD_PROTOCOL_ERROR_PREVIEW_LENGTH = 180;
 const CHILD_PROTOCOL_ERROR_PREFIX = "[Gremlins🧌]";
 
@@ -404,6 +406,15 @@ function hasCapturedChildContent(result: SingleResult): boolean {
 	return result.messages.length > 0 || result.viewerEntries.length > 0;
 }
 
+function setResultLifecycle(
+	result: SingleResult,
+	lifecycle: ResultLifecycle,
+): boolean {
+	if (result.lifecycle === lifecycle) return false;
+	result.lifecycle = lifecycle;
+	return true;
+}
+
 function writeChildFailureDetails(
 	result: SingleResult,
 	message: string,
@@ -418,6 +429,33 @@ function writeChildFailureDetails(
 		changed = true;
 	}
 	return changed;
+}
+
+function writeChildCanceledDetails(
+	result: SingleResult,
+	{
+		forceDefaultErrorMessage = false,
+	}: { forceDefaultErrorMessage?: boolean } = {},
+): boolean {
+	let changed = false;
+	if (result.stopReason !== "aborted") {
+		result.stopReason = "aborted";
+		changed = true;
+	}
+	if (
+		forceDefaultErrorMessage ||
+		(!result.errorMessage?.trim() && !getResultFinalOutput(result).trim())
+	) {
+		if (result.errorMessage !== "Gremlins🧌 run was aborted") {
+			result.errorMessage = "Gremlins🧌 run was aborted";
+			changed = true;
+		}
+	}
+	return changed;
+}
+
+function formatLateChildExitDiagnostic(exitCode: number): string {
+	return `${CHILD_PROTOCOL_ERROR_PREFIX} child exited with code ${exitCode} after terminal completion; keeping published status.`;
 }
 
 function writePromptTempFile(
@@ -487,6 +525,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 			agentSource: "unknown",
 			task,
 			exitCode: 1,
+			lifecycle: "failed",
 			messages: [],
 			viewerEntries: [],
 			stderr: formatAgentLookupError(
@@ -518,6 +557,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 		agentSource: agent.source,
 		task,
 		exitCode: -1,
+		lifecycle: "pending",
 		messages: [],
 		viewerEntries: [],
 		stderr: "",
@@ -553,6 +593,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 		let childProcessErrorMessage: string | null = null;
 		let malformedStdoutCount = 0;
 		let lastMalformedStdoutPreview: string | null = null;
+		let lateTerminalExitDiagnostic: string | null = null;
 
 		const exitCode = await new Promise<number>((resolve) => {
 			const invocation = getPiInvocation(args);
@@ -565,9 +606,17 @@ export const runSingleAgent: RunSingleAgentFn = async (
 			let settled = false;
 			let observedExitCode: number | undefined;
 			let exitFallbackTimer: ReturnType<typeof setTimeout> | undefined;
+			let protocolTerminalGraceTimer: ReturnType<typeof setTimeout> | undefined;
+			let protocolTerminalGraceSource:
+				| "agent_end"
+				| "assistant_message_end"
+				| null = null;
 			let removeAbortListener: (() => void) | undefined;
 			let steeringActive = true;
 			let stdinClosed = false;
+			let terminalPublished = false;
+			let turnActive = false;
+			const activeToolExecutionIds = new Set<string>();
 
 			const closeStdin = () => {
 				if (stdinClosed) return;
@@ -585,6 +634,91 @@ export const runSingleAgent: RunSingleAgentFn = async (
 				unregisterSteerableSession(steerableSessionCallbacks, gremlinId);
 			};
 
+			const clearProtocolTerminalGrace = () => {
+				if (protocolTerminalGraceTimer) {
+					clearTimeout(protocolTerminalGraceTimer);
+				}
+				protocolTerminalGraceTimer = undefined;
+				protocolTerminalGraceSource = null;
+			};
+
+			const publishTerminalLifecycle = (
+				lifecycle: ResultLifecycle,
+				applyDetails?: () => boolean,
+			) => {
+				if (terminalPublished) return false;
+				clearProtocolTerminalGrace();
+				deactivateSteering();
+				let visibleChanged = setResultLifecycle(currentResult, lifecycle);
+				if (applyDetails) {
+					visibleChanged = applyDetails() || visibleChanged;
+				}
+				if (finishAssistantViewerEntry(currentResult, viewerState)) {
+					bumpResultDerivedRevision(currentResult);
+				} else if (visibleChanged) {
+					bumpResultVisibleRevision(currentResult);
+				}
+				terminalPublished = true;
+				emitUpdate();
+				return true;
+			};
+
+			const failBeforeTerminal = (message?: string) => {
+				publishTerminalLifecycle("failed", () => {
+					if (!message) return false;
+					return writeChildFailureDetails(currentResult, message);
+				});
+			};
+
+			const cancelBeforeTerminal = (forceDefaultErrorMessage = false) => {
+				publishTerminalLifecycle("canceled", () => {
+					return writeChildCanceledDetails(currentResult, {
+						forceDefaultErrorMessage,
+					});
+				});
+			};
+
+			const armProtocolTerminalGrace = (
+				source: "agent_end" | "assistant_message_end",
+			) => {
+				if (
+					settled ||
+					terminalPublished ||
+					currentResult.lifecycle !== "pending"
+				) {
+					return;
+				}
+				if (
+					protocolTerminalGraceSource === "agent_end" &&
+					source !== "agent_end"
+				) {
+					return;
+				}
+				clearProtocolTerminalGrace();
+				protocolTerminalGraceSource = source;
+				protocolTerminalGraceTimer = setTimeout(() => {
+					protocolTerminalGraceTimer = undefined;
+					protocolTerminalGraceSource = null;
+					publishTerminalLifecycle("completed");
+				}, CHILD_PROTOCOL_TERMINAL_GRACE_MS);
+			};
+
+			const cancelProtocolTerminalGraceForEvent = (eventType: string) => {
+				if (!protocolTerminalGraceTimer) return;
+				if (
+					eventType === "message_start" ||
+					eventType === "message_update" ||
+					eventType === "message_end" ||
+					eventType === "turn_start" ||
+					eventType === "tool_execution_start" ||
+					eventType === "tool_execution_update" ||
+					eventType === "tool_execution_end" ||
+					eventType === "tool_result_end"
+				) {
+					clearProtocolTerminalGrace();
+				}
+			};
+
 			const writeRpcCommand = (command: Record<string, unknown>) => {
 				if (!proc.stdin || stdinClosed || !steeringActive || settled) {
 					throw new Error(`Gremlin ${gremlinId} is no longer active.`);
@@ -595,6 +729,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 			const finalize = (code: number) => {
 				if (settled) return;
 				settled = true;
+				clearProtocolTerminalGrace();
 				deactivateSteering();
 				if (exitFallbackTimer) clearTimeout(exitFallbackTimer);
 				if (buffer.trim()) processLine(buffer);
@@ -607,6 +742,50 @@ export const runSingleAgent: RunSingleAgentFn = async (
 				appendSteerViewerEntry(currentResult, viewerState, message, isError);
 				bumpResultDerivedRevision(currentResult);
 				emitUpdate();
+			};
+
+			const updateChildActivityState = (event: Record<string, unknown>) => {
+				if (event.type === "turn_start") {
+					turnActive = true;
+					return;
+				}
+				if (event.type === "turn_end") {
+					turnActive = false;
+					return;
+				}
+				if (event.type === "tool_execution_start") {
+					if (typeof event.toolCallId === "string") {
+						activeToolExecutionIds.add(event.toolCallId);
+					}
+					return;
+				}
+				if (event.type === "tool_execution_end") {
+					if (typeof event.toolCallId === "string") {
+						activeToolExecutionIds.delete(event.toolCallId);
+					}
+					return;
+				}
+				if (event.type === "tool_result_end") {
+					const messageValue = event.message;
+					if (
+						messageValue &&
+						typeof messageValue === "object" &&
+						typeof (messageValue as ToolResultMessage).toolCallId === "string"
+					) {
+						activeToolExecutionIds.delete(
+							(messageValue as ToolResultMessage).toolCallId,
+						);
+					}
+				}
+			};
+
+			const canArmGraceFromAssistantMessageEnd = (message: Message) => {
+				if (message.role !== "assistant") return false;
+				if (protocolTerminalGraceSource === "agent_end") return false;
+				if (message.stopReason === "aborted" || Boolean(message.errorMessage)) {
+					return false;
+				}
+				return !turnActive && activeToolExecutionIds.size === 0;
 			};
 
 			const processLine = (line: string) => {
@@ -624,14 +803,19 @@ export const runSingleAgent: RunSingleAgentFn = async (
 					return;
 				}
 
-				if (event.type === "response") return;
-				if (event.type === "agent_start") return;
-				if (event.type === "agent_end") {
-					deactivateSteering();
+				const eventType = typeof event.type === "string" ? event.type : null;
+				if (!eventType) return;
+				cancelProtocolTerminalGraceForEvent(eventType);
+				updateChildActivityState(event);
+
+				if (eventType === "response") return;
+				if (eventType === "agent_start") return;
+				if (eventType === "agent_end") {
 					closeStdin();
+					armProtocolTerminalGrace("agent_end");
 					return;
 				}
-				if (event.type === "extension_ui_request") {
+				if (eventType === "extension_ui_request") {
 					const method =
 						typeof event.method === "string" ? event.method : "unknown";
 					appendStderrLine(
@@ -640,7 +824,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 					);
 					return;
 				}
-				if (event.type === "extension_error") {
+				if (eventType === "extension_error") {
 					const errorText =
 						typeof event.error === "string"
 							? event.error
@@ -651,6 +835,7 @@ export const runSingleAgent: RunSingleAgentFn = async (
 					);
 					return;
 				}
+				if (terminalPublished) return;
 
 				const contentBearingChildMutation = applyChildEventToSingleResult(
 					currentResult,
@@ -660,19 +845,19 @@ export const runSingleAgent: RunSingleAgentFn = async (
 
 				if (
 					contentBearingChildMutation &&
-					(event.type === "message_start" ||
-						event.type === "message_update" ||
-						event.type === "turn_end" ||
-						event.type === "tool_execution_start" ||
-						event.type === "tool_execution_update" ||
-						event.type === "tool_execution_end")
+					(eventType === "message_start" ||
+						eventType === "message_update" ||
+						eventType === "turn_end" ||
+						eventType === "tool_execution_start" ||
+						eventType === "tool_execution_update" ||
+						eventType === "tool_execution_end")
 				) {
 					bumpResultDerivedRevision(currentResult);
 					emitUpdate();
 					return;
 				}
 
-				if (event.type === "message_end" && event.message) {
+				if (eventType === "message_end" && event.message) {
 					const message = event.message as Message;
 					if (message.role === "assistant") {
 						const usage = message.usage;
@@ -700,10 +885,13 @@ export const runSingleAgent: RunSingleAgentFn = async (
 					}
 					bumpResultDerivedRevision(currentResult);
 					emitUpdate();
+					if (canArmGraceFromAssistantMessageEnd(message)) {
+						armProtocolTerminalGrace("assistant_message_end");
+					}
 					return;
 				}
 
-				if (event.type === "tool_result_end" && event.message) {
+				if (eventType === "tool_result_end" && event.message) {
 					if (currentResult.viewerEntries.length === 0) {
 						currentResult.messages.push(event.message as Message);
 					}
@@ -718,7 +906,11 @@ export const runSingleAgent: RunSingleAgentFn = async (
 					if (!trimmedMessage) {
 						throw new Error("Steering message cannot be empty.");
 					}
-					if (!steeringActive || settled || currentResult.exitCode !== -1) {
+					if (
+						!steeringActive ||
+						settled ||
+						currentResult.lifecycle !== "pending"
+					) {
 						throw new Error(`Gremlin ${gremlinId} is no longer active.`);
 					}
 					try {
@@ -747,6 +939,17 @@ export const runSingleAgent: RunSingleAgentFn = async (
 			proc.on("exit", (code) => {
 				if (settled) return;
 				observedExitCode = code ?? observedExitCode ?? 0;
+				if ((observedExitCode ?? 0) !== 0) {
+					if (currentResult.lifecycle === "completed") {
+						lateTerminalExitDiagnostic = formatLateChildExitDiagnostic(
+							observedExitCode ?? 0,
+						);
+					} else if (wasAborted || currentResult.stopReason === "aborted") {
+						cancelBeforeTerminal();
+					} else {
+						failBeforeTerminal();
+					}
+				}
 				if (exitFallbackTimer) clearTimeout(exitFallbackTimer);
 				exitFallbackTimer = setTimeout(() => {
 					finalize(observedExitCode ?? 0);
@@ -758,17 +961,20 @@ export const runSingleAgent: RunSingleAgentFn = async (
 			});
 
 			proc.on("error", (error) => {
-				deactivateSteering();
 				childProcessErrorMessage = formatChildProcessError(error);
 				appendStderrLine(currentResult, childProcessErrorMessage);
+				if (currentResult.lifecycle !== "completed") {
+					failBeforeTerminal(childProcessErrorMessage);
+				}
 				finalize(1);
 			});
 
 			if (signal) {
 				const killProc = () => {
+					if (wasAborted) return;
 					wasAborted = true;
-					deactivateSteering();
 					closeStdin();
+					cancelBeforeTerminal(true);
 					proc.kill("SIGTERM");
 					setTimeout(() => {
 						if (!proc.killed) proc.kill("SIGKILL");
@@ -787,42 +993,77 @@ export const runSingleAgent: RunSingleAgentFn = async (
 			try {
 				writeRpcCommand({ type: "prompt", message: `Task: ${task}` });
 			} catch (error) {
-				deactivateSteering();
 				childProcessErrorMessage = formatChildProcessError(error);
 				appendStderrLine(currentResult, childProcessErrorMessage);
+				failBeforeTerminal(childProcessErrorMessage);
 				finalize(1);
 			}
 		});
 
+		let visibleChanged = false;
 		if (currentResult.exitCode !== exitCode) {
 			currentResult.exitCode = exitCode;
-			bumpResultVisibleRevision(currentResult);
+			visibleChanged = true;
 		} else {
 			currentResult.exitCode = exitCode;
 		}
-		if (wasAborted) {
-			currentResult.stopReason = "aborted";
-			currentResult.errorMessage = "Gremlins🧌 run was aborted";
-			bumpResultVisibleRevision(currentResult);
-		}
-		if (childProcessErrorMessage) {
-			if (writeChildFailureDetails(currentResult, childProcessErrorMessage)) {
-				bumpResultVisibleRevision(currentResult);
-			}
-		} else if (
-			malformedStdoutCount > 0 &&
-			!hasCapturedChildContent(currentResult)
+		if (
+			lateTerminalExitDiagnostic &&
+			!currentResult.stderr.includes(lateTerminalExitDiagnostic)
 		) {
-			const protocolErrorMessage = formatChildProtocolError(
-				malformedStdoutCount,
-				lastMalformedStdoutPreview,
-			);
-			if (writeChildFailureDetails(currentResult, protocolErrorMessage)) {
-				bumpResultVisibleRevision(currentResult);
+			appendStderrLine(currentResult, lateTerminalExitDiagnostic);
+			visibleChanged = true;
+		}
+		if (currentResult.lifecycle === "pending") {
+			if (wasAborted || currentResult.stopReason === "aborted") {
+				visibleChanged =
+					setResultLifecycle(currentResult, "canceled") || visibleChanged;
+				visibleChanged =
+					writeChildCanceledDetails(currentResult) || visibleChanged;
+			} else if (childProcessErrorMessage) {
+				visibleChanged =
+					setResultLifecycle(currentResult, "failed") || visibleChanged;
+				visibleChanged =
+					writeChildFailureDetails(currentResult, childProcessErrorMessage) ||
+					visibleChanged;
+			} else if (
+				malformedStdoutCount > 0 &&
+				!hasCapturedChildContent(currentResult)
+			) {
+				const protocolErrorMessage = formatChildProtocolError(
+					malformedStdoutCount,
+					lastMalformedStdoutPreview,
+				);
+				visibleChanged =
+					setResultLifecycle(currentResult, "failed") || visibleChanged;
+				visibleChanged =
+					writeChildFailureDetails(currentResult, protocolErrorMessage) ||
+					visibleChanged;
+			} else if (currentResult.stopReason === "error") {
+				visibleChanged =
+					setResultLifecycle(currentResult, "failed") || visibleChanged;
+			} else if (exitCode !== 0) {
+				visibleChanged =
+					setResultLifecycle(currentResult, "failed") || visibleChanged;
+			} else {
+				visibleChanged =
+					setResultLifecycle(currentResult, "completed") || visibleChanged;
 			}
+		} else if (currentResult.lifecycle === "canceled") {
+			visibleChanged =
+				writeChildCanceledDetails(currentResult) || visibleChanged;
+		} else if (
+			currentResult.lifecycle !== "completed" &&
+			childProcessErrorMessage
+		) {
+			visibleChanged =
+				writeChildFailureDetails(currentResult, childProcessErrorMessage) ||
+				visibleChanged;
 		}
 		if (finishAssistantViewerEntry(currentResult, viewerState)) {
 			bumpResultDerivedRevision(currentResult);
+		} else if (visibleChanged) {
+			bumpResultVisibleRevision(currentResult);
 		}
 		return currentResult;
 	} finally {
