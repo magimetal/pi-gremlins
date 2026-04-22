@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { execSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import * as fs from "node:fs";
+import * as path from "node:path";
 
 import {
 	createMockProcess,
@@ -16,6 +17,7 @@ let spawnCalls = [];
 let spawnPlans = [];
 let packageResolveResult = {};
 let packageResolveError = null;
+let packageResolveCalls = 0;
 
 function createSpawnPlanForTask(task, factory) {
 	return {
@@ -121,6 +123,7 @@ mock.module("node:child_process", () => ({
 mock.module("@mariozechner/pi-coding-agent", () => ({
 	DefaultPackageManager: class {
 		async resolve() {
+			packageResolveCalls += 1;
 			if (packageResolveError) throw packageResolveError;
 			return packageResolveResult;
 		}
@@ -187,11 +190,9 @@ mock.module("@mariozechner/pi-tui", () => ({
 	wrapTextWithAnsi: (text) => [text],
 }));
 
-const {
-	createInvocationSnapshot,
-	createInvocationUpdateController,
-	default: registerPiGremlins,
-} = await import("./index.ts");
+const { default: registerPiGremlins } = await import("./index.ts");
+const { createInvocationSnapshot, createInvocationUpdateController } =
+	await import("./invocation-state.ts");
 const {
 	bumpResultDerivedRevision,
 	bumpResultVisibleRevision,
@@ -251,6 +252,7 @@ beforeEach(() => {
 	spawnPlans = [];
 	packageResolveResult = {};
 	packageResolveError = null;
+	packageResolveCalls = 0;
 });
 
 afterEach(() => {
@@ -411,6 +413,198 @@ describe("pi-gremlins execute streaming characterization", () => {
 		);
 		expect(result.details.results[0].stderr).toContain(
 			"Package gremlin discovery warning: Package agent resolution failed: resolver offline",
+		);
+	});
+
+	test("re-observes package resolution on repeated same-context executes and refreshes on agent source changes", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		writeAgentFile(workspace.userAgentsDir, "tars.md", "tars");
+		packageResolveResult = { agents: [] };
+
+		const tool = createRegisteredTool();
+		const ctx = createExecutionContext(workspace.repoRoot);
+
+		await tool.execute(
+			"single-discovery-cache-1",
+			{ agent: "tars", task: "ping", agentScope: "both" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		await tool.execute(
+			"single-discovery-cache-2",
+			{ agent: "tars", task: "ping", agentScope: "both" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(packageResolveCalls).toBe(2);
+
+		writeAgentFile(workspace.projectAgentsDir, "sentinel.md", "sentinel");
+		await tool.execute(
+			"single-discovery-cache-3",
+			{ agent: "tars", task: "ping", agentScope: "both" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(packageResolveCalls).toBe(3);
+	});
+
+	test("refreshes cached discovery when package resolution changes from success to warning", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		const packageAgentsDir = path.join(
+			workspace.root,
+			"package-agents-success-warning",
+		);
+		writeAgentFile(packageAgentsDir, "package-only.md", "package-only");
+		packageResolveResult = {
+			agents: [
+				{
+					enabled: true,
+					path: path.join(packageAgentsDir, "package-only.md"),
+				},
+			],
+		};
+
+		const tool = createRegisteredTool();
+		const ctx = createExecutionContext(workspace.repoRoot);
+		const firstResult = await tool.execute(
+			"single-package-success-before-warning",
+			{ agent: "missing", task: "ping", agentScope: "both" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(firstResult.content[0].text).toContain("package-only (package)");
+		expect(firstResult.content[0].text).not.toContain(
+			"Package gremlin discovery warning:",
+		);
+
+		packageResolveError = new Error("resolver offline again");
+		const secondResult = await tool.execute(
+			"single-package-warning-after-success",
+			{ agent: "missing", task: "ping", agentScope: "both" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(secondResult.content[0].text).toContain(
+			"Package gremlin discovery warning: Package agent resolution failed: resolver offline again",
+		);
+		expect(secondResult.content[0].text).not.toContain(
+			"package-only (package)",
+		);
+	});
+
+	test("refreshes cached discovery when package resolution changes from warning to success", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		const packageAgentsDir = path.join(
+			workspace.root,
+			"package-agents-warning-success",
+		);
+		writeAgentFile(packageAgentsDir, "package-only.md", "package-only");
+		packageResolveError = new Error("resolver offline first");
+
+		const tool = createRegisteredTool();
+		const ctx = createExecutionContext(workspace.repoRoot);
+		const firstResult = await tool.execute(
+			"single-package-warning-before-success",
+			{ agent: "missing", task: "ping", agentScope: "both" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(firstResult.content[0].text).toContain(
+			"Package gremlin discovery warning: Package agent resolution failed: resolver offline first",
+		);
+		expect(firstResult.content[0].text).not.toContain("package-only (package)");
+
+		packageResolveError = null;
+		packageResolveResult = {
+			agents: [
+				{
+					enabled: true,
+					path: path.join(packageAgentsDir, "package-only.md"),
+				},
+			],
+		};
+		const secondResult = await tool.execute(
+			"single-package-success-after-warning",
+			{ agent: "missing", task: "ping", agentScope: "both" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(secondResult.content[0].text).toContain("package-only (package)");
+		expect(secondResult.content[0].text).not.toContain(
+			"Package gremlin discovery warning:",
+		);
+	});
+
+	test("refreshes cached discovery when enabled package agent path set changes without user or project mutations", async () => {
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		mockAgentDir = workspace.userRoot;
+		const packageAgentsDir = path.join(
+			workspace.root,
+			"package-agents-path-change",
+		);
+		writeAgentFile(packageAgentsDir, "package-alpha.md", "package-alpha");
+		writeAgentFile(packageAgentsDir, "package-beta.md", "package-beta");
+		packageResolveResult = {
+			agents: [
+				{
+					enabled: true,
+					path: path.join(packageAgentsDir, "package-alpha.md"),
+				},
+			],
+		};
+
+		const tool = createRegisteredTool();
+		const ctx = createExecutionContext(workspace.repoRoot);
+		const firstResult = await tool.execute(
+			"single-package-path-set-first",
+			{ agent: "missing", task: "ping", agentScope: "both" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(firstResult.content[0].text).toContain("package-alpha (package)");
+		expect(firstResult.content[0].text).not.toContain("package-beta (package)");
+
+		packageResolveResult = {
+			agents: [
+				{
+					enabled: true,
+					path: path.join(packageAgentsDir, "package-beta.md"),
+				},
+			],
+		};
+		const secondResult = await tool.execute(
+			"single-package-path-set-second",
+			{ agent: "missing", task: "ping", agentScope: "both" },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(secondResult.content[0].text).toContain("package-beta (package)");
+		expect(secondResult.content[0].text).not.toContain(
+			"package-alpha (package)",
 		);
 	});
 
@@ -926,6 +1120,7 @@ describe("pi-gremlins execute streaming characterization", () => {
 
 		expect(updates.at(-1).content[0].text).toBe("viewer-only output");
 		expect(result.content[0].text).toBe("viewer-only output");
+		expect(result.details.results[0].messages).toEqual([]);
 		expect(result.details.results[0].viewerEntries).toEqual([
 			expect.objectContaining({
 				type: "tool-call",
@@ -1959,8 +2154,16 @@ describe("pi-gremlins execute streaming characterization", () => {
 
 		const result = await executePromise;
 
-		const alphaCommands = spawnCalls[0][3].stdinWrites.join("");
-		const betaCommands = spawnCalls[1][3].stdinWrites.join("");
+		const alphaCall = spawnCalls.find((call) =>
+			call[3].stdinWrites.join("").includes('"message":"Task: Do alpha"'),
+		);
+		const betaCall = spawnCalls.find((call) =>
+			call[3].stdinWrites.join("").includes('"message":"Task: Do beta"'),
+		);
+		expect(alphaCall).toBeDefined();
+		expect(betaCall).toBeDefined();
+		const alphaCommands = alphaCall[3].stdinWrites.join("");
+		const betaCommands = betaCall[3].stdinWrites.join("");
 		expect(alphaCommands).not.toContain('"type":"steer"');
 		expect(betaCommands).toContain(
 			'"type":"steer","message":"update README too"',

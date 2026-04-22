@@ -19,7 +19,7 @@ import {
 	bumpResultVisibleRevision,
 	createSingleViewerState,
 	createUsageStats,
-	getFinalOutput,
+	getResultFinalOutput,
 	initializeResultRevisions,
 	type SingleResult,
 	type SingleRunViewerState,
@@ -526,20 +526,18 @@ export const runSingleAgent: RunSingleAgentFn = async (
 		step,
 	});
 	const viewerState = createSingleViewerState();
+	const liveResults: SingleResult[] = [currentResult];
+	const liveDetails = makeDetails(liveResults);
 
 	const emitUpdate = () => {
 		onUpdate?.({
 			content: [
 				{
 					type: "text",
-					text:
-						getFinalOutput(
-							currentResult.messages,
-							currentResult.viewerEntries,
-						) || "(running...)",
+					text: getResultFinalOutput(currentResult) || "(running...)",
 				},
 			],
-			details: makeDetails([currentResult]),
+			details: liveDetails,
 		});
 	};
 
@@ -676,7 +674,6 @@ export const runSingleAgent: RunSingleAgentFn = async (
 
 				if (event.type === "message_end" && event.message) {
 					const message = event.message as Message;
-					currentResult.messages.push(message);
 					if (message.role === "assistant") {
 						const usage = message.usage;
 						currentResult.usage.turns += 1;
@@ -698,13 +695,18 @@ export const runSingleAgent: RunSingleAgentFn = async (
 							currentResult.errorMessage = message.errorMessage;
 						}
 					}
+					if (currentResult.viewerEntries.length === 0) {
+						currentResult.messages.push(message);
+					}
 					bumpResultDerivedRevision(currentResult);
 					emitUpdate();
 					return;
 				}
 
 				if (event.type === "tool_result_end" && event.message) {
-					currentResult.messages.push(event.message as Message);
+					if (currentResult.viewerEntries.length === 0) {
+						currentResult.messages.push(event.message as Message);
+					}
 					bumpResultDerivedRevision(currentResult);
 					emitUpdate();
 				}

@@ -437,6 +437,10 @@ export function getFinalOutput(
 	return buildDerivedRenderData(messages, viewerEntries).finalOutput;
 }
 
+export function getResultFinalOutput(result: SingleResult): string {
+	return getDerivedRenderData(result).finalOutput;
+}
+
 export function getDerivedRenderData(result: SingleResult): DerivedRenderData {
 	const revision = getResultDerivedRevision(result);
 	const internal = getInternalResult(result);
@@ -619,7 +623,7 @@ export function getSingleResultErrorText(result: SingleResult): string {
 	return (
 		result.errorMessage ||
 		result.stderr ||
-		getFinalOutput(result.messages, result.viewerEntries) ||
+		getResultFinalOutput(result) ||
 		"(no output)"
 	);
 }

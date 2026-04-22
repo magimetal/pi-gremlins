@@ -90,18 +90,15 @@ mock.module("@mariozechner/pi-tui", () => ({
 	wrapTextWithAnsi: (text) => [text],
 }));
 
-const {
-	createInvocationSnapshot,
-	default: registerPiGremlins,
-	getCachedInvocationBodyLines,
-	getCachedWrappedBodyLines,
-	PiGremlinsViewerOverlay,
-} = await import("./index.ts");
+const { default: registerPiGremlins } = await import("./index.ts");
+const { createInvocationSnapshot } = await import("./invocation-state.ts");
+const { getCachedInvocationBodyLines, getCachedWrappedBodyLines } =
+	await import("./viewer-body-cache.ts");
+const { PiGremlinsViewerOverlay } = await import("./viewer-overlay.ts");
 const {
 	bumpResultDerivedRevision,
 	bumpResultVisibleRevision,
 	createPendingResult,
-	getInvocationSnapshotRevision,
 } = await import("./execution-shared.ts");
 
 function createExtensionHarness() {
@@ -361,7 +358,7 @@ describe("pi-gremlins viewer command", () => {
 		events.get("session_shutdown")?.();
 	});
 
-	test("reuses and invalidates viewer body and wrap caches deterministically", () => {
+	test("reuses viewer body and wrap caches for unchanged selected results and invalidates only on selected-result changes", () => {
 		const theme = createTheme();
 		const alpha = createPendingResult("alpha", "Do alpha", undefined, "user");
 		const beta = createPendingResult("beta", "Do beta", undefined, "user");
@@ -401,32 +398,28 @@ describe("pi-gremlins viewer command", () => {
 			1,
 			theme,
 		);
+		const hotSelectedBody = getCachedInvocationBodyLines(
+			switchedBody.cache,
+			firstSnapshot,
+			1,
+			theme,
+		);
 
 		expect(firstBody.cacheHit).toBe(false);
 		expect(secondBody.cacheHit).toBe(true);
 		expect(switchedBody.cacheHit).toBe(false);
+		expect(hotSelectedBody.cacheHit).toBe(true);
 		expect(switchedBody.lines.join("\n")).toContain("beta body line");
 
-		const revision = getInvocationSnapshotRevision(firstSnapshot);
-		const firstWrap = getCachedWrappedBodyLines(
-			null,
-			firstBody.lines,
-			revision,
-			0,
-			40,
-		);
+		const firstWrap = getCachedWrappedBodyLines(null, switchedBody.cache, 40);
 		const secondWrap = getCachedWrappedBodyLines(
 			firstWrap.cache,
-			firstBody.lines,
-			revision,
-			0,
+			switchedBody.cache,
 			40,
 		);
 		const resizedWrap = getCachedWrappedBodyLines(
 			secondWrap.cache,
-			firstBody.lines,
-			revision,
-			0,
+			switchedBody.cache,
 			20,
 		);
 
@@ -446,23 +439,49 @@ describe("pi-gremlins viewer command", () => {
 			"Running",
 			firstSnapshot,
 		);
-		const invalidatedBody = getCachedInvocationBodyLines(
-			secondBody.cache,
+		const unrelatedBody = getCachedInvocationBodyLines(
+			hotSelectedBody.cache,
 			secondSnapshot,
-			0,
+			1,
+			theme,
+		);
+		const unrelatedWrap = getCachedWrappedBodyLines(
+			secondWrap.cache,
+			unrelatedBody.cache,
+			40,
+		);
+
+		expect(unrelatedBody.cacheHit).toBe(true);
+		expect(unrelatedWrap.cacheHit).toBe(true);
+		expect(unrelatedBody.lines.join("\n")).toContain("beta body line");
+
+		beta.viewerEntries.push({
+			type: "assistant-text",
+			text: "beta new line",
+			streaming: false,
+		});
+		bumpResultDerivedRevision(beta);
+		const thirdSnapshot = createInvocationSnapshot(
+			"viewer-cache",
+			createDetails("parallel", [alpha, beta]),
+			"Running",
+			secondSnapshot,
+		);
+		const invalidatedBody = getCachedInvocationBodyLines(
+			unrelatedBody.cache,
+			thirdSnapshot,
+			1,
 			theme,
 		);
 		const invalidatedWrap = getCachedWrappedBodyLines(
-			secondWrap.cache,
-			invalidatedBody.lines,
-			getInvocationSnapshotRevision(secondSnapshot),
-			0,
+			unrelatedWrap.cache,
+			invalidatedBody.cache,
 			40,
 		);
 
 		expect(invalidatedBody.cacheHit).toBe(false);
 		expect(invalidatedWrap.cacheHit).toBe(false);
-		expect(invalidatedBody.lines.join("\n")).toContain("alpha new line");
+		expect(invalidatedBody.lines.join("\n")).toContain("beta new line");
 	});
 
 	test("retains popup fallback body lines when viewer entries are absent", () => {

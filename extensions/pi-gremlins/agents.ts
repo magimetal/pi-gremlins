@@ -137,7 +137,7 @@ function isDirectory(candidatePath: string): boolean {
 	}
 }
 
-function findNearestProjectAgentsDir(cwd: string): string | null {
+export function findNearestProjectAgentsDir(cwd: string): string | null {
 	let currentDir = cwd;
 	while (true) {
 		const candidate = path.join(currentDir, ".pi", "agents");
@@ -149,31 +149,44 @@ function findNearestProjectAgentsDir(cwd: string): string | null {
 	}
 }
 
-function loadAgentsFromResolvedPaths(
+export function getEnabledPackageAgentPaths(
 	resolvedPaths: ResolvedPaths,
-): AgentConfig[] {
+): string[] {
 	const agentResources = (resolvedPaths as unknown as Record<string, unknown>)
 		.agents;
 	if (!agentResources || !Array.isArray(agentResources)) {
 		return [];
 	}
 
-	const agents: AgentConfig[] = [];
+	const agentPaths: string[] = [];
 	for (const resource of agentResources) {
 		if (!resource || typeof resource !== "object") continue;
 
 		const enabled = (resource as Record<string, unknown>).enabled;
 		const agentPath = (resource as Record<string, unknown>).path;
 		if (enabled !== true || typeof agentPath !== "string") continue;
+		agentPaths.push(agentPath);
+	}
+	return agentPaths;
+}
 
+function loadAgentsFromResolvedPaths(
+	resolvedPaths: ResolvedPaths,
+): AgentConfig[] {
+	const agents: AgentConfig[] = [];
+	for (const agentPath of getEnabledPackageAgentPaths(resolvedPaths)) {
 		const agent = loadAgentFromFile(agentPath, "package");
 		if (agent) agents.push(agent);
 	}
 	return agents;
 }
 
+export function getUserAgentsDir(): string {
+	return path.join(getAgentDir(), "agents");
+}
+
 function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
-	const userDir = path.join(getAgentDir(), "agents");
+	const userDir = getUserAgentsDir();
 	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
 
 	const userAgents =

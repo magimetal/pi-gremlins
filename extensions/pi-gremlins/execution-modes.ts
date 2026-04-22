@@ -2,7 +2,7 @@ import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { AgentConfig } from "./agents.js";
 import {
 	createPendingResult,
-	getFinalOutput,
+	getResultFinalOutput,
 	getSingleResultErrorText,
 	getSingleResultStatus,
 	type InvocationMode,
@@ -161,8 +161,15 @@ export async function executeChainMode({
 		results: SingleResult[],
 	): PiGremlinsDetails => ({
 		...makeDetails("chain")(results),
-		viewerResults: [...viewerResults],
+		viewerResults,
 	});
+	const liveResults: SingleResult[] = [];
+	const replaceLiveResult = (index: number, result: SingleResult) => {
+		liveResults[index] = result;
+		if (liveResults.length <= index) {
+			liveResults.length = index + 1;
+		}
+	};
 	const results: SingleResult[] = [];
 	let previousOutput = "";
 
@@ -185,16 +192,17 @@ export async function executeChainMode({
 			const currentResult = partial.details?.results[0];
 			if (!currentResult) return;
 			viewerResults[i] = currentResult;
-			const allResults = [...results, currentResult];
+			replaceLiveResult(i, currentResult);
 			handleInvocationUpdate({
 				content: partial.content,
-				details: buildLiveChainDetails(allResults),
+				details: buildLiveChainDetails(liveResults),
 			});
 		};
 
+		replaceLiveResult(i, pendingResult);
 		handleInvocationUpdate({
 			content: [{ type: "text", text: "(running...)" }],
-			details: buildLiveChainDetails([...results, pendingResult]),
+			details: buildLiveChainDetails(liveResults),
 		});
 
 		const result = await runSingleAgent(
@@ -213,6 +221,7 @@ export async function executeChainMode({
 		);
 		results.push(result);
 		viewerResults[i] = result;
+		replaceLiveResult(i, result);
 
 		const resultStatus = getSingleResultStatus(result);
 		if (resultStatus === "Failed" || resultStatus === "Canceled") {
@@ -245,7 +254,7 @@ export async function executeChainMode({
 				isError: true,
 			};
 		}
-		previousOutput = getFinalOutput(result.messages, result.viewerEntries);
+		previousOutput = getResultFinalOutput(result);
 	}
 
 	const details = makeDetails("chain")(results);
@@ -254,11 +263,9 @@ export async function executeChainMode({
 		content: [
 			{
 				type: "text" as const,
-				text:
-					getFinalOutput(
-						finalResult?.messages ?? [],
-						finalResult?.viewerEntries ?? [],
-					) || "(no output)",
+				text: finalResult
+					? getResultFinalOutput(finalResult) || "(no output)"
+					: "(no output)",
 			},
 		],
 		details,
@@ -319,7 +326,7 @@ export async function executeParallelMode({
 					text: `Parallel: ${doneCount}/${allResults.length} done, ${runningCount} running...`,
 				},
 			],
-			details: makeDetails("parallel")([...allResults]),
+			details: makeDetails("parallel")(allResults),
 		});
 	};
 
@@ -366,7 +373,7 @@ export async function executeParallelMode({
 	if (failedCount > 0) summaryParts.push(`${failedCount} failed`);
 	if (canceledCount > 0) summaryParts.push(`${canceledCount} canceled`);
 	const summaries = results.map((result, index) => {
-		const output = getFinalOutput(result.messages, result.viewerEntries);
+		const output = getResultFinalOutput(result);
 		return `[${result.gremlinId} ${result.agent}] ${statuses[index].toLowerCase()}: ${output || "(no output)"}`;
 	});
 	const details = makeDetails("parallel")(results);
@@ -445,9 +452,7 @@ export async function executeSingleMode({
 		content: [
 			{
 				type: "text" as const,
-				text:
-					getFinalOutput(result.messages, result.viewerEntries) ||
-					"(no output)",
+				text: getResultFinalOutput(result) || "(no output)",
 			},
 		],
 		details,

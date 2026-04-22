@@ -83,6 +83,7 @@ const {
 	cloneSingleResultForSnapshot,
 	getAgentSourceSemantics,
 	getDerivedRenderData,
+	getResultFinalOutput,
 	getSingleResultSemantics,
 	getUsageTelemetrySemantics,
 	initializeResultRevisions,
@@ -1020,7 +1021,7 @@ describe("pi-gremlins renderResult characterization", () => {
 		expect(text).toContain("… +1 · Ctrl+O");
 	});
 
-	test("reuses derived render cache for same revision and invalidates when messages append", () => {
+	test("reuses derived render cache and final-output accessor for same revision and invalidates when messages append", () => {
 		const result = initializeResultRevisions(
 			createSingleResult({
 				messages: [
@@ -1035,6 +1036,8 @@ describe("pi-gremlins renderResult characterization", () => {
 		const firstPass = getDerivedRenderData(result);
 		const secondPass = getDerivedRenderData(result);
 		expect(secondPass).toBe(firstPass);
+		expect(getResultFinalOutput(result)).toBe("first output");
+		expect(getResultFinalOutput(result)).toBe(firstPass.finalOutput);
 
 		result.messages.push({
 			role: "assistant",
@@ -1044,6 +1047,7 @@ describe("pi-gremlins renderResult characterization", () => {
 
 		const thirdPass = getDerivedRenderData(result);
 		expect(thirdPass).not.toBe(firstPass);
+		expect(getResultFinalOutput(result)).toBe("second output");
 		expect(thirdPass.finalOutput).toBe("second output");
 		expect(thirdPass.displayItems.at(-1)).toEqual({
 			type: "text",
