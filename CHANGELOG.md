@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New `/gremlins:steer <gremlin-id> <message>` command routes a follow-up message to one active gremlin session, records the steering event in embedded/popup output, and reports helpful errors for missing payload, unknown ids, and inactive gremlins.
 - Product, architecture, and implementation records for viewer overhaul in `docs/prd/0001-pi-gremlins-immersive-theming-and-viewer-ux-overhaul.md`, `docs/adr/0001-semantic-presentation-architecture-for-pi-gremlins-viewer-and-embedded-surfaces.md`, and `docs/plans/pi-gremlins-immersive-theming-viewer-ux-overhaul.md`.
 - PRD/ADR index and template scaffolding under `docs/prd/` and `docs/adr/` for future feature and architecture tracking.
+- Generated repository and extension `AGENTS.md` knowledge-base files now document package structure, conventions, command entry points, and repo-specific guardrails for Pi agent runs.
 
 ## [0.1.0] - 2026-04-20
 
