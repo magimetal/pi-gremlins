@@ -1,6 +1,6 @@
 # ADR-0001: Semantic Presentation Architecture for Pi Gremlins Viewer and Embedded Surfaces
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0002
 - **Date:** 2026-04-21
 - **Decision Maker:** Magi Metal
 - **Related:** `README.md`, `CHANGELOG.md`, `extensions/pi-gremlins/index.ts`, `extensions/pi-gremlins/execution-shared.ts`, `extensions/pi-gremlins/result-rendering.ts`, `docs/prd/0001-pi-gremlins-immersive-theming-and-viewer-ux-overhaul.md` (PRD-0001)
@@ -73,3 +73,4 @@ This ADR is justified by trigger rubric because planned work introduces an expli
 ## Status History
 
 - 2026-04-21: Accepted
+- 2026-04-22: Superseded by ADR-0002 after v1 rewrite decision removed popup viewer and shared viewer-entry presentation architecture as primary runtime boundary

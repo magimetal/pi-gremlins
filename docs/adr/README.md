@@ -65,4 +65,5 @@ Reference ADR IDs in changelog entries for significant changes:
 | ADR  | Title                                                            | Status   | Date       |
 | ---- | ---------------------------------------------------------------- | -------- | ---------- |
 | 0000 | Template                                                         | Accepted | 2026-04-21 |
-| 0001 | Semantic Presentation Architecture for Pi Gremlins Viewer and Embedded Surfaces | Accepted | 2026-04-21 |
+| 0001 | Semantic Presentation Architecture for Pi Gremlins Viewer and Embedded Surfaces | Superseded by ADR-0002 | 2026-04-21 |
+| 0002 | In-Process SDK-Based Gremlin Runtime                             | Accepted | 2026-04-22 |

@@ -84,3 +84,4 @@ Maintain in `docs/prd/README.md`:
 | ---- | --------------------------------------------------------- | ------ | ---------- |
 | 0000 | Template                                                  | Active | 2026-04-21 |
 | 0001 | Pi Gremlins Immersive Theming and Viewer UX Overhaul      | Completed | 2026-04-21 |
+| 0002 | Pi Gremlins V1 SDK Rewrite                                | Draft | 2026-04-22 |
