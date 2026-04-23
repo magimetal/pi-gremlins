@@ -62,6 +62,7 @@ function extractToolResultText(result: unknown): string {
 function mergeUsage(
 	current: GremlinUsage | undefined,
 	message: unknown,
+	contextTokens?: number,
 ): GremlinUsage | undefined {
 	if (!message || typeof message !== "object") return current;
 	const usage = (message as { usage?: Record<string, any> }).usage;
@@ -80,10 +81,15 @@ function mergeUsage(
 		cost:
 			(current?.cost ?? 0) +
 			(typeof usage.cost?.total === "number" ? usage.cost.total : 0),
-		contextTokens:
-			(current?.contextTokens ?? 0) +
-			(typeof usage.totalTokens === "number" ? usage.totalTokens : 0),
+		contextTokens,
 	};
+}
+
+function getContextWindowTokens(
+	session: { getContextUsage?: () => { tokens: number | null } | undefined },
+): number | undefined {
+	const contextTokens = session.getContextUsage?.()?.tokens;
+	return typeof contextTokens === "number" ? contextTokens : undefined;
 }
 
 function buildBaseResult(
@@ -164,6 +170,7 @@ export async function runSingleGremlin({
 		prompt: (text: string) => Promise<void>;
 		abort?: () => Promise<void>;
 		dispose: () => void;
+		getContextUsage?: () => { tokens: number | null } | undefined;
 	};
 	let abortRequested = false;
 
@@ -211,7 +218,11 @@ export async function runSingleGremlin({
 					status: "active",
 					currentPhase: "settling",
 					latestText: latestText || state.latestText,
-					usage: mergeUsage(state.usage, event.message),
+					usage: mergeUsage(
+						state.usage,
+						event.message,
+						getContextWindowTokens(session),
+					),
 					model:
 						typeof event.message?.model === "string"
 							? event.message.model

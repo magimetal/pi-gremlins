@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-function createFakeSession({ onPrompt, onAbort } = {}) {
+function createFakeSession({ onPrompt, onAbort, getContextUsage } = {}) {
 	const listeners = new Set();
 	let disposed = 0;
 	let aborted = 0;
@@ -20,6 +20,7 @@ function createFakeSession({ onPrompt, onAbort } = {}) {
 			dispose() {
 				disposed += 1;
 			},
+			getContextUsage,
 		},
 		getDisposedCount: () => disposed,
 		getAbortedCount: () => aborted,
@@ -35,6 +36,7 @@ describe("gremlin runner v1 contract", () => {
 		const { runSingleGremlin } = await import("./gremlin-runner.ts");
 		const updates = [];
 		const fake = createFakeSession({
+			getContextUsage: () => ({ tokens: 6, contextWindow: 200000, percent: 0.003 }),
 			onPrompt: async ({ text, emit }) => {
 				expect(text).toContain("Parent system prompt snapshot:");
 				expect(text).toContain("raw gremlin body");
@@ -115,7 +117,7 @@ describe("gremlin runner v1 contract", () => {
 				cacheRead: 1,
 				cacheWrite: 2,
 				cost: 0.25,
-				contextTokens: 8,
+				contextTokens: 6,
 			},
 		});
 		expect(updates.some((update) => update.patch.currentPhase === "prompting")).toBe(
@@ -126,6 +128,50 @@ describe("gremlin runner v1 contract", () => {
 		);
 		expect(fake.getDisposedCount()).toBe(1);
 		expect(fake.getAbortedCount()).toBe(0);
+	});
+
+	test("uses current context window tokens instead of cumulative total token usage", async () => {
+		const { runSingleGremlin } = await import("./gremlin-runner.ts");
+		const fake = createFakeSession({
+			getContextUsage: () => ({ tokens: 11, contextWindow: 200000, percent: 0.0055 }),
+			onPrompt: async ({ emit }) => {
+				emit({
+					type: "message_end",
+					message: {
+						content: [{ type: "text", text: "first answer" }],
+						usage: { input: 3, output: 2, totalTokens: 5 },
+					},
+				});
+				emit({
+					type: "message_end",
+					message: {
+						content: [{ type: "text", text: "second answer" }],
+						usage: { input: 4, output: 2, totalTokens: 6 },
+					},
+				});
+			},
+		});
+
+		const result = await runSingleGremlin({
+			gremlinId: "g1",
+			request: { agent: "researcher", context: "Inspect auth flow" },
+			definition: {
+				name: "researcher",
+				source: "project",
+				filePath: "/tmp/researcher.md",
+				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
+				frontmatter: {},
+			},
+			parentSystemPrompt: "system snapshot",
+			createSession: async () => fake,
+		});
+
+		expect(result.usage).toMatchObject({
+			turns: 2,
+			input: 7,
+			output: 4,
+			contextTokens: 11,
+		});
 	});
 
 	test("distinguishes cancel from fail and aborts child session on signal", async () => {
