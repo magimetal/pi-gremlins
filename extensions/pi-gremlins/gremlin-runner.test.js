@@ -130,6 +130,55 @@ describe("gremlin runner v1 contract", () => {
 		expect(fake.getAbortedCount()).toBe(0);
 	});
 
+	test("keeps streamed latestText whitespace behavior across multiple deltas until final message wins", async () => {
+		const { runSingleGremlin } = await import("./gremlin-runner.ts");
+		const updates = [];
+		const fake = createFakeSession({
+			onPrompt: async ({ emit }) => {
+				emit({ type: "agent_start" });
+				emit({ type: "turn_start" });
+				emit({
+					type: "message_update",
+					assistantMessageEvent: { type: "text_delta", delta: "  draft " },
+				});
+				emit({
+					type: "message_update",
+					assistantMessageEvent: { type: "text_delta", delta: "answer  " },
+				});
+				emit({
+					type: "message_end",
+					message: {
+						content: [{ type: "text", text: " final answer " }],
+						usage: { input: 1, output: 2 },
+					},
+				});
+			},
+		});
+
+		const result = await runSingleGremlin({
+			gremlinId: "g1",
+			request: { agent: "researcher", context: "Inspect auth flow" },
+			definition: {
+				name: "researcher",
+				source: "project",
+				filePath: "/tmp/researcher.md",
+				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
+				frontmatter: {},
+			},
+			parentSystemPrompt: "system snapshot",
+			onUpdate: (update) => updates.push(update),
+			createSession: async () => fake,
+		});
+
+		expect(
+			updates
+				.filter((update) => update.patch.currentPhase === "streaming")
+				.map((update) => update.patch.latestText)
+				.filter(Boolean),
+		).toEqual(["draft", "draftanswer"]);
+		expect(result.latestText).toBe("final answer");
+	});
+
 	test("uses current context window tokens instead of cumulative total token usage", async () => {
 		const { runSingleGremlin } = await import("./gremlin-runner.ts");
 		const fake = createFakeSession({

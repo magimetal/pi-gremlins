@@ -174,6 +174,15 @@ export async function runSingleGremlin({
 	};
 	let abortRequested = false;
 
+	const appendLatestTextDelta = (delta: unknown) => {
+		if (typeof delta !== "string" || !delta) return state.latestText ?? "";
+		const baseText = state.latestText ?? "";
+		const nextText = `${baseText}${baseText ? delta : delta.trimStart()}`;
+		let end = nextText.length;
+		while (end > 0 && /\s/.test(nextText[end - 1]!)) end -= 1;
+		return end === nextText.length ? nextText : nextText.slice(0, end);
+	};
+
 	const unsubscribe = session.subscribe?.((event: any) => {
 		switch (event?.type) {
 			case "agent_start":
@@ -187,7 +196,7 @@ export async function runSingleGremlin({
 					publish({
 						status: "active",
 						currentPhase: "streaming",
-						latestText: `${state.latestText ?? ""}${event.assistantMessageEvent.delta ?? ""}`.trim(),
+						latestText: appendLatestTextDelta(event.assistantMessageEvent.delta),
 					});
 				}
 				break;

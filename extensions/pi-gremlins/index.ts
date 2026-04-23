@@ -36,37 +36,22 @@ const TOOL_DESCRIPTION = [
 	"Progress stays inline and expands with Ctrl+O.",
 ].join(" ");
 
-function countStatuses(details: GremlinInvocationDetails): GremlinInvocationDetails {
-	const gremlins = details.gremlins ?? [];
+function normalizeInvocationDetails(
+	details?: Partial<GremlinInvocationDetails>,
+): GremlinInvocationDetails {
 	return {
-		...details,
-		gremlins,
-		activeCount: gremlins.filter(
-			(gremlin) =>
-				gremlin.status === "queued" ||
-				gremlin.status === "starting" ||
-				gremlin.status === "active",
-		).length,
-		completedCount: gremlins.filter((gremlin) => gremlin.status === "completed")
-			.length,
-		failedCount: gremlins.filter((gremlin) => gremlin.status === "failed").length,
-		canceledCount: gremlins.filter(
-			(gremlin) => gremlin.status === "canceled",
-		).length,
+		requestedCount: details?.requestedCount ?? 0,
+		activeCount: details?.activeCount ?? 0,
+		completedCount: details?.completedCount ?? 0,
+		failedCount: details?.failedCount ?? 0,
+		canceledCount: details?.canceledCount ?? 0,
+		gremlins: details?.gremlins ?? [],
+		revision: details?.revision,
 	};
 }
 
 function getInvocationDetails(result: AgentToolResult<any>) {
-	const emptyDetails: GremlinInvocationDetails = {
-		requestedCount: 0,
-		activeCount: 0,
-		completedCount: 0,
-		failedCount: 0,
-		canceledCount: 0,
-		gremlins: [],
-	};
-	if (!result.details) return emptyDetails;
-	return countStatuses(result.details);
+	return normalizeInvocationDetails(result.details);
 }
 
 function renderCallText(params: { gremlins?: Array<{ agent?: string }> }): string {
@@ -132,14 +117,7 @@ export default function registerPiGremlins(pi: ExtensionAPI) {
 						},
 					],
 					isError: true,
-					details: countStatuses({
-						requestedCount: 0,
-						activeCount: 0,
-						completedCount: 0,
-						failedCount: 0,
-						canceledCount: 0,
-						gremlins: [],
-					}),
+					details: normalizeInvocationDetails(),
 				};
 			}
 			const discovered = await discovery.get(ctx.cwd);
@@ -185,12 +163,22 @@ export default function registerPiGremlins(pi: ExtensionAPI) {
 				},
 			});
 
-			const details = countStatuses({
+			const details = normalizeInvocationDetails({
 				requestedCount: params.gremlins.length,
-				activeCount: 0,
-				completedCount: 0,
-				failedCount: 0,
-				canceledCount: 0,
+				activeCount: batch.results.filter(
+					(result) =>
+						result.status === "queued" ||
+						result.status === "starting" ||
+						result.status === "active",
+				).length,
+				completedCount: batch.results.filter(
+					(result) => result.status === "completed",
+				).length,
+				failedCount: batch.results.filter((result) => result.status === "failed")
+					.length,
+				canceledCount: batch.results.filter(
+					(result) => result.status === "canceled",
+				).length,
 				gremlins: batch.results,
 			});
 			const partial: AgentToolResult<GremlinInvocationDetails> = {

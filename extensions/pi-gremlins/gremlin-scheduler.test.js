@@ -47,6 +47,89 @@ describe("gremlin scheduler v1 contract", () => {
 		expect(result.mode).toBe("parallel");
 	});
 
+	test("publishes immutable snapshots with correct incremental status counts across updates", async () => {
+		const { createGremlinProgressStore } = await import("./gremlin-progress-store.ts");
+		const store = createGremlinProgressStore([
+			{ agent: "alpha", context: "Find alpha" },
+			{ agent: "beta", context: "Find beta" },
+		]);
+
+		const queued = store.snapshot();
+		expect(Object.isFrozen(queued)).toBe(true);
+		expect(Object.isFrozen(queued.gremlins)).toBe(true);
+		expect(Object.isFrozen(queued.gremlins[1])).toBe(true);
+		expect(() => {
+			queued.gremlins[1].status = "failed";
+		}).toThrow();
+		expect(() => {
+			queued.gremlins[1].usage = { turns: 99, input: 99, output: 99 };
+		}).toThrow();
+
+		const active = store.update("g1", {
+			gremlinId: "g1",
+			agent: "alpha",
+			status: "active",
+			currentPhase: "streaming",
+		});
+		const completed = store.complete("g1", {
+			gremlinId: "g1",
+			agent: "alpha",
+			source: "user",
+			status: "completed",
+			context: "Find alpha",
+			currentPhase: "settling",
+			latestText: "alpha done",
+		});
+		const failed = store.complete("g2", {
+			gremlinId: "g2",
+			agent: "beta",
+			source: "user",
+			status: "failed",
+			context: "Find beta",
+			currentPhase: "settling",
+			errorMessage: "beta boom",
+			usage: { turns: 1, input: 2, output: 3 },
+		});
+
+		expect(queued).toMatchObject({
+			activeCount: 2,
+			completedCount: 0,
+			failedCount: 0,
+			canceledCount: 0,
+		});
+		expect(active).toMatchObject({
+			activeCount: 2,
+			completedCount: 0,
+			failedCount: 0,
+			canceledCount: 0,
+		});
+		expect(completed).toMatchObject({
+			activeCount: 1,
+			completedCount: 1,
+			failedCount: 0,
+			canceledCount: 0,
+		});
+		expect(failed).toMatchObject({
+			activeCount: 0,
+			completedCount: 1,
+			failedCount: 1,
+			canceledCount: 0,
+		});
+		expect(queued.gremlins[0].status).toBe("queued");
+		expect(active.gremlins[0].status).toBe("active");
+		expect(completed.gremlins[0].status).toBe("completed");
+		expect(active.gremlins[1].status).toBe("queued");
+		expect(failed.gremlins[1].status).toBe("failed");
+		expect(failed.gremlins[1].usage).toEqual({ turns: 1, input: 2, output: 3 });
+		expect(Object.isFrozen(failed.gremlins[1].usage)).toBe(true);
+		expect(() => {
+			failed.gremlins[1].usage.turns = 99;
+		}).toThrow();
+		expect(queued.gremlins[1]).toBe(active.gremlins[1]);
+		expect(active.gremlins[1]).toBe(completed.gremlins[1]);
+		expect(completed.gremlins[0]).not.toBe(active.gremlins[0]);
+	});
+
 	test("preserves mixed sibling outcomes and marks aggregate error when any gremlin fails or is canceled", async () => {
 		const { runGremlinBatch } = await import("./gremlin-scheduler.ts");
 
