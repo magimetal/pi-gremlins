@@ -55,11 +55,11 @@ export async function runGremlinBatch({
 }: RunGremlinBatchOptions): Promise<GremlinBatchResult> {
 	const progressStore = createGremlinProgressStore(gremlins);
 	const childControllers = new Map<string, AbortController>();
-	const snapshotAndPublish = () => {
-		const details = progressStore.snapshot();
+	const publishDetails = (details: GremlinInvocationDetails) => {
 		onUpdate?.(details);
 		return details;
 	};
+	const snapshotAndPublish = () => publishDetails(progressStore.snapshot());
 	const abortChildren = () => {
 		for (const controller of childControllers.values()) {
 			controller.abort();
@@ -87,13 +87,11 @@ export async function runGremlinBatch({
 				gremlinId,
 				signal: childController.signal,
 				onUpdate: (patch) => {
-					progressStore.update(gremlinId, patch);
-					snapshotAndPublish();
+					publishDetails(progressStore.update(gremlinId, patch));
 				},
 			})
 				.then((result) => {
-					progressStore.complete(gremlinId, result);
-					snapshotAndPublish();
+					publishDetails(progressStore.complete(gremlinId, result));
 					return result;
 				})
 				.finally(() => {
@@ -116,7 +114,7 @@ export async function runGremlinBatch({
 			settlement.reason,
 			signal?.aborted ?? false,
 		);
-		progressStore.complete(gremlinId, result);
+		publishDetails(progressStore.complete(gremlinId, result));
 		return result;
 	});
 	const finalDetails = snapshotAndPublish();

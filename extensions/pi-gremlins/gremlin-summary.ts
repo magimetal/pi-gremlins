@@ -8,12 +8,51 @@ import {
 	formatCollapsedGremlinLine,
 } from "./gremlin-render-components.js";
 
+const HEADLINE_CACHE_LIMIT = 64;
+const headlineCache = new Map<string, string>();
+const summaryLineCache = new WeakMap<GremlinInvocationEntry, { revision: number; line: string }>();
+
+function pushCacheEntry<T>(cache: Map<string, T>, limit: number, key: string, value: T): T {
+	cache.set(key, value);
+	if (cache.size <= limit) return value;
+	const firstKey = cache.keys().next().value;
+	if (typeof firstKey === "string") cache.delete(firstKey);
+	return value;
+}
+
+function getHeadlineCacheKey(details: GremlinInvocationDetails): string {
+	return [
+		String(details.requestedCount),
+		String(details.activeCount),
+		String(details.completedCount),
+		String(details.failedCount),
+		String(details.canceledCount),
+	].join("\u001f");
+}
+
 function summarizeEntry(result: GremlinInvocationEntry): string {
-	return formatCollapsedGremlinLine(result);
+	const entryRevision = result.revision ?? 0;
+	const cached = summaryLineCache.get(result);
+	if (cached?.revision === entryRevision) return cached.line;
+	const line = formatCollapsedGremlinLine(result);
+	summaryLineCache.set(result, { revision: entryRevision, line });
+	return line;
+}
+
+function summarizeHeadline(details: GremlinInvocationDetails): string {
+	const cacheKey = getHeadlineCacheKey(details);
+	const cached = headlineCache.get(cacheKey);
+	if (cached) return cached;
+	return pushCacheEntry(
+		headlineCache,
+		HEADLINE_CACHE_LIMIT,
+		cacheKey,
+		formatBatchHeadline(details),
+	);
 }
 
 function buildSummaryLines(details: GremlinInvocationDetails): string[] {
-	const lines = [formatBatchHeadline(details)];
+	const lines = [summarizeHeadline(details)];
 	for (const gremlin of details.gremlins) {
 		lines.push(summarizeEntry(gremlin));
 	}
