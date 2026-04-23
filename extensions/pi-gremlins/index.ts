@@ -1,7 +1,11 @@
 import * as path from "node:path";
-import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import type {
+	AgentToolResult,
+	AgentToolUpdateCallback,
+} from "@mariozechner/pi-agent-core";
 import {
 	type ExtensionAPI,
+	type ExtensionContext,
 	getAgentDir,
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
@@ -14,7 +18,11 @@ import {
 	styleGremlinInvocationText,
 } from "./gremlin-rendering.js";
 import { runSingleGremlin } from "./gremlin-runner.js";
-import { PiGremlinsParams, type GremlinInvocationDetails } from "./gremlin-schema.js";
+import {
+	PiGremlinsParams,
+	type GremlinInvocationDetails,
+	type GremlinRequest,
+} from "./gremlin-schema.js";
 import { runGremlinBatch } from "./gremlin-scheduler.js";
 import { buildGremlinProgressSummary } from "./gremlin-summary.js";
 
@@ -80,17 +88,22 @@ export default function registerPiGremlins(pi: ExtensionAPI) {
 		discovery.clear();
 	});
 
-	pi.registerTool({
+	type PiGremlinsArgs = { gremlins: GremlinRequest[] };
+	const tool = {
 		name: TOOL_NAME,
 		label: BRAND_NAME,
 		description: TOOL_DESCRIPTION,
 		parameters: PiGremlinsParams,
 
-		renderCall(params) {
+		renderCall(params: PiGremlinsArgs) {
 			return new Text(renderCallText(params));
 		},
 
-		renderResult(result, options, theme) {
+		renderResult(
+			result: AgentToolResult<GremlinInvocationDetails>,
+			options: Parameters<typeof styleGremlinInvocationText>[2],
+			theme: Parameters<typeof styleGremlinInvocationText>[1],
+		) {
 			if (!result.details) {
 				const firstContent = result.content?.[0];
 				const fallbackText =
@@ -103,7 +116,13 @@ export default function registerPiGremlins(pi: ExtensionAPI) {
 			return new Text(styleGremlinInvocationText(text, theme, options));
 		},
 
-		async execute(_toolCallId, params, signal, onUpdate, ctx) {
+		async execute(
+			_toolCallId: string,
+			params: PiGremlinsArgs,
+			signal: AbortSignal | undefined,
+			onUpdate: AgentToolUpdateCallback<GremlinInvocationDetails> | undefined,
+			ctx: ExtensionContext,
+		) {
 			if (!Array.isArray(params.gremlins) || params.gremlins.length === 0) {
 				return {
 					content: [
@@ -191,5 +210,9 @@ export default function registerPiGremlins(pi: ExtensionAPI) {
 				...(batch.anyError ? { isError: true } : {}),
 			};
 		},
-	});
+	};
+
+	// FIXME: Cast kept because pi 0.69.0 + TypeBox 1.x triggers TS2589 deep-instantiation at registerTool().
+	// Keep unsoundness pinned to registration boundary. Revisit after upstream typings or TS inference improves.
+	pi.registerTool(tool as any);
 }

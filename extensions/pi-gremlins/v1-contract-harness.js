@@ -54,7 +54,7 @@ mock.module("@mariozechner/pi-ai", () => ({
 	StringEnum: (_values, options = {}) => options,
 }));
 
-mock.module("@sinclair/typebox", () => ({
+mock.module("typebox", () => ({
 	Type: {
 		Object: (value) => value,
 		String: (value = {}) => value,

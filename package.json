@@ -34,15 +34,15 @@
 		"@mariozechner/pi-ai": "*",
 		"@mariozechner/pi-coding-agent": "*",
 		"@mariozechner/pi-tui": "*",
-		"@sinclair/typebox": "*"
+		"typebox": "*"
 	},
 	"devDependencies": {
-		"@mariozechner/pi-agent-core": "0.68.0",
-		"@mariozechner/pi-ai": "0.68.0",
-		"@mariozechner/pi-coding-agent": "0.68.0",
-		"@mariozechner/pi-tui": "0.68.0",
-		"@sinclair/typebox": "0.34.49",
+		"@mariozechner/pi-agent-core": "0.69.0",
+		"@mariozechner/pi-ai": "0.69.0",
+		"@mariozechner/pi-coding-agent": "0.69.0",
+		"@mariozechner/pi-tui": "0.69.0",
 		"@types/node": "25.6.0",
+		"typebox": "1.1.31",
 		"typescript": "6.0.3"
 	}
 }

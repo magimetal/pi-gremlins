@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 export const GremlinRequestSchema = Type.Object({
 	agent: Type.String({ description: "Name of gremlin to invoke" }),

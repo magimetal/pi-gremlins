@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live progress now stays inline in tool row and expands through Pi's standard `Ctrl+O` affordance.
 - Embedded rendering now uses stable gremlin ids (`g1`, `g2`, ...), cached line computation, and inline collapsed/expanded summaries built from shared v1 render components.
 - Inline progress rendering now keeps collapsed rows compact, flattens multiline previews, prioritizes live tool activity over stale assistant prose, and adds clearer status/text/tool/result separation in tool-row output.
+- Pi SDK/runtime deps now target `0.69.0`, package/tool schemas now import `typebox` 1.x instead of `@sinclair/typebox`, and tool registration includes a localized TS inference workaround until upstream typings stop triggering `TS2589` deep-instantiation errors.
 
 ### Added
 - New v1 runtime modules under `extensions/pi-gremlins/`: schema, definition parsing, discovery cache, prompt builder, isolated session factory, runner, scheduler, progress store, summary builder, and inline renderer.
