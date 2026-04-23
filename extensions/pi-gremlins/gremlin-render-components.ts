@@ -5,12 +5,20 @@ import type {
 } from "./gremlin-schema.js";
 
 const ENTRY_CACHE_LIMIT = 256;
+const COLLAPSED_PREVIEW_LIMIT = 96;
 const collapsedLineCache = new Map<string, string>();
 const expandedLinesCache = new Map<string, string[]>();
 
 function normalizeText(value?: string): string | undefined {
 	const trimmed = value?.trim();
 	return trimmed ? trimmed : undefined;
+}
+
+function normalizePreviewText(value?: string): string | undefined {
+	const normalized = normalizeText(value)?.replace(/\s+/g, " ");
+	if (!normalized) return undefined;
+	if (normalized.length <= COLLAPSED_PREVIEW_LIMIT) return normalized;
+	return `${normalized.slice(0, COLLAPSED_PREVIEW_LIMIT - 1).trimEnd()}…`;
 }
 
 function pushCacheEntry<T>(cache: Map<string, T>, key: string, value: T): T {
@@ -94,24 +102,70 @@ export function formatGremlinIdentity(entry: GremlinInvocationEntry): string {
 	]).join(" ");
 }
 
-export function formatGremlinActivity(entry: GremlinInvocationEntry): string {
-	const phase = normalizeText(entry.currentPhase);
-	const latestText = normalizeText(entry.latestText);
-	const latestToolCall = normalizeText(entry.latestToolCall);
-	const latestToolResult = normalizeText(entry.latestToolResult);
-	const errorMessage = normalizeText(entry.errorMessage);
-	const context = normalizeText(entry.context);
+type GremlinActivityKind =
+	| "error"
+	| "tool-call"
+	| "tool-result"
+	| "text"
+	| "task"
+	| "idle";
+
+interface GremlinActivityPreview {
+	kind: GremlinActivityKind;
+	phase?: string;
+	text: string;
+}
+
+function getGremlinActivityPreview(
+	entry: GremlinInvocationEntry,
+): GremlinActivityPreview {
+	const phase = normalizePreviewText(entry.currentPhase);
+	const latestText = normalizePreviewText(entry.latestText);
+	const latestToolCall = normalizePreviewText(entry.latestToolCall);
+	const latestToolResult = normalizePreviewText(entry.latestToolResult);
+	const errorMessage = normalizePreviewText(entry.errorMessage);
+	const context = normalizePreviewText(entry.context);
+	const inToolPhase = phase?.startsWith("tool:") ?? false;
 
 	if (errorMessage && (entry.status === "failed" || entry.status === "canceled")) {
-		return errorMessage;
+		return { kind: "error", phase, text: errorMessage };
 	}
+	if (inToolPhase && latestToolResult) {
+		return { kind: "tool-result", phase, text: latestToolResult };
+	}
+	if (inToolPhase && latestToolCall) {
+		return { kind: "tool-call", phase, text: latestToolCall };
+	}
+	if (latestText && latestText !== context) {
+		return { kind: "text", phase, text: latestText };
+	}
+	if (latestToolResult) {
+		return { kind: "tool-result", phase, text: latestToolResult };
+	}
+	if (latestToolCall) {
+		return { kind: "tool-call", phase, text: latestToolCall };
+	}
+	if (context) {
+		return { kind: "task", phase, text: context };
+	}
+	return { kind: "idle", phase, text: "idle" };
+}
 
-	const detail =
-		(latestText && latestText !== context && latestText) ||
-		latestToolResult ||
-		latestToolCall ||
-		context;
-	const parts = dedupeParts([phase, detail]);
+export function formatGremlinActivity(entry: GremlinInvocationEntry): string {
+	const preview = getGremlinActivityPreview(entry);
+	const label =
+		preview.kind === "error"
+			? "error"
+			: preview.kind === "tool-call"
+				? "tool"
+				: preview.kind === "tool-result"
+					? "result"
+					: preview.kind === "text"
+						? "text"
+						: preview.kind === "task"
+							? "task"
+							: undefined;
+	const parts = dedupeParts([preview.phase, label, preview.text]);
 	return parts.join(" · ") || "idle";
 }
 

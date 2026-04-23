@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Discovery now loads user gremlins from `~/.pi/agent/agents` plus nearest project `.pi/agents` only, with project definitions overriding same-name user definitions.
 - Live progress now stays inline in tool row and expands through Pi's standard `Ctrl+O` affordance.
 - Embedded rendering now uses stable gremlin ids (`g1`, `g2`, ...), cached line computation, and inline collapsed/expanded summaries built from shared v1 render components.
+- Inline progress rendering now keeps collapsed rows compact, flattens multiline previews, prioritizes live tool activity over stale assistant prose, and adds clearer status/text/tool/result separation in tool-row output.
 
 ### Added
 - New v1 runtime modules under `extensions/pi-gremlins/`: schema, definition parsing, discovery cache, prompt builder, isolated session factory, runner, scheduler, progress store, summary builder, and inline renderer.

@@ -74,7 +74,7 @@ describe("pi-gremlins index render v1", () => {
 		const expanded = tool.renderResult(result, { expanded: true }).text;
 
 		expect(collapsed).toContain("Gremlins🧌 · requested:2 · active:1 · completed:1");
-		expect(collapsed).toContain("[Active] · g1 researcher [project] · tool:read · Scanning route handlers");
+		expect(collapsed).toContain("[Active] · g1 researcher [project] · tool:read · text · Scanning route handlers");
 		expect(collapsed).toContain("Ctrl+O expands inline detail.");
 		expect(collapsed).not.toContain("/gremlins:view");
 		expect(collapsed).not.toContain("popup");

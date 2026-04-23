@@ -9,7 +9,10 @@ import {
 	createGremlinDiscoveryCache,
 	resolveGremlinByName,
 } from "./gremlin-discovery.js";
-import { renderGremlinInvocationText } from "./gremlin-rendering.js";
+import {
+	renderGremlinInvocationText,
+	styleGremlinInvocationText,
+} from "./gremlin-rendering.js";
 import { runSingleGremlin } from "./gremlin-runner.js";
 import { PiGremlinsParams, type GremlinInvocationDetails } from "./gremlin-schema.js";
 import { runGremlinBatch } from "./gremlin-scheduler.js";
@@ -87,18 +90,17 @@ export default function registerPiGremlins(pi: ExtensionAPI) {
 			return new Text(renderCallText(params));
 		},
 
-		renderResult(result, options) {
+		renderResult(result, options, theme) {
 			if (!result.details) {
 				const firstContent = result.content?.[0];
 				const fallbackText =
 					firstContent && "text" in firstContent ? firstContent.text : "";
 				return new Text(fallbackText);
 			}
-			return new Text(
-				renderGremlinInvocationText(getInvocationDetails(result), {
-					expanded: options.expanded,
-				}),
-			);
+			const text = renderGremlinInvocationText(getInvocationDetails(result), {
+				expanded: options.expanded,
+			});
+			return new Text(styleGremlinInvocationText(text, theme, options));
 		},
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {

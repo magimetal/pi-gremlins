@@ -135,6 +135,46 @@ describe("pi-gremlins index execute v1", () => {
 		expect(result.content[0].text).toContain("[Completed] · g1 researcher [user]");
 	});
 
+	test("streaming update text switches to live tool activity after early assistant text", async () => {
+		const workspace = createWorkspace();
+		setMockAgentDir(workspace.userRoot);
+		const { tool } = createExtensionHarness();
+		writeGremlinFile(workspace.userAgentsDir, "researcher.md", "researcher", "model: openai/gpt-5-mini\n");
+
+		setCreateAgentSessionImpl(async () => ({
+			session: createMockSession([
+				{ type: "agent_start" },
+				{ type: "turn_start" },
+				{
+					type: "message_update",
+					assistantMessageEvent: { type: "text_delta", delta: "Planning next search step" },
+				},
+				{
+					type: "tool_execution_start",
+					toolName: "read",
+					args: { path: "apps/web/src/main.ts" },
+				},
+			]),
+			extensionsResult: {},
+		}));
+
+		const updates = [];
+		const ctx = createExecutionContext(workspace.repoRoot);
+		await tool.execute(
+			"run-known-gremlin-tool-visibility",
+			{ gremlins: [{ agent: "researcher", context: "Find auth flow" }] },
+			undefined,
+			(update) => updates.push(update),
+			ctx,
+		);
+
+		const toolPhaseUpdate = updates.find(
+			(update) => update.details.gremlins[0].currentPhase === "tool:read",
+		);
+		expect(toolPhaseUpdate).toBeDefined();
+		expect(toolPhaseUpdate.content[0].text).toContain("read apps/web/src/main.ts");
+	});
+
 	test("returns explicit failed result for unknown gremlin names", async () => {
 		const workspace = createWorkspace();
 		setMockAgentDir(workspace.userRoot);

@@ -43,8 +43,8 @@ describe("gremlin rendering v1 contract", () => {
 		);
 
 		expect(text).toContain("Gremlins🧌 · requested:2 · active:1");
-		expect(text).toContain("[Active] · g1 researcher [project] · tool:read · Scanning");
-		expect(text).toContain("[Queued] · g2 reviewer [user] · prompting · Review auth flow");
+		expect(text).toContain("[Active] · g1 researcher [project] · tool:read · text · Scanning");
+		expect(text).toContain("[Queued] · g2 reviewer [user] · prompting · task · Review auth flow");
 		expect(text).toContain("Ctrl+O expands inline detail.");
 		expect(text).not.toContain("/gremlins:view");
 		expect(text).not.toContain("/gremlins:steer");
@@ -108,6 +108,74 @@ describe("gremlin rendering v1 contract", () => {
 		for (const line of lines) {
 			expect(line.length).toBeLessThanOrEqual(42);
 		}
+	});
+
+	test("keeps collapsed preview to one visible line per gremlin even when tool output is multiline", async () => {
+		const { renderGremlinInvocationText } = await import(
+			"./gremlin-rendering.ts"
+		);
+
+		const text = renderGremlinInvocationText(
+			{
+				requestedCount: 1,
+				activeCount: 1,
+				completedCount: 0,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: [
+					{
+						gremlinId: "g1",
+						agent: "researcher",
+						source: "project",
+						status: "active",
+						currentPhase: "tool:read",
+						latestToolResult: "line one\nline two\nline three",
+						context: "Find auth flow",
+						revision: 9,
+					},
+				],
+				revision: 9,
+			},
+			{ expanded: false, width: 120 },
+		);
+
+		const lines = text.split("\n");
+		expect(lines).toHaveLength(3);
+		expect(lines[1]).toContain("line one");
+		expect(lines[2]).toBe("Ctrl+O expands inline detail.");
+	});
+
+	test("surfaces live tool call in collapsed preview after assistant already emitted text", async () => {
+		const { renderGremlinInvocationText } = await import(
+			"./gremlin-rendering.ts"
+		);
+
+		const text = renderGremlinInvocationText(
+			{
+				requestedCount: 1,
+				activeCount: 1,
+				completedCount: 0,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: [
+					{
+						gremlinId: "g1",
+						agent: "researcher",
+						source: "project",
+						status: "active",
+						currentPhase: "tool:read",
+						latestText: "Planning next search step",
+						latestToolCall: "read apps/web/src/main.ts",
+						context: "Find auth flow",
+						revision: 10,
+					},
+				],
+				revision: 10,
+			},
+			{ expanded: false, width: 120 },
+		);
+
+		expect(text).toContain("read apps/web/src/main.ts");
 	});
 
 	test("renders expanded inline detail with task model usage and no popup chrome", async () => {

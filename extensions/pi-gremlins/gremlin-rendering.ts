@@ -5,6 +5,11 @@ import {
 	formatExpandedGremlinLines,
 } from "./gremlin-render-components.js";
 
+interface GremlinRenderTheme {
+	fg(color: string, text: string): string;
+	bold(text: string): string;
+}
+
 export interface RenderGremlinInvocationOptions {
 	expanded?: boolean;
 	width?: number;
@@ -87,6 +92,56 @@ function buildExpandedLines(details: GremlinInvocationDetails): string[] {
 		lines.push(...formatExpandedGremlinLines(entry));
 	}
 	return lines;
+}
+
+function getStatusColor(line: string): string | undefined {
+	if (line.startsWith("[Completed]")) return "success";
+	if (line.startsWith("[Failed]")) return "error";
+	if (line.startsWith("[Canceled]")) return "warning";
+	if (line.startsWith("[Active]")) return "accent";
+	if (line.startsWith("[Starting]")) return "accent";
+	if (line.startsWith("[Queued]")) return "muted";
+	return undefined;
+}
+
+function styleLine(
+	line: string,
+	theme: GremlinRenderTheme,
+	options: RenderGremlinInvocationOptions,
+): string {
+	if (!line) return line;
+	if (line.startsWith("Gremlins🧌")) return theme.fg("accent", theme.bold(line));
+	if (line === "Ctrl+O expands inline detail.") return theme.fg("dim", line);
+	if (line === "No gremlins requested.") return theme.fg("muted", line);
+	if (line.startsWith("task · ")) return theme.fg("text", line);
+	if (line.startsWith("tool call · ")) return theme.fg("accent", line);
+	if (line.startsWith("tool result · ")) return theme.fg("toolOutput", line);
+	if (line.startsWith("latest · ")) return theme.fg("text", line);
+	if (line.startsWith("error · ")) return theme.fg("error", line);
+	if (line.startsWith("usage · ")) return theme.fg("dim", line);
+	if (
+		line.startsWith("cwd · ") ||
+		line.startsWith("model · ") ||
+		line.startsWith("thinking · ") ||
+		line.startsWith("phase · ")
+	) {
+		return theme.fg(options.expanded ? "muted" : "dim", line);
+	}
+	const statusColor = getStatusColor(line);
+	if (statusColor) return theme.fg(statusColor, line);
+	return line;
+}
+
+export function styleGremlinInvocationText(
+	text: string,
+	theme?: GremlinRenderTheme,
+	options: RenderGremlinInvocationOptions = {},
+): string {
+	if (!theme) return text;
+	return text
+		.split("\n")
+		.map((line) => styleLine(line, theme, options))
+		.join("\n");
 }
 
 export function renderGremlinInvocationText(
