@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Gremlin runner usage now reports current context-window token usage from Pi SDK session context instead of summing cumulative per-turn `totalTokens`, preventing inflated `contextTokens` in multi-turn runs.
 
 ### Added
+- Discovery report for issue #31 documenting why expanded inline progress auto-scroll cannot be fixed extension-only and recommending a Pi runtime sticky-bottom/preserve-viewport policy.
 - New v1 runtime modules under `extensions/pi-gremlins/`: schema, definition parsing, discovery cache, prompt builder, isolated session factory, runner, scheduler, progress store, summary builder, and inline renderer.
 - Focused v1 contract coverage for schema, discovery, session isolation, runner projection, scheduler cancellation, rendering, and entry-point execution.
 - `extensions/pi-gremlins/AGENTS_CUSTOM.md` override documenting current v1-only runtime boundaries until generated agent docs are refreshed.
