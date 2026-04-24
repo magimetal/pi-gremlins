@@ -4,8 +4,8 @@
 
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-04-23T01:40:52Z
-**Commit:** 1437df2
+**Generated:** 2026-04-24T07:52:56Z
+**Commit:** 7ca5d69
 **Branch:** main
 
 ## OVERVIEW
@@ -67,5 +67,6 @@ npm run check
 ## NOTES
 - Ignore `.pi-lens/` cache noise unless changing local analysis artifacts.
 - Hidden `.pi/agents` directories are runtime inputs, not package source.
+- `package-lock.json` can dominate line-count scans; source concentration is still `extensions/pi-gremlins/`.
 - Current architecture center: `extensions/pi-gremlins/`, ADR-0002, PRD-0002.
 - If task touches runtime behavior, start in `extensions/pi-gremlins/` before touching docs.

@@ -1,8 +1,8 @@
 <!--THIS IS A GENERATED FILE - DO NOT MODIFY DIRECTLY. FOR MANUAL ADJUSTMENTS, CREATE OR UPDATE AGENTS_CUSTOM.md-->
 # PI-GREMLINS EXTENSION KNOWLEDGE BASE
 
-**Generated:** 2026-04-23T01:40:52Z
-**Commit:** 1437df2
+**Generated:** 2026-04-24T07:52:56Z
+**Commit:** 7ca5d69
 **Branch:** main
 
 ## OVERVIEW
@@ -31,6 +31,7 @@ Single-package Pi extension. Owns one v1-only tool at `pi-gremlins` for isolated
 - Do not reintroduce chain mode, popup viewer, steering command, package discovery, or scope toggles without new PRD/ADR coverage.
 - Do not spawn nested Pi CLI subprocesses or write temp prompt files for normal runtime path.
 - Do not leak parent extensions, skills, prompts, themes, AGENTS files, or conversation history into child sessions.
+- Keep `registerTool(tool as any)` pinned to `index.ts` registration boundary until Pi 0.69.0 TypeBox typing issue is gone.
 - Do not key live progress by agent name alone; repeated names require stable gremlin ids.
 - Do not change tool schema or discovery precedence without updating README, changelog, and v1 tests together.
 
