@@ -29,25 +29,56 @@ function pushCacheEntry<T>(cache: Map<string, T>, key: string, value: T): T {
 	return value;
 }
 
-function createEntryCacheKey(prefix: string, entry: GremlinInvocationEntry): string {
+function hashString(value: string): string {
+	let hash = 2166136261;
+	for (let index = 0; index < value.length; index++) {
+		hash ^= value.charCodeAt(index);
+		hash = Math.imul(hash, 16777619);
+	}
+	return (hash >>> 0).toString(36);
+}
+
+function createTextCacheToken(value?: string): string {
+	if (!value) return "";
+	return `${value.length}:${hashString(value)}`;
+}
+
+function createUsageCacheToken(usage?: GremlinUsage): string {
+	if (!usage) return "";
+	return [
+		usage.turns,
+		usage.input,
+		usage.output,
+		usage.cacheRead ?? "",
+		usage.cacheWrite ?? "",
+		usage.contextTokens ?? "",
+		usage.cost ?? "",
+	].join(":");
+}
+
+export function createEntryCacheKey(
+	prefix: string,
+	entry: GremlinInvocationEntry,
+): string {
 	return [
 		prefix,
-		entry.gremlinId ?? "",
+		createTextCacheToken(entry.gremlinId),
 		String(entry.revision ?? ""),
-		entry.agent,
+		createTextCacheToken(entry.agent),
 		entry.source,
 		entry.status,
-		entry.context,
-		entry.cwd ?? "",
-		entry.model ?? "",
-		entry.thinking ?? "",
-		entry.currentPhase ?? "",
-		entry.latestText ?? "",
-		entry.latestToolCall ?? "",
-		entry.latestToolResult ?? "",
-		entry.errorMessage ?? "",
+		createTextCacheToken(entry.context),
+		createTextCacheToken(entry.cwd),
+		createTextCacheToken(entry.model),
+		createTextCacheToken(entry.thinking),
+		createTextCacheToken(entry.currentPhase),
+		createTextCacheToken(entry.latestText),
+		createTextCacheToken(entry.latestToolCall),
+		createTextCacheToken(entry.latestToolResult),
+		createTextCacheToken(entry.errorMessage),
 		entry.startedAt ? String(entry.startedAt) : "",
 		entry.finishedAt ? String(entry.finishedAt) : "",
+		createUsageCacheToken(entry.usage),
 	].join("\u001f");
 }
 

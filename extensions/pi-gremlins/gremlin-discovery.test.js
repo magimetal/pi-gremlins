@@ -3,6 +3,23 @@ import * as fs from "node:fs";
 
 import { createWorkspace, writeAgentFile } from "./test-helpers.js";
 
+function createCountingFileSystem() {
+	const calls = { readdir: 0, stat: 0 };
+	return {
+		calls,
+		fileSystem: {
+			async readdir(dir) {
+				calls.readdir++;
+				return fs.promises.readdir(dir, { withFileTypes: true });
+			},
+			async stat(candidatePath) {
+				calls.stat++;
+				return fs.promises.stat(candidatePath);
+			},
+		},
+	};
+}
+
 let workspaceRoot = null;
 
 afterEach(() => {
@@ -107,6 +124,43 @@ describe("gremlin discovery v1 contract", () => {
 			"researcher",
 			"reviewer",
 		]);
+	});
+
+	test("reuses cached directory listings while detecting markdown file updates", async () => {
+		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
+		const researcherPath = `${workspace.projectAgentsDir}/researcher.md`;
+		fs.writeFileSync(
+			researcherPath,
+			"---\nname: researcher\ndescription: first\n---\nfirst prompt body",
+			"utf-8",
+		);
+		const { calls, fileSystem } = createCountingFileSystem();
+		const discovery = createGremlinDiscoveryCache({
+			userAgentsDir: workspace.userAgentsDir,
+			fileSystem,
+		});
+
+		const first = await discovery.get(workspace.repoRoot);
+		const readdirAfterFirst = calls.readdir;
+		const second = await discovery.get(workspace.repoRoot);
+
+		expect(second).toBe(first);
+		expect(calls.readdir).toBe(readdirAfterFirst);
+
+		fs.writeFileSync(
+			researcherPath,
+			"---\nname: researcher\ndescription: second\n---\nsecond prompt body",
+			"utf-8",
+		);
+		fs.utimesSync(researcherPath, new Date(), new Date(Date.now() + 1000));
+		const third = await discovery.get(workspace.repoRoot);
+
+		expect(third).not.toBe(first);
+		expect(third.fingerprint).not.toBe(first.fingerprint);
+		expect(third.gremlins[0].rawMarkdown).toContain("second prompt body");
 	});
 
 	test("never loads package gremlins or any scope-toggle surface in v1 discovery", async () => {

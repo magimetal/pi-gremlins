@@ -1,5 +1,6 @@
 import type { GremlinInvocationDetails } from "./gremlin-schema.js";
 import {
+	createEntryCacheKey,
 	formatBatchHeadline,
 	formatCollapsedGremlinLine,
 	formatExpandedGremlinLines,
@@ -16,7 +17,9 @@ export interface RenderGremlinInvocationOptions {
 }
 
 const RENDER_CACHE_LIMIT = 128;
+const RENDER_SEGMENT_CACHE_LIMIT = 256;
 const renderCache = new Map<string, string>();
+const renderSegmentCache = new Map<string, string>();
 
 function clampLine(line: string, width?: number): string {
 	if (!width || width <= 0 || line.length <= width) return line;
@@ -24,30 +27,36 @@ function clampLine(line: string, width?: number): string {
 	return `${line.slice(0, Math.max(0, width - 1))}…`;
 }
 
-function pushRenderCache(key: string, value: string): string {
-	renderCache.set(key, value);
-	if (renderCache.size <= RENDER_CACHE_LIMIT) return value;
-	const firstKey = renderCache.keys().next().value;
-	if (typeof firstKey === "string") renderCache.delete(firstKey);
+function pushLimitedCache(
+	cache: Map<string, string>,
+	limit: number,
+	key: string,
+	value: string,
+): string {
+	cache.set(key, value);
+	if (cache.size <= limit) return value;
+	const firstKey = cache.keys().next().value;
+	if (typeof firstKey === "string") cache.delete(firstKey);
 	return value;
+}
+
+function pushRenderCache(key: string, value: string): string {
+	return pushLimitedCache(renderCache, RENDER_CACHE_LIMIT, key, value);
+}
+
+function pushRenderSegmentCache(key: string, value: string): string {
+	return pushLimitedCache(
+		renderSegmentCache,
+		RENDER_SEGMENT_CACHE_LIMIT,
+		key,
+		value,
+	);
 }
 
 function getDetailsRevisionKey(details: GremlinInvocationDetails): string {
 	if (typeof details.revision === "number") return `details:${details.revision}`;
 	return details.gremlins
-		.map((entry, index) => {
-			const fallback = [
-				entry.gremlinId ?? `g${index + 1}`,
-				String(entry.revision ?? ""),
-				entry.status,
-				entry.currentPhase ?? "",
-				entry.latestText ?? "",
-				entry.latestToolCall ?? "",
-				entry.latestToolResult ?? "",
-				entry.errorMessage ?? "",
-			].join(":");
-			return fallback;
-		})
+		.map((entry) => createEntryCacheKey("details-entry", entry))
 		.join("|");
 }
 
@@ -67,31 +76,78 @@ function createRenderCacheKey(
 	].join("\u001f");
 }
 
-function buildCollapsedLines(details: GremlinInvocationDetails): string[] {
-	const lines = [formatBatchHeadline(details)];
-	if (details.gremlins.length === 0) {
-		lines.push("No gremlins requested.");
-	} else {
-		for (const entry of details.gremlins) {
-			lines.push(formatCollapsedGremlinLine(entry));
-		}
-	}
-	lines.push("Ctrl+O expands inline detail.");
-	return lines;
+function renderLines(lines: string[], width?: number): string {
+	return lines
+		.filter((line, index, array) => !(line === "" && array[index - 1] === ""))
+		.map((line) => clampLine(line, width))
+		.join("\n");
 }
 
-function buildExpandedLines(details: GremlinInvocationDetails): string[] {
-	const lines = [formatBatchHeadline(details)];
+function getStaticRenderSegment(line: string, width?: number): string {
+	const cacheKey = ["static", String(width ?? 0), line].join("\u001f");
+	const cached = renderSegmentCache.get(cacheKey);
+	if (cached) return cached;
+	return pushRenderSegmentCache(cacheKey, renderLines([line], width));
+}
+
+function getCollapsedEntrySegment(
+	entry: GremlinInvocationDetails["gremlins"][number],
+	width?: number,
+): string {
+	const cacheKey = [
+		"collapsed-entry",
+		String(width ?? 0),
+		createEntryCacheKey("collapsed-entry", entry),
+	].join("\u001f");
+	const cached = renderSegmentCache.get(cacheKey);
+	if (cached) return cached;
+	return pushRenderSegmentCache(
+		cacheKey,
+		renderLines([formatCollapsedGremlinLine(entry)], width),
+	);
+}
+
+function getExpandedEntrySegment(
+	entry: GremlinInvocationDetails["gremlins"][number],
+	width?: number,
+): string {
+	const cacheKey = [
+		"expanded-entry",
+		String(width ?? 0),
+		createEntryCacheKey("expanded-entry", entry),
+	].join("\u001f");
+	const cached = renderSegmentCache.get(cacheKey);
+	if (cached) return cached;
+	return pushRenderSegmentCache(
+		cacheKey,
+		renderLines(formatExpandedGremlinLines(entry), width),
+	);
+}
+
+function buildCollapsedText(details: GremlinInvocationDetails, width?: number): string {
+	const segments = [getStaticRenderSegment(formatBatchHeadline(details), width)];
 	if (details.gremlins.length === 0) {
-		lines.push("No gremlins requested.");
-		return lines;
+		segments.push(getStaticRenderSegment("No gremlins requested.", width));
+	} else {
+		for (const entry of details.gremlins) {
+			segments.push(getCollapsedEntrySegment(entry, width));
+		}
+	}
+	segments.push(getStaticRenderSegment("Ctrl+O expands inline detail.", width));
+	return segments.join("\n");
+}
+
+function buildExpandedText(details: GremlinInvocationDetails, width?: number): string {
+	const segments = [getStaticRenderSegment(formatBatchHeadline(details), width)];
+	if (details.gremlins.length === 0) {
+		segments.push(getStaticRenderSegment("No gremlins requested.", width));
+		return segments.join("\n");
 	}
 
-	for (const [index, entry] of details.gremlins.entries()) {
-		if (index > 0) lines.push("");
-		lines.push(...formatExpandedGremlinLines(entry));
+	for (const entry of details.gremlins) {
+		segments.push(getExpandedEntrySegment(entry, width));
 	}
-	return lines;
+	return segments.join("\n\n");
 }
 
 function getStatusColor(line: string): string | undefined {
@@ -152,12 +208,8 @@ export function renderGremlinInvocationText(
 	const cached = renderCache.get(cacheKey);
 	if (cached) return cached;
 
-	const lines = options.expanded
-		? buildExpandedLines(details)
-		: buildCollapsedLines(details);
-	const text = lines
-		.filter((line, index, array) => !(line === "" && array[index - 1] === ""))
-		.map((line) => clampLine(line, options.width))
-		.join("\n");
+	const text = options.expanded
+		? buildExpandedText(details, options.width)
+		: buildCollapsedText(details, options.width);
 	return pushRenderCache(cacheKey, text);
 }
