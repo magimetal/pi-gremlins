@@ -21,11 +21,29 @@ export interface GremlinDiscoveryCache {
 interface DirectoryFingerprint {
 	dir: string | null;
 	fingerprint: string;
+	files: string[];
+}
+
+interface DirectorySnapshot {
+	dir: string;
+	dirSignature: string;
+	files: string[];
+}
+
+export interface GremlinDiscoveryFileSystem {
+	readdir(dir: string): Promise<fs.Dirent[]>;
+	stat(candidatePath: string): Promise<fs.Stats>;
 }
 
 export interface GremlinDiscoveryOptions {
 	userAgentsDir?: string;
+	fileSystem?: GremlinDiscoveryFileSystem;
 }
+
+const nodeFileSystem: GremlinDiscoveryFileSystem = {
+	readdir: (dir) => readdir(dir, { withFileTypes: true }),
+	stat,
+};
 
 export function getUserGremlinsDir(options: GremlinDiscoveryOptions = {}): string {
 	return options.userAgentsDir ?? path.join(getAgentDir(), "agents");
@@ -50,9 +68,12 @@ export function findNearestProjectAgentsDir(cwd: string): string | null {
 	}
 }
 
-async function listMarkdownFiles(dir: string): Promise<string[]> {
+async function listMarkdownFiles(
+	dir: string,
+	fileSystem: GremlinDiscoveryFileSystem,
+): Promise<string[]> {
 	try {
-		const entries = await readdir(dir, { withFileTypes: true });
+		const entries = await fileSystem.readdir(dir);
 		return entries
 			.filter((entry) => entry.name.endsWith(".md"))
 			.filter((entry) => entry.isFile() || entry.isSymbolicLink())
@@ -63,35 +84,67 @@ async function listMarkdownFiles(dir: string): Promise<string[]> {
 	}
 }
 
-async function fingerprintDirectory(
-	dir: string | null,
-): Promise<DirectoryFingerprint> {
-	if (!dir) {
-		return { dir: null, fingerprint: "none" };
-	}
-	const files = await listMarkdownFiles(dir);
-	const parts = await Promise.all(
+function createDirectorySignature(dirStat: fs.Stats): string {
+	return [dirStat.mtimeMs, dirStat.ctimeMs, dirStat.size].join(":");
+}
+
+async function fingerprintKnownFiles(
+	files: string[],
+	fileSystem: GremlinDiscoveryFileSystem,
+): Promise<string[]> {
+	return Promise.all(
 		files.map(async (filePath) => {
 			try {
-				const fileStat = await stat(filePath);
+				const fileStat = await fileSystem.stat(filePath);
 				return `${path.basename(filePath)}:${fileStat.mtimeMs}`;
 			} catch {
 				return `${path.basename(filePath)}:missing`;
 			}
 		}),
 	);
-	return {
-		dir,
-		fingerprint: `${dir}|${parts.join(",")}`,
-	};
 }
 
-async function loadGremlinsFromDir(
+async function fingerprintDirectory(
 	dir: string | null,
+	snapshots: Map<string, DirectorySnapshot>,
+	fileSystem: GremlinDiscoveryFileSystem,
+): Promise<DirectoryFingerprint> {
+	if (!dir) {
+		return { dir: null, fingerprint: "none", files: [] };
+	}
+
+	let dirStat: fs.Stats;
+	try {
+		dirStat = await fileSystem.stat(dir);
+		if (!dirStat.isDirectory()) throw new Error("not a directory");
+	} catch {
+		snapshots.delete(dir);
+		return { dir, fingerprint: `${dir}|missing`, files: [] };
+	}
+
+	const dirSignature = createDirectorySignature(dirStat);
+	const cached = snapshots.get(dir);
+	if (cached && cached.dirSignature === dirSignature) {
+		const parts = await fingerprintKnownFiles(cached.files, fileSystem);
+		const fingerprint = `${dir}|${parts.join(",")}`;
+		return { dir, fingerprint, files: cached.files };
+	}
+
+	const files = await listMarkdownFiles(dir, fileSystem);
+	const parts = await fingerprintKnownFiles(files, fileSystem);
+	const fingerprint = `${dir}|${parts.join(",")}`;
+	snapshots.set(dir, {
+		dir,
+		dirSignature,
+		files,
+	});
+	return { dir, fingerprint, files };
+}
+
+async function loadGremlinsFromFiles(
+	files: string[],
 	source: "user" | "project",
 ): Promise<GremlinDefinition[]> {
-	if (!dir) return [];
-	const files = await listMarkdownFiles(dir);
 	const definitions = await Promise.all(
 		files.map((filePath) => loadGremlinDefinition(filePath, source)),
 	);
@@ -127,6 +180,8 @@ export function resolveGremlinByName(
 export function createGremlinDiscoveryCache(
 	options: GremlinDiscoveryOptions = {},
 ): GremlinDiscoveryCache {
+	const fileSystem = options.fileSystem ?? nodeFileSystem;
+	const directorySnapshots = new Map<string, DirectorySnapshot>();
 	let cachedResult: GremlinDiscoveryResult | null = null;
 	let cachedFingerprint: string | null = null;
 	let cachedProjectAgentsDir: string | null = null;
@@ -136,8 +191,16 @@ export function createGremlinDiscoveryCache(
 		async get(cwd: string) {
 			const userAgentsDir = getUserGremlinsDir(options);
 			const projectAgentsDir = findNearestProjectAgentsDir(cwd);
-			const userFingerprint = await fingerprintDirectory(userAgentsDir);
-			const projectFingerprint = await fingerprintDirectory(projectAgentsDir);
+			const userFingerprint = await fingerprintDirectory(
+				userAgentsDir,
+				directorySnapshots,
+				fileSystem,
+			);
+			const projectFingerprint = await fingerprintDirectory(
+				projectAgentsDir,
+				directorySnapshots,
+				fileSystem,
+			);
 			const fingerprint = [userFingerprint.fingerprint, projectFingerprint.fingerprint].join(
 				"::",
 			);
@@ -150,9 +213,12 @@ export function createGremlinDiscoveryCache(
 				return cachedResult;
 			}
 
-			const userGremlins = await loadGremlinsFromDir(userAgentsDir, "user");
-			const projectGremlins = await loadGremlinsFromDir(
-				projectAgentsDir,
+			const userGremlins = await loadGremlinsFromFiles(
+				userFingerprint.files,
+				"user",
+			);
+			const projectGremlins = await loadGremlinsFromFiles(
+				projectFingerprint.files,
 				"project",
 			);
 			cachedResult = {
@@ -166,6 +232,7 @@ export function createGremlinDiscoveryCache(
 			return cachedResult;
 		},
 		clear() {
+			directorySnapshots.clear();
 			cachedResult = null;
 			cachedFingerprint = null;
 			cachedProjectAgentsDir = null;

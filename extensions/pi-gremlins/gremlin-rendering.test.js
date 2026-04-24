@@ -229,6 +229,28 @@ describe("gremlin rendering v1 contract", () => {
 		expect(text).not.toContain("popup");
 	});
 
+	test("uses compact entry cache keys without embedding mutable text payloads", async () => {
+		const { createEntryCacheKey } = await import("./gremlin-render-components.ts");
+		const payload = "large mutable tool output ".repeat(400);
+
+		const key = createEntryCacheKey("collapsed", {
+			gremlinId: "g1",
+			agent: "researcher",
+			source: "project",
+			status: "active",
+			currentPhase: "tool:read",
+			latestText: payload,
+			latestToolCall: payload,
+			latestToolResult: payload,
+			context: "Find auth flow",
+			revision: 12,
+		});
+
+		expect(key).not.toContain(payload);
+		expect(key).not.toContain("large mutable tool output");
+		expect(key.length).toBeLessThan(256);
+	});
+
 	test("reuses cached line computation for identical revision and options", async () => {
 		const renderComponents = await import("./gremlin-render-components.ts");
 		const { renderGremlinInvocationText } = await import(
@@ -266,5 +288,74 @@ describe("gremlin rendering v1 contract", () => {
 		const renderA = renderGremlinInvocationText(details, { expanded: false, width: 90 });
 		const renderB = renderGremlinInvocationText(details, { expanded: false, width: 90 });
 		expect(renderA).toBe(renderB);
+	});
+
+	test("updates changed entry output while preserving unchanged entry text across revisions", async () => {
+		const { renderGremlinInvocationText } = await import(
+			"./gremlin-rendering.ts"
+		);
+		const unchangedEntry = {
+			gremlinId: "g2",
+			agent: "reviewer",
+			source: "user",
+			status: "active",
+			currentPhase: "settling",
+			latestText: "Review unchanged",
+			context: "Review auth flow",
+			revision: 4,
+		};
+		const before = renderGremlinInvocationText(
+			{
+				requestedCount: 2,
+				activeCount: 2,
+				completedCount: 0,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: [
+					{
+						gremlinId: "g1",
+						agent: "researcher",
+						source: "project",
+						status: "active",
+						currentPhase: "tool:read",
+						latestText: "First result",
+						context: "Find auth flow",
+						revision: 1,
+					},
+					unchangedEntry,
+				],
+				revision: 4,
+			},
+			{ expanded: false, width: 120 },
+		);
+		const after = renderGremlinInvocationText(
+			{
+				requestedCount: 2,
+				activeCount: 2,
+				completedCount: 0,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: [
+					{
+						gremlinId: "g1",
+						agent: "researcher",
+						source: "project",
+						status: "active",
+						currentPhase: "tool:read",
+						latestText: "Second result",
+						context: "Find auth flow",
+						revision: 2,
+					},
+					unchangedEntry,
+				],
+				revision: 5,
+			},
+			{ expanded: false, width: 120 },
+		);
+
+		expect(before).toContain("First result");
+		expect(after).toContain("Second result");
+		expect(after).not.toContain("First result");
+		expect(after).toContain("Review unchanged");
 	});
 });
