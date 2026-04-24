@@ -2,7 +2,7 @@ import type { GremlinInvocationDetails } from "./gremlin-schema.js";
 import {
 	createEntryCacheKey,
 	formatBatchHeadline,
-	formatCollapsedGremlinLine,
+	formatCollapsedGremlinLines,
 	formatExpandedGremlinLines,
 } from "./gremlin-render-components.js";
 
@@ -103,7 +103,7 @@ function getCollapsedEntrySegment(
 	if (cached) return cached;
 	return pushRenderSegmentCache(
 		cacheKey,
-		renderLines([formatCollapsedGremlinLine(entry)], width),
+		renderLines(formatCollapsedGremlinLines(entry), width),
 	);
 }
 
@@ -174,6 +174,7 @@ function styleLine(
 	if (line.startsWith("tool result · ")) return theme.fg("toolOutput", line);
 	if (line.startsWith("latest · ")) return theme.fg("text", line);
 	if (line.startsWith("error · ")) return theme.fg("error", line);
+	if (line.startsWith("idle · ")) return theme.fg("dim", line);
 	if (line.startsWith("usage · ")) return theme.fg("dim", line);
 	if (
 		line.startsWith("cwd · ") ||

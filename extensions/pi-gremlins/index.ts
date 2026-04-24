@@ -58,7 +58,7 @@ function getInvocationDetails(result: AgentToolResult<any>) {
 function renderCallText(params: { gremlins?: Array<{ agent?: string }> }): string {
 	const names = (params.gremlins ?? []).map((gremlin) => gremlin.agent).filter(Boolean);
 	if (names.length === 0) return BRAND_NAME;
-	return `${BRAND_NAME} ${names.join(", ")}`;
+	return `🕯️🔥🕯️ Summoning the gremlins: ${names.join(", ")}`;
 }
 
 function resolveGremlinCwd(
@@ -99,6 +99,8 @@ function createFailedGremlinResult(
 		cwd: request.cwd,
 		currentPhase: "settling",
 		errorMessage,
+		activities: [{ kind: "error" as const, phase: "settling", text: errorMessage }],
+		usage: { turns: 0, input: 0, output: 0 },
 		finishedAt: Date.now(),
 	};
 }

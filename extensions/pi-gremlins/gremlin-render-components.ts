@@ -1,4 +1,6 @@
 import type {
+	GremlinActivity,
+	GremlinActivityKind,
 	GremlinInvocationDetails,
 	GremlinInvocationEntry,
 	GremlinUsage,
@@ -6,7 +8,9 @@ import type {
 
 const ENTRY_CACHE_LIMIT = 256;
 const COLLAPSED_PREVIEW_LIMIT = 96;
-const collapsedLineCache = new Map<string, string>();
+const COLLAPSED_CONTEXT_LINE_LIMIT = 3;
+const COLLAPSED_ACTIVITY_LINE_LIMIT = 3;
+const collapsedLinesCache = new Map<string, string[]>();
 const expandedLinesCache = new Map<string, string[]>();
 
 function normalizeText(value?: string): string | undefined {
@@ -56,6 +60,20 @@ function createUsageCacheToken(usage?: GremlinUsage): string {
 	].join(":");
 }
 
+function createActivityCacheToken(activity: GremlinActivity): string {
+	return [
+		activity.kind,
+		createTextCacheToken(activity.phase),
+		createTextCacheToken(activity.text),
+		activity.sequence ?? "",
+		activity.timestamp ?? "",
+	].join(":");
+}
+
+function createActivitiesCacheToken(activities?: GremlinActivity[]): string {
+	return activities?.map(createActivityCacheToken).join("\u001e") ?? "";
+}
+
 export function createEntryCacheKey(
 	prefix: string,
 	entry: GremlinInvocationEntry,
@@ -76,6 +94,7 @@ export function createEntryCacheKey(
 		createTextCacheToken(entry.latestToolCall),
 		createTextCacheToken(entry.latestToolResult),
 		createTextCacheToken(entry.errorMessage),
+		createActivitiesCacheToken(entry.activities),
 		entry.startedAt ? String(entry.startedAt) : "",
 		entry.finishedAt ? String(entry.finishedAt) : "",
 		createUsageCacheToken(entry.usage),
@@ -133,71 +152,96 @@ export function formatGremlinIdentity(entry: GremlinInvocationEntry): string {
 	]).join(" ");
 }
 
-type GremlinActivityKind =
-	| "error"
-	| "tool-call"
-	| "tool-result"
-	| "text"
-	| "task"
-	| "idle";
-
 interface GremlinActivityPreview {
 	kind: GremlinActivityKind;
 	phase?: string;
 	text: string;
 }
 
-function getGremlinActivityPreview(
+function normalizeActivityPreview(
+	activity: GremlinActivity,
+): GremlinActivityPreview | undefined {
+	const text = normalizePreviewText(activity.text);
+	if (!text) return undefined;
+	return {
+		kind: activity.kind,
+		phase: normalizePreviewText(activity.phase),
+		text,
+	};
+}
+
+function getFallbackActivityPreviews(
 	entry: GremlinInvocationEntry,
-): GremlinActivityPreview {
+): GremlinActivityPreview[] {
 	const phase = normalizePreviewText(entry.currentPhase);
 	const latestText = normalizePreviewText(entry.latestText);
 	const latestToolCall = normalizePreviewText(entry.latestToolCall);
 	const latestToolResult = normalizePreviewText(entry.latestToolResult);
 	const errorMessage = normalizePreviewText(entry.errorMessage);
 	const context = normalizePreviewText(entry.context);
-	const inToolPhase = phase?.startsWith("tool:") ?? false;
+	const previews: GremlinActivityPreview[] = [];
 
 	if (errorMessage && (entry.status === "failed" || entry.status === "canceled")) {
-		return { kind: "error", phase, text: errorMessage };
-	}
-	if (inToolPhase && latestToolResult) {
-		return { kind: "tool-result", phase, text: latestToolResult };
-	}
-	if (inToolPhase && latestToolCall) {
-		return { kind: "tool-call", phase, text: latestToolCall };
+		previews.push({ kind: "error", phase, text: errorMessage });
 	}
 	if (latestText && latestText !== context) {
-		return { kind: "text", phase, text: latestText };
-	}
-	if (latestToolResult) {
-		return { kind: "tool-result", phase, text: latestToolResult };
+		previews.push({ kind: "text", phase, text: latestText });
 	}
 	if (latestToolCall) {
-		return { kind: "tool-call", phase, text: latestToolCall };
+		previews.push({ kind: "tool-call", phase, text: latestToolCall });
 	}
-	if (context) {
-		return { kind: "task", phase, text: context };
+	if (latestToolResult) {
+		previews.push({ kind: "tool-result", phase, text: latestToolResult });
 	}
-	return { kind: "idle", phase, text: "idle" };
+	if (context && previews.length === 0) {
+		previews.push({ kind: "task", phase, text: context });
+	}
+	if (previews.length === 0) {
+		previews.push({ kind: "idle", phase, text: "idle" });
+	}
+	return previews;
 }
 
-export function formatGremlinActivity(entry: GremlinInvocationEntry): string {
-	const preview = getGremlinActivityPreview(entry);
-	const label =
-		preview.kind === "error"
-			? "error"
-			: preview.kind === "tool-call"
-				? "tool"
-				: preview.kind === "tool-result"
-					? "result"
-					: preview.kind === "text"
-						? "text"
-						: preview.kind === "task"
-							? "task"
-							: undefined;
-	const parts = dedupeParts([preview.phase, label, preview.text]);
-	return parts.join(" · ") || "idle";
+function getRecentActivityPreviews(
+	entry: GremlinInvocationEntry,
+): GremlinActivityPreview[] {
+	const activityPreviews = (entry.activities ?? [])
+		.map(normalizeActivityPreview)
+		.filter((preview): preview is GremlinActivityPreview => Boolean(preview));
+	if (activityPreviews.length > 0) {
+		return activityPreviews.slice(-COLLAPSED_ACTIVITY_LINE_LIMIT);
+	}
+	return getFallbackActivityPreviews(entry).slice(0, COLLAPSED_ACTIVITY_LINE_LIMIT);
+}
+
+function getActivityLabel(kind: GremlinActivityKind): string {
+	switch (kind) {
+		case "error":
+			return "error";
+		case "tool-call":
+			return "tool call";
+		case "tool-result":
+			return "tool result";
+		case "text":
+			return "latest";
+		case "task":
+			return "task";
+		case "idle":
+			return "idle";
+	}
+}
+
+function formatActivityPreviewLine(preview: GremlinActivityPreview): string {
+	return dedupeParts([getActivityLabel(preview.kind), preview.phase, preview.text]).join(" · ");
+}
+
+function formatContextPreviewLines(context: string): string[] {
+	return context
+		.split(/\r?\n/)
+		.map((line) => normalizePreviewText(line))
+		.filter((line): line is string => Boolean(line))
+		.slice(0, COLLAPSED_CONTEXT_LINE_LIMIT)
+		.map((line) => `task · ${line}`);
 }
 
 export function formatBatchHeadline(details: GremlinInvocationDetails): string {
@@ -211,16 +255,18 @@ export function formatBatchHeadline(details: GremlinInvocationDetails): string {
 	].join(" · ");
 }
 
-export function formatCollapsedGremlinLine(entry: GremlinInvocationEntry): string {
+export function formatCollapsedGremlinLines(entry: GremlinInvocationEntry): string[] {
 	const cacheKey = createEntryCacheKey("collapsed", entry);
-	const cached = collapsedLineCache.get(cacheKey);
+	const cached = collapsedLinesCache.get(cacheKey);
 	if (cached) return cached;
-	const line = [
-		`[${formatGremlinStatus(entry.status)}]`,
-		formatGremlinIdentity(entry),
-		formatGremlinActivity(entry),
-	].join(" · ");
-	return pushCacheEntry(collapsedLineCache, cacheKey, line);
+
+	const lines = [`[${formatGremlinStatus(entry.status)}] · ${formatGremlinIdentity(entry)}`];
+	lines.push(...formatContextPreviewLines(entry.context));
+	lines.push(...getRecentActivityPreviews(entry).map(formatActivityPreviewLine));
+	const usage = formatUsageSummary(entry.usage);
+	if (usage) lines.push(`usage · ${usage}`);
+
+	return pushCacheEntry(collapsedLinesCache, cacheKey, lines);
 }
 
 export function formatExpandedGremlinLines(entry: GremlinInvocationEntry): string[] {

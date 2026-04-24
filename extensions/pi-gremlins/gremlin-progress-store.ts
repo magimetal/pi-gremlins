@@ -25,6 +25,8 @@ function createInitialEntry(
 		cwd: request.cwd,
 		currentPhase: "queued",
 		latestText: "",
+		activities: [],
+		usage: { turns: 0, input: 0, output: 0 },
 		startedAt: now,
 		revision: 0,
 	};
@@ -38,11 +40,20 @@ function cloneUsage(usage: GremlinInvocationEntry["usage"]) {
 	return usage ? Object.freeze({ ...usage }) : undefined;
 }
 
+function cloneActivities(activities: GremlinInvocationEntry["activities"]) {
+	return activities
+		? (Object.freeze(
+				activities.map((activity) => Object.freeze({ ...activity })),
+			) as GremlinInvocationEntry["activities"])
+		: undefined;
+}
+
 function createEntrySnapshot(
 	entry: GremlinInvocationEntry,
 ): GremlinInvocationEntry {
 	return Object.freeze({
 		...entry,
+		activities: cloneActivities(entry.activities),
 		usage: cloneUsage(entry.usage),
 	});
 }
@@ -148,6 +159,9 @@ export function createGremlinProgressStore(
 			const snapshot = snapshotEntry(entry);
 			return {
 				...snapshot,
+				activities: snapshot.activities
+					? snapshot.activities.map((activity) => ({ ...activity }))
+					: undefined,
 				usage: snapshot.usage ? { ...snapshot.usage } : undefined,
 			};
 		},

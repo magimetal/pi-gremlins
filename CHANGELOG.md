@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Discovery now loads user gremlins from `~/.pi/agent/agents` plus nearest project `.pi/agents` only, with project definitions overriding same-name user definitions.
 - Live progress now stays inline in tool row and expands through Pi's standard `Ctrl+O` affordance.
 - Embedded rendering now uses stable gremlin ids (`g1`, `g2`, ...), cached line computation, and inline collapsed/expanded summaries built from shared v1 render components.
-- Inline progress rendering now keeps collapsed rows compact, flattens multiline previews, prioritizes live tool activity over stale assistant prose, and adds clearer status/text/tool/result separation in tool-row output.
+- Inline progress rendering now shows collapsed gremlin context, the three latest activity rows, usage rows, flattened multiline previews, and clearer status/text/tool/result separation in tool-row output.
 - Pi SDK/runtime deps now target `0.69.0`, package/tool schemas now import `typebox` 1.x instead of `@sinclair/typebox`, and tool registration includes a localized TS inference workaround until upstream typings stop triggering `TS2589` deep-instantiation errors.
 - Gremlin runner usage now reports current context-window token usage from Pi SDK session context instead of summing cumulative per-turn `totalTokens`, preventing inflated `contextTokens` in multi-turn runs.
 - Runtime cache hot paths now use compact render cache keys, per-entry render segment reuse, and memoized discovery directory listings to reduce repeated string and filesystem churn during active gremlin runs.

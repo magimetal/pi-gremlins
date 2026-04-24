@@ -16,7 +16,7 @@ describe("pi-gremlins index render v1", () => {
 					{ agent: "reviewer", context: "Review auth flow" },
 				],
 			}).text,
-		).toBe("Gremlins🧌 researcher, reviewer");
+		).toBe("🕯️🔥🕯️ Summoning the gremlins: researcher, reviewer");
 	});
 
 	test("falls back to plain text when result has no structured details", () => {
@@ -74,7 +74,12 @@ describe("pi-gremlins index render v1", () => {
 		const expanded = tool.renderResult(result, { expanded: true }).text;
 
 		expect(collapsed).toContain("Gremlins🧌 · requested:2 · active:1 · completed:1");
-		expect(collapsed).toContain("[Active] · g1 researcher [project] · tool:read · text · Scanning route handlers");
+		expect(collapsed).toContain("[Active] · g1 researcher [project]");
+		expect(collapsed).toContain("task · Find auth flow");
+		expect(collapsed).toContain("latest · tool:read · Scanning route handlers");
+		expect(collapsed).toContain("tool call · settling · read apps/web/src/main.ts");
+		expect(collapsed).toContain("tool result · settling · import bootstrap");
+		expect(collapsed).toContain("usage · turns:2 · input:20 · output:8");
 		expect(collapsed).toContain("Ctrl+O expands inline detail.");
 		expect(collapsed).not.toContain("/gremlins:view");
 		expect(collapsed).not.toContain("popup");
