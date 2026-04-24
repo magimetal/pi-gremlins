@@ -43,6 +43,7 @@ export interface GremlinSessionConfig {
 	prompt: string;
 	model?: string;
 	resolvedModel?: Model<any>;
+	modelResolutionError?: string;
 	thinking?: ThinkingLevel;
 	tools?: string[];
 	cwd?: string;
@@ -98,7 +99,7 @@ export function resolveGremlinModel(
 	gremlinModel: string | undefined,
 	parentModel: string | Model<any> | undefined,
 	modelRegistry?: ModelRegistry,
-): { label?: string; model?: Model<any> } {
+): { label?: string; model?: Model<any>; error?: string } {
 	if (!gremlinModel) {
 		return typeof parentModel === "string"
 			? { label: parentModel }
@@ -112,13 +113,15 @@ export function resolveGremlinModel(
 		const [provider, ...rest] = gremlinModel.split("/");
 		const modelId = rest.join("/");
 		const resolved = modelRegistry.find(provider, modelId);
-		return { label: gremlinModel, model: resolved };
+		return resolved
+			? { label: gremlinModel, model: resolved }
+			: { label: gremlinModel, error: `Unknown gremlin model: ${gremlinModel}` };
 	}
 
 	const matches = modelRegistry
 		.getAll()
 		.filter((candidate) => candidate.id === gremlinModel);
-		
+
 	if (matches.length === 1) {
 		return {
 			label: `${matches[0].provider}/${matches[0].id}`,
@@ -126,7 +129,7 @@ export function resolveGremlinModel(
 		};
 	}
 
-	return { label: gremlinModel };
+	return { label: gremlinModel, error: `Unknown gremlin model: ${gremlinModel}` };
 }
 
 export function resolveGremlinThinking(
@@ -172,6 +175,7 @@ export function buildGremlinSessionConfig({
 		}),
 		model: resolvedModel.label,
 		resolvedModel: resolvedModel.model,
+		modelResolutionError: resolvedModel.error,
 		thinking,
 		tools: Array.isArray(gremlin.frontmatter.tools)
 			? gremlin.frontmatter.tools

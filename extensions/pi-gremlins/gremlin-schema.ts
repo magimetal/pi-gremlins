@@ -1,8 +1,14 @@
 import { Type } from "typebox";
 
 export const GremlinRequestSchema = Type.Object({
-	agent: Type.String({ description: "Name of gremlin to invoke" }),
-	context: Type.String({ description: "Task or context for gremlin" }),
+	agent: Type.String({
+		description: "Name of gremlin to invoke",
+		minLength: 1,
+	}),
+	context: Type.String({
+		description: "Task or context for gremlin",
+		minLength: 1,
+	}),
 	cwd: Type.Optional(
 		Type.String({ description: "Optional working directory for gremlin" }),
 	),

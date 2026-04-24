@@ -163,6 +163,52 @@ describe("gremlin discovery v1 contract", () => {
 		expect(third.gremlins[0].rawMarkdown).toContain("second prompt body");
 	});
 
+	test("skips unreadable markdown files without rejecting whole discovery", async () => {
+		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
+		fs.writeFileSync(
+			`${workspace.projectAgentsDir}/good.md`,
+			"---\nname: good\ndescription: good gremlin\n---\nGood prompt body",
+			"utf-8",
+		);
+		fs.symlinkSync(
+			`${workspace.projectAgentsDir}/missing-target.md`,
+			`${workspace.projectAgentsDir}/broken.md`,
+		);
+
+		const discovery = createGremlinDiscoveryCache({
+			userAgentsDir: workspace.userAgentsDir,
+		});
+		const result = await discovery.get(workspace.repoRoot);
+
+		expect(result.gremlins.map((gremlin) => gremlin.name)).toEqual(["good"]);
+	});
+
+	test("parses CRLF frontmatter delimiters", async () => {
+		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
+		fs.writeFileSync(
+			`${workspace.projectAgentsDir}/crlf.md`,
+			"---\r\nname: crlf\r\ndescription: CRLF gremlin\r\n---\r\nPrompt body",
+			"utf-8",
+		);
+
+		const discovery = createGremlinDiscoveryCache({
+			userAgentsDir: workspace.userAgentsDir,
+		});
+		const result = await discovery.get(workspace.repoRoot);
+
+		expect(result.gremlins[0]).toMatchObject({
+			name: "crlf",
+			description: "CRLF gremlin",
+		});
+		expect(result.gremlins[0].frontmatter.body).toBe("Prompt body");
+	});
+
 	test("never loads package gremlins or any scope-toggle surface in v1 discovery", async () => {
 		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
 		const workspace = createWorkspace();

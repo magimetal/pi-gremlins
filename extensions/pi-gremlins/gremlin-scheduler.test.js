@@ -164,6 +164,7 @@ describe("gremlin scheduler v1 contract", () => {
 		const { runGremlinBatch } = await import("./gremlin-scheduler.ts");
 		const controller = new AbortController();
 		const cleaned = [];
+		const updates = [];
 
 		const batchPromise = runGremlinBatch({
 			gremlins: [
@@ -171,6 +172,7 @@ describe("gremlin scheduler v1 contract", () => {
 				{ agent: "beta", context: "Find beta" },
 			],
 			signal: controller.signal,
+			onUpdate: (details) => updates.push(details),
 			runGremlin: ({ gremlin, gremlinId, signal, onUpdate }) =>
 				new Promise((resolve) => {
 					onUpdate?.({ gremlinId, agent: gremlin.agent, status: "active", currentPhase: "streaming" });
@@ -194,7 +196,13 @@ describe("gremlin scheduler v1 contract", () => {
 				}),
 		});
 
-		setTimeout(() => controller.abort(), 5);
+		controller.abort();
+		expect(cleaned).toEqual([]);
+		expect(
+			updates.some(
+				(details) => details.canceledCount === 2 && details.activeCount === 0,
+			),
+		).toBe(true);
 		const result = await batchPromise;
 		expect(cleaned).toEqual(["alpha", "beta"]);
 		expect(result.results.map((entry) => entry.status)).toEqual([

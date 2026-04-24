@@ -123,7 +123,13 @@ export function createExecutionContext(cwd) {
 		hasUI: false,
 		getSystemPrompt: () => "Parent system prompt",
 		model: undefined,
-		modelRegistry: { getAll: () => [], find: () => undefined },
+		modelRegistry: {
+			getAll: () => [{ provider: "openai", id: "gpt-5-mini" }],
+			find: (provider, modelId) =>
+				provider === "openai" && modelId === "gpt-5-mini"
+					? { provider, id: modelId }
+					: undefined,
+		},
 		ui: {
 			confirm: async () => true,
 			notify: () => {},

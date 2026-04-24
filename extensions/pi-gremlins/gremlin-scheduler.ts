@@ -67,6 +67,15 @@ export async function runGremlinBatch({
 	};
 	const parentAbortListener = () => {
 		abortChildren();
+		for (const gremlinId of childControllers.keys()) {
+			publishDetails(
+				progressStore.update(gremlinId, {
+					status: "canceled",
+					currentPhase: "settling",
+					errorMessage: "Gremlin run was aborted",
+				}),
+			);
+		}
 		snapshotAndPublish();
 	};
 	if (signal) {
