@@ -57,7 +57,7 @@ function getInvocationDetails(result: AgentToolResult<any>) {
 function renderCallText(params: { gremlins?: Array<{ agent?: string }> }): string {
 	const names = (params.gremlins ?? []).map((gremlin) => gremlin.agent).filter(Boolean);
 	if (names.length === 0) return BRAND_NAME;
-	return `${BRAND_NAME} ${names.join(", ")}`;
+	return `🕯️🔥🕯️ Summoning the gremlins: ${names.join(", ")}`;
 }
 
 export default function registerPiGremlins(pi: ExtensionAPI) {
@@ -138,6 +138,7 @@ export default function registerPiGremlins(pi: ExtensionAPI) {
 				runGremlin: async ({ gremlin: request, gremlinId, signal: childSignal, onUpdate: publishUpdate }) => {
 					const gremlin = resolveGremlinByName(discovered.gremlins, request.agent);
 					if (!gremlin) {
+						const errorMessage = `Unknown gremlin: ${request.agent}`;
 						return {
 							gremlinId,
 							agent: request.agent,
@@ -146,7 +147,9 @@ export default function registerPiGremlins(pi: ExtensionAPI) {
 							context: request.context,
 							cwd: request.cwd,
 							currentPhase: "settling",
-							errorMessage: `Unknown gremlin: ${request.agent}`,
+							errorMessage,
+							activities: [{ kind: "error", phase: "settling", text: errorMessage }],
+							usage: { turns: 0, input: 0, output: 0 },
 						};
 					}
 

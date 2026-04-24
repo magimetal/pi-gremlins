@@ -43,8 +43,12 @@ describe("gremlin rendering v1 contract", () => {
 		);
 
 		expect(text).toContain("Gremlins🧌 · requested:2 · active:1");
-		expect(text).toContain("[Active] · g1 researcher [project] · tool:read · text · Scanning");
-		expect(text).toContain("[Queued] · g2 reviewer [user] · prompting · task · Review auth flow");
+		expect(text).toContain("[Active] · g1 researcher [project]");
+		expect(text).toContain("task · Find auth flow");
+		expect(text).toContain("latest · tool:read · Scanning auth entry points");
+		expect(text).toContain("usage · turns:1 · input:10 · output:4");
+		expect(text).toContain("[Queued] · g2 reviewer [user]");
+		expect(text).toContain("task · prompting · Review auth flow");
 		expect(text).toContain("Ctrl+O expands inline detail.");
 		expect(text).not.toContain("/gremlins:view");
 		expect(text).not.toContain("/gremlins:steer");
@@ -101,16 +105,15 @@ describe("gremlin rendering v1 contract", () => {
 		);
 
 		const lines = text.split("\n");
-		expect(lines).toHaveLength(5);
-		expect(lines[1]).toContain("g1 researcher");
-		expect(lines[2]).toContain("g2 researcher");
-		expect(lines[3]).toContain("g3 reviewer");
+		expect(lines).toContain("[Active] · g1 researcher [project]");
+		expect(lines).toContain("[Completed] · g2 researcher [user]");
+		expect(lines).toContain("[Starting] · g3 reviewer [project]");
 		for (const line of lines) {
 			expect(line.length).toBeLessThanOrEqual(42);
 		}
 	});
 
-	test("keeps collapsed preview to one visible line per gremlin even when tool output is multiline", async () => {
+	test("keeps multiline collapsed activity previews on one visible line", async () => {
 		const { renderGremlinInvocationText } = await import(
 			"./gremlin-rendering.ts"
 		);
@@ -140,9 +143,57 @@ describe("gremlin rendering v1 contract", () => {
 		);
 
 		const lines = text.split("\n");
-		expect(lines).toHaveLength(3);
-		expect(lines[1]).toContain("line one");
-		expect(lines[2]).toBe("Ctrl+O expands inline detail.");
+		expect(lines).toHaveLength(5);
+		expect(lines[1]).toBe("[Active] · g1 researcher [project]");
+		expect(lines[2]).toBe("task · Find auth flow");
+		expect(lines[3]).toBe("tool result · tool:read · line one line two line three");
+		expect(lines[4]).toBe("Ctrl+O expands inline detail.");
+	});
+
+	test("renders three context lines then three recent activities and usage in collapsed mode", async () => {
+		const { renderGremlinInvocationText } = await import(
+			"./gremlin-rendering.ts"
+		);
+
+		const text = renderGremlinInvocationText(
+			{
+				requestedCount: 1,
+				activeCount: 1,
+				completedCount: 0,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: [
+					{
+						gremlinId: "g1",
+						agent: "researcher",
+						source: "project",
+						status: "active",
+						context: "Line one\nLine two\nLine three\nLine four",
+						activities: [
+							{ kind: "task", phase: "prompting", text: "Prompt sent", sequence: 1 },
+							{ kind: "text", phase: "streaming", text: "Planning", sequence: 2 },
+							{ kind: "tool-call", phase: "tool:read", text: "read src/index.ts", sequence: 3 },
+							{ kind: "tool-result", phase: "streaming", text: "read complete", sequence: 4 },
+						],
+						usage: { turns: 2, input: 20, output: 8 },
+						revision: 4,
+					},
+				],
+				revision: 4,
+			},
+			{ expanded: false, width: 120 },
+		);
+
+		const lines = text.split("\n");
+		expect(lines).toContain("task · Line one");
+		expect(lines).toContain("task · Line two");
+		expect(lines).toContain("task · Line three");
+		expect(text).not.toContain("Line four");
+		expect(text).not.toContain("Prompt sent");
+		expect(lines).toContain("latest · streaming · Planning");
+		expect(lines).toContain("tool call · tool:read · read src/index.ts");
+		expect(lines).toContain("tool result · streaming · read complete");
+		expect(lines).toContain("usage · turns:2 · input:20 · output:8");
 	});
 
 	test("surfaces live tool call in collapsed preview after assistant already emitted text", async () => {
@@ -277,8 +328,8 @@ describe("gremlin rendering v1 contract", () => {
 			revision: 7,
 		};
 
-		const collapsedA = renderComponents.formatCollapsedGremlinLine(entry);
-		const collapsedB = renderComponents.formatCollapsedGremlinLine(entry);
+		const collapsedA = renderComponents.formatCollapsedGremlinLines(entry);
+		const collapsedB = renderComponents.formatCollapsedGremlinLines(entry);
 		expect(collapsedA).toBe(collapsedB);
 
 		const expandedA = renderComponents.formatExpandedGremlinLines(entry);

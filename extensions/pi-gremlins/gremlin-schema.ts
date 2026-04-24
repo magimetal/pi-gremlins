@@ -42,6 +42,22 @@ export interface GremlinUsage {
 	contextTokens?: number;
 }
 
+export type GremlinActivityKind =
+	| "error"
+	| "tool-call"
+	| "tool-result"
+	| "text"
+	| "task"
+	| "idle";
+
+export interface GremlinActivity {
+	kind: GremlinActivityKind;
+	text: string;
+	phase?: string;
+	timestamp?: number;
+	sequence?: number;
+}
+
 export interface GremlinInvocationEntry {
 	gremlinId?: string;
 	agent: string;
@@ -56,6 +72,7 @@ export interface GremlinInvocationEntry {
 	latestToolCall?: string;
 	latestToolResult?: string;
 	errorMessage?: string;
+	activities?: GremlinActivity[];
 	usage?: GremlinUsage;
 	startedAt?: number;
 	finishedAt?: number;

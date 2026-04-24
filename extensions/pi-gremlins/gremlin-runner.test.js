@@ -120,6 +120,11 @@ describe("gremlin runner v1 contract", () => {
 				contextTokens: 6,
 			},
 		});
+		expect(result.activities?.slice(-3)).toMatchObject([
+			{ kind: "tool-result", phase: "tool:read", text: "reading chunk" },
+			{ kind: "tool-result", phase: "streaming", text: "file contents" },
+			{ kind: "text", phase: "settling", text: "final answer" },
+		]);
 		expect(updates.some((update) => update.patch.currentPhase === "prompting")).toBe(
 			true,
 		);

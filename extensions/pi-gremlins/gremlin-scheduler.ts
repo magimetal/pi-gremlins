@@ -34,6 +34,7 @@ function createTerminalResult(
 	error: unknown,
 	aborted: boolean,
 ): GremlinRunResult {
+	const errorMessage = error instanceof Error ? error.message : String(error);
 	return {
 		gremlinId,
 		agent: gremlin.agent,
@@ -42,7 +43,9 @@ function createTerminalResult(
 		context: gremlin.context,
 		cwd: gremlin.cwd,
 		currentPhase: "settling",
-		errorMessage: error instanceof Error ? error.message : String(error),
+		errorMessage,
+		activities: [{ kind: "error", phase: "settling", text: errorMessage }],
+		usage: { turns: 0, input: 0, output: 0 },
 		finishedAt: Date.now(),
 	};
 }
