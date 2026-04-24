@@ -106,6 +106,38 @@ describe("gremlin session factory v1 contract", () => {
 		expect(resolveGremlinThinking(undefined, "medium")).toBe("medium");
 	});
 
+	test("marks explicit gremlin model unresolved when registry cannot resolve it", async () => {
+		const { buildGremlinSessionConfig, resolveGremlinModel } = await import(
+			"./gremlin-session-factory.ts"
+		);
+		const modelRegistry = {
+			getAll: () => [],
+			find: () => undefined,
+		};
+
+		expect(resolveGremlinModel("openai/missing", "openai/gpt-5", modelRegistry)).toEqual({
+			label: "openai/missing",
+			error: "Unknown gremlin model: openai/missing",
+		});
+		expect(
+			buildGremlinSessionConfig({
+				parentSystemPrompt: "snapshot",
+				parentModel: "openai/gpt-5",
+				gremlin: {
+					name: "reviewer",
+					source: "user",
+					rawMarkdown: "---\nname: reviewer\nmodel: openai/missing\n---\nReview work",
+					frontmatter: { model: "openai/missing" },
+				},
+				context: "Review diff",
+				modelRegistry,
+			}),
+		).toMatchObject({
+			model: "openai/missing",
+			modelResolutionError: "Unknown gremlin model: openai/missing",
+		});
+	});
+
 	test("keeps v1 no-subprocess no-temp-file contract explicit in session config", async () => {
 		const { buildGremlinSessionConfig } = await import(
 			"./gremlin-session-factory.ts"

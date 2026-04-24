@@ -228,6 +228,68 @@ describe("gremlin runner v1 contract", () => {
 		});
 	});
 
+	test("disposes exactly once when session setup fails after createSession", async () => {
+		const { runSingleGremlin } = await import("./gremlin-runner.ts");
+		let disposed = 0;
+		const result = await runSingleGremlin({
+			gremlinId: "g1",
+			request: { agent: "researcher", context: "Inspect auth flow" },
+			definition: {
+				name: "researcher",
+				source: "project",
+				filePath: "/tmp/researcher.md",
+				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
+				frontmatter: {},
+			},
+			parentSystemPrompt: "system snapshot",
+			createSession: async () => ({
+				session: {
+					subscribe() {
+						throw new Error("subscribe boom");
+					},
+					async prompt() {},
+					dispose() {
+						disposed += 1;
+					},
+				},
+			}),
+		});
+
+		expect(result.status).toBe("failed");
+		expect(result.errorMessage).toBe("subscribe boom");
+		expect(disposed).toBe(1);
+	});
+
+	test("returns terminal failure before creating session when explicit gremlin model is unresolved", async () => {
+		const { runSingleGremlin } = await import("./gremlin-runner.ts");
+		let createCalls = 0;
+		const result = await runSingleGremlin({
+			gremlinId: "g1",
+			request: { agent: "researcher", context: "Inspect auth flow" },
+			definition: {
+				name: "researcher",
+				source: "project",
+				filePath: "/tmp/researcher.md",
+				rawMarkdown: "---\nname: researcher\nmodel: openai/missing\n---\nraw gremlin body",
+				frontmatter: { model: "openai/missing" },
+			},
+			parentSystemPrompt: "system snapshot",
+			modelRegistry: {
+				getAll: () => [],
+				find: () => undefined,
+			},
+			createSession: async () => {
+				createCalls += 1;
+				return createFakeSession();
+			},
+		});
+
+		expect(result.status).toBe("failed");
+		expect(result.model).toBe("openai/missing");
+		expect(result.errorMessage).toBe("Unknown gremlin model: openai/missing");
+		expect(createCalls).toBe(0);
+	});
+
 	test("distinguishes cancel from fail and aborts child session on signal", async () => {
 		const { runSingleGremlin } = await import("./gremlin-runner.ts");
 		const controller = new AbortController();
@@ -279,5 +341,45 @@ describe("gremlin runner v1 contract", () => {
 		expect(failed.status).toBe("failed");
 		expect(failed.errorMessage).toBe("runner boom");
 		expect(failing.getDisposedCount()).toBe(1);
+	});
+
+	test("awaits abort failure before disposing to avoid fire-and-forget rejection", async () => {
+		const { runSingleGremlin } = await import("./gremlin-runner.ts");
+		const controller = new AbortController();
+		const events = [];
+		const fake = createFakeSession({
+			onPrompt: async () => {
+				controller.abort();
+				await new Promise((resolve) => setTimeout(resolve, 5));
+			},
+			onAbort: async () => {
+				events.push("abort");
+				throw new Error("abort boom");
+			},
+		});
+		const originalDispose = fake.session.dispose;
+		fake.session.dispose = () => {
+			events.push("dispose");
+			originalDispose();
+		};
+
+		const result = await runSingleGremlin({
+			gremlinId: "g1",
+			request: { agent: "researcher", context: "Inspect auth flow" },
+			definition: {
+				name: "researcher",
+				source: "project",
+				filePath: "/tmp/researcher.md",
+				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
+				frontmatter: {},
+			},
+			parentSystemPrompt: "system snapshot",
+			signal: controller.signal,
+			createSession: async () => fake,
+		});
+
+		expect(result.status).toBe("canceled");
+		expect(fake.getDisposedCount()).toBe(1);
+		expect(events).toEqual(["abort", "dispose"]);
 	});
 });

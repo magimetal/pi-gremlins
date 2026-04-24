@@ -30,14 +30,14 @@ function normalizeScalarValue(value: string): string {
 }
 
 function parseFrontmatterBlock(markdown: string): ParsedFrontmatterBlock {
-	const match = markdown.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+	const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
 	if (!match) {
 		return { frontmatter: {}, body: markdown };
 	}
 
 	const frontmatter: Record<string, string | string[]> = {};
 	let currentListKey: string | null = null;
-	for (const rawLine of match[1].split("\n")) {
+	for (const rawLine of match[1].split(/\r?\n/)) {
 		const line = rawLine.trimEnd();
 		if (!line.trim()) continue;
 		const listItemMatch = line.match(/^\s*-\s+(.*)$/);

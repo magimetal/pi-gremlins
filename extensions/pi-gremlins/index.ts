@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type {
 	AgentToolResult,
@@ -58,6 +59,50 @@ function renderCallText(params: { gremlins?: Array<{ agent?: string }> }): strin
 	const names = (params.gremlins ?? []).map((gremlin) => gremlin.agent).filter(Boolean);
 	if (names.length === 0) return BRAND_NAME;
 	return `🕯️🔥🕯️ Summoning the gremlins: ${names.join(", ")}`;
+}
+
+function resolveGremlinCwd(
+	requestCwd: string | undefined,
+	baseCwd: string,
+): string | undefined {
+	if (!requestCwd) return undefined;
+	return path.isAbsolute(requestCwd)
+		? requestCwd
+		: path.resolve(baseCwd, requestCwd);
+}
+
+function validateGremlinRequest(request: GremlinRequest): string | null {
+	if (!request.agent?.trim()) return "Gremlin agent is required";
+	if (!request.context?.trim()) return "Gremlin context is required";
+	if (!request.cwd) return null;
+	try {
+		if (!fs.statSync(request.cwd).isDirectory()) {
+			return `Invalid gremlin cwd: ${request.cwd}`;
+		}
+	} catch {
+		return `Invalid gremlin cwd: ${request.cwd}`;
+	}
+	return null;
+}
+
+function createFailedGremlinResult(
+	request: GremlinRequest,
+	gremlinId: string,
+	errorMessage: string,
+) {
+	return {
+		gremlinId,
+		agent: request.agent,
+		source: "unknown" as const,
+		status: "failed" as const,
+		context: request.context,
+		cwd: request.cwd,
+		currentPhase: "settling",
+		errorMessage,
+		activities: [{ kind: "error" as const, phase: "settling", text: errorMessage }],
+		usage: { turns: 0, input: 0, output: 0 },
+		finishedAt: Date.now(),
+	};
 }
 
 export default function registerPiGremlins(pi: ExtensionAPI) {
@@ -135,22 +180,28 @@ export default function registerPiGremlins(pi: ExtensionAPI) {
 						details,
 					});
 				},
-				runGremlin: async ({ gremlin: request, gremlinId, signal: childSignal, onUpdate: publishUpdate }) => {
+				runGremlin: async ({
+					gremlin: rawRequest,
+					gremlinId,
+					signal: childSignal,
+					onUpdate: publishUpdate,
+				}) => {
+					const resolvedCwd = resolveGremlinCwd(rawRequest.cwd, ctx.cwd);
+					const request = resolvedCwd
+						? { ...rawRequest, cwd: resolvedCwd }
+						: rawRequest;
+					const validationError = validateGremlinRequest(request);
+					if (validationError) {
+						return createFailedGremlinResult(request, gremlinId, validationError);
+					}
+
 					const gremlin = resolveGremlinByName(discovered.gremlins, request.agent);
 					if (!gremlin) {
-						const errorMessage = `Unknown gremlin: ${request.agent}`;
-						return {
+						return createFailedGremlinResult(
+							request,
 							gremlinId,
-							agent: request.agent,
-							source: "unknown",
-							status: "failed",
-							context: request.context,
-							cwd: request.cwd,
-							currentPhase: "settling",
-							errorMessage,
-							activities: [{ kind: "error", phase: "settling", text: errorMessage }],
-							usage: { turns: 0, input: 0, output: 0 },
-						};
+							`Unknown gremlin: ${request.agent}`,
+						);
 					}
 
 					return runSingleGremlin({

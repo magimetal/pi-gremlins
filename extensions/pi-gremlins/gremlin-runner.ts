@@ -193,23 +193,27 @@ export async function runSingleGremlin({
 		model: sessionPlan.model,
 		thinking: sessionPlan.thinking,
 	});
+	if (sessionPlan.modelResolutionError) {
+		publish({
+			status: "failed",
+			currentPhase: "settling",
+			errorMessage: sessionPlan.modelResolutionError,
+			finishedAt: Date.now(),
+		});
+		return { ...state };
+	}
 
-	const created = await createSession({
-		parentSystemPrompt,
-		parentModel,
-		parentThinking,
-		gremlin: definition,
-		context: request.context,
-		cwd: request.cwd,
-		modelRegistry,
-	});
-	const session = created.session as CreateAgentSessionResult["session"] & {
+	type GremlinSession = CreateAgentSessionResult["session"] & {
 		subscribe?: (listener: (event: any) => void) => () => void;
 		prompt: (text: string) => Promise<void>;
 		abort?: () => Promise<void>;
 		dispose: () => void;
 		getContextUsage?: () => { tokens: number | null } | undefined;
 	};
+	let session: GremlinSession | undefined;
+	let unsubscribe: (() => void) | undefined;
+	let abortPromise: Promise<void> | undefined;
+	let abortError: unknown;
 	let abortRequested = false;
 
 	const appendLatestTextDelta = (delta: unknown) => {
@@ -220,95 +224,6 @@ export async function runSingleGremlin({
 		while (end > 0 && /\s/.test(nextText[end - 1]!)) end -= 1;
 		return end === nextText.length ? nextText : nextText.slice(0, end);
 	};
-
-	const unsubscribe = session.subscribe?.((event: any) => {
-		switch (event?.type) {
-			case "agent_start":
-				publish({ status: "active", currentPhase: "prompting" });
-				break;
-			case "turn_start":
-				publish({ status: "active", currentPhase: "streaming" });
-				break;
-			case "message_update":
-				if (event.assistantMessageEvent?.type === "text_delta") {
-					const latestText = appendLatestTextDelta(event.assistantMessageEvent.delta);
-					publish(
-						{
-							status: "active",
-							currentPhase: "streaming",
-							latestText,
-						},
-						{ kind: "text", phase: "streaming", text: latestText },
-					);
-				}
-				break;
-			case "tool_execution_start": {
-				const phase = `tool:${event.toolName}`;
-				const latestToolCall = formatToolCall(event.toolName, event.args);
-				publish(
-					{
-						status: "active",
-						currentPhase: phase,
-						latestToolCall,
-					},
-					{ kind: "tool-call", phase, text: latestToolCall },
-				);
-				break;
-			}
-			case "tool_execution_update": {
-				const phase = `tool:${event.toolName}`;
-				const latestToolResult = extractToolResultText(event.partialResult);
-				publish(
-					{
-						status: "active",
-						currentPhase: phase,
-						latestToolResult,
-					},
-					{ kind: "tool-result", phase, text: latestToolResult },
-				);
-				break;
-			}
-			case "tool_execution_end": {
-				const latestToolResult = extractToolResultText(event.result);
-				publish(
-					{
-						status: "active",
-						currentPhase: "streaming",
-						latestToolResult,
-					},
-					{ kind: "tool-result", phase: "streaming", text: latestToolResult },
-				);
-				break;
-			}
-			case "message_end": {
-				const latestText = extractTextFromContent(event.message?.content);
-				const finalText = latestText || state.latestText;
-				const patch = {
-					status: "active" as const,
-					currentPhase: "settling",
-					latestText: finalText,
-					usage: mergeUsage(
-						state.usage,
-						event.message,
-						getContextWindowTokens(session),
-					),
-					model:
-						typeof event.message?.model === "string"
-							? event.message.model
-							: state.model,
-				};
-				if (latestText && latestText !== state.latestText) {
-					publish(patch, { kind: "text", phase: "settling", text: latestText });
-				} else {
-					publish(patch);
-				}
-				break;
-			}
-			case "agent_end":
-				publish({ currentPhase: "settling" });
-				break;
-		}
-	});
 
 	const handleAbort = async () => {
 		abortRequested = true;
@@ -321,14 +236,116 @@ export async function runSingleGremlin({
 			},
 			{ kind: "error", phase: "settling", text: errorMessage },
 		);
-		await session.abort?.();
+		await session?.abort?.();
 	};
 	const abortListener = () => {
-		void handleAbort();
+		abortPromise = handleAbort().catch((error) => {
+			abortError = error;
+		});
 	};
-	signal?.addEventListener("abort", abortListener, { once: true });
 
 	try {
+		const created = await createSession({
+			parentSystemPrompt,
+			parentModel,
+			parentThinking,
+			gremlin: definition,
+			context: request.context,
+			cwd: request.cwd,
+			modelRegistry,
+		});
+		session = created.session as GremlinSession;
+		unsubscribe = session.subscribe?.((event: any) => {
+			switch (event?.type) {
+				case "agent_start":
+					publish({ status: "active", currentPhase: "prompting" });
+					break;
+				case "turn_start":
+					publish({ status: "active", currentPhase: "streaming" });
+					break;
+				case "message_update":
+					if (event.assistantMessageEvent?.type === "text_delta") {
+						const latestText = appendLatestTextDelta(event.assistantMessageEvent.delta);
+						publish(
+							{
+								status: "active",
+								currentPhase: "streaming",
+								latestText,
+							},
+							{ kind: "text", phase: "streaming", text: latestText },
+						);
+					}
+					break;
+				case "tool_execution_start": {
+					const phase = `tool:${event.toolName}`;
+					const latestToolCall = formatToolCall(event.toolName, event.args);
+					publish(
+						{
+							status: "active",
+							currentPhase: phase,
+							latestToolCall,
+						},
+						{ kind: "tool-call", phase, text: latestToolCall },
+					);
+					break;
+				}
+				case "tool_execution_update": {
+					const phase = `tool:${event.toolName}`;
+					const latestToolResult = extractToolResultText(event.partialResult);
+					publish(
+						{
+							status: "active",
+							currentPhase: phase,
+							latestToolResult,
+						},
+						{ kind: "tool-result", phase, text: latestToolResult },
+					);
+					break;
+				}
+				case "tool_execution_end": {
+					const latestToolResult = extractToolResultText(event.result);
+					publish(
+						{
+							status: "active",
+							currentPhase: "streaming",
+							latestToolResult,
+						},
+						{ kind: "tool-result", phase: "streaming", text: latestToolResult },
+					);
+					break;
+				}
+				case "message_end": {
+					const latestText = extractTextFromContent(event.message?.content);
+					const finalText = latestText || state.latestText;
+					const patch = {
+						status: "active" as const,
+						currentPhase: "settling",
+						latestText: finalText,
+						usage: mergeUsage(
+							state.usage,
+							event.message,
+							getContextWindowTokens(session),
+						),
+						model:
+							typeof event.message?.model === "string"
+								? event.message.model
+								: state.model,
+					};
+					if (latestText && latestText !== state.latestText) {
+						publish(patch, { kind: "text", phase: "settling", text: latestText });
+					} else {
+						publish(patch);
+					}
+					break;
+				}
+				case "agent_end":
+					publish({ currentPhase: "settling" });
+					break;
+			}
+		});
+		signal?.addEventListener("abort", abortListener, { once: true });
+		if (signal?.aborted && !abortRequested) abortListener();
+
 		await session.prompt(sessionPlan.prompt);
 		publish({
 			status: abortRequested ? "canceled" : "completed",
@@ -351,6 +368,16 @@ export async function runSingleGremlin({
 	} finally {
 		signal?.removeEventListener("abort", abortListener);
 		unsubscribe?.();
-		session.dispose();
+		await abortPromise;
+		if (abortError && !state.errorMessage) {
+			publish({
+				status: "canceled",
+				currentPhase: "settling",
+				errorMessage:
+					abortError instanceof Error ? abortError.message : String(abortError),
+				finishedAt: Date.now(),
+			});
+		}
+		session?.dispose();
 	}
 }

@@ -146,7 +146,13 @@ async function loadGremlinsFromFiles(
 	source: "user" | "project",
 ): Promise<GremlinDefinition[]> {
 	const definitions = await Promise.all(
-		files.map((filePath) => loadGremlinDefinition(filePath, source)),
+		files.map(async (filePath) => {
+			try {
+				return await loadGremlinDefinition(filePath, source);
+			} catch {
+				return null;
+			}
+		}),
 	);
 	return definitions.filter((definition): definition is GremlinDefinition => Boolean(definition));
 }

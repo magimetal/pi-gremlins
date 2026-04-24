@@ -19,8 +19,8 @@ describe("gremlin schema v1 contract", () => {
 			maxItems: 10,
 		});
 		expect(tool.parameters.gremlins.value).toMatchObject({
-			agent: expect.any(Object),
-			context: expect.any(Object),
+			agent: expect.objectContaining({ minLength: 1 }),
+			context: expect.objectContaining({ minLength: 1 }),
 			cwd: expect.any(Object),
 		});
 		expect(tool.parameters.gremlins.value).not.toHaveProperty("task");
