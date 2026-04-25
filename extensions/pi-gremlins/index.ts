@@ -33,7 +33,7 @@ const TOOL_DESCRIPTION = [
 	"Summon specialized gremlins with isolated context.",
 	"Input uses gremlins: [{ agent, context, cwd? }].",
 	"One gremlin runs single invocation. Multiple gremlins start in parallel.",
-	"Gremlin definitions load from user and nearest project directories.",
+	"Gremlin definitions load from user and nearest project directories when agent_type is sub-agent.",
 	"Progress stays inline and expands with Ctrl+O.",
 ].join(" ");
 

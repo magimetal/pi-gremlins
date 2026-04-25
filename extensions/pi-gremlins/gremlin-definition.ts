@@ -94,6 +94,9 @@ export function parseGremlinDefinition(
 	source: GremlinSource,
 ): GremlinDefinition | null {
 	const { frontmatter, body } = parseFrontmatterBlock(markdown);
+	const agentType = readScalar(frontmatter, "agent_type");
+	if (agentType !== "sub-agent") return null;
+
 	const name = readScalar(frontmatter, "name");
 	if (!name) return null;
 
