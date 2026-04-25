@@ -12,7 +12,10 @@ import {
 import { Text } from "@mariozechner/pi-tui";
 import {
 	createGremlinDiscoveryCache,
+	createPrimaryAgentDiscoveryCache,
 	resolveGremlinByName,
+	type GremlinDiscoveryCache,
+	type PrimaryAgentDiscoveryCache,
 } from "./gremlin-discovery.js";
 import {
 	renderGremlinInvocationText,
@@ -26,6 +29,19 @@ import {
 } from "./gremlin-schema.js";
 import { runGremlinBatch } from "./gremlin-scheduler.js";
 import { buildGremlinProgressSummary } from "./gremlin-summary.js";
+import {
+	cyclePrimaryAgent,
+	notifyPrimaryAgent,
+	PRIMARY_SHORTCUT,
+	runMohawkCommand,
+	updatePrimaryAgentStatus,
+} from "./primary-agent-controls.js";
+import { applyPrimaryAgentPromptInjection } from "./primary-agent-prompt.js";
+import {
+	createInitialPrimaryAgentState,
+	reconstructPrimaryAgentStateFromBranch,
+	type PrimaryAgentState,
+} from "./primary-agent-state.js";
 
 const BRAND_NAME = "Gremlins🧌";
 const TOOL_NAME = "pi-gremlins";
@@ -111,156 +127,228 @@ function createFailedGremlinResult(
 	};
 }
 
-export default function registerPiGremlins(pi: ExtensionAPI) {
-	const discovery = createGremlinDiscoveryCache({
-		userAgentsDir: path.join(getAgentDir(), "agents"),
-	});
+export interface PiGremlinsExtensionOptions {
+	discoveryCache?: GremlinDiscoveryCache;
+	primaryAgentDiscoveryCache?: PrimaryAgentDiscoveryCache;
+}
 
-	pi.on("session_start", () => {
-		discovery.clear();
-	});
-
-	pi.on("session_shutdown", () => {
-		discovery.clear();
-	});
-
-	type PiGremlinsArgs = { gremlins: GremlinRequest[] };
-	const tool = {
-		name: TOOL_NAME,
-		label: BRAND_NAME,
-		description: TOOL_DESCRIPTION,
-		parameters: PiGremlinsParams,
-
-		renderCall(params: PiGremlinsArgs) {
-			return new Text(renderCallText(params));
-		},
-
-		renderResult(
-			result: AgentToolResult<GremlinInvocationDetails>,
-			options: Parameters<typeof styleGremlinInvocationText>[2],
-			theme: Parameters<typeof styleGremlinInvocationText>[1],
-		) {
-			if (!result.details) {
-				const firstContent = result.content?.[0];
-				const fallbackText =
-					firstContent && "text" in firstContent ? firstContent.text : "";
-				return new Text(fallbackText);
-			}
-			const text = renderGremlinInvocationText(getInvocationDetails(result), {
-				expanded: options.expanded,
+export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = {}) {
+	return function registerPiGremlins(pi: ExtensionAPI) {
+		const agentsDir = path.join(getAgentDir(), "agents");
+		const discovery =
+			options.discoveryCache ??
+			createGremlinDiscoveryCache({
+				userAgentsDir: agentsDir,
 			});
-			return new Text(styleGremlinInvocationText(text, theme, options));
-		},
+		const primaryAgentDiscovery =
+			options.primaryAgentDiscoveryCache ??
+			createPrimaryAgentDiscoveryCache({
+				userAgentsDir: agentsDir,
+			});
+		let primaryAgentState: PrimaryAgentState = createInitialPrimaryAgentState();
 
-		async execute(
-			_toolCallId: string,
-			params: PiGremlinsArgs,
-			signal: AbortSignal | undefined,
-			onUpdate: AgentToolUpdateCallback<GremlinInvocationDetails> | undefined,
-			ctx: ExtensionContext,
-		) {
-			if (!Array.isArray(params.gremlins) || params.gremlins.length === 0) {
+		pi.on("session_start", async (_event, ctx) => {
+			discovery.clear();
+			primaryAgentDiscovery.clear();
+			const { agents } = await primaryAgentDiscovery.get(ctx.cwd);
+			primaryAgentState = reconstructPrimaryAgentStateFromBranch(
+				ctx.sessionManager.getBranch(),
+				agents,
+			);
+			updatePrimaryAgentStatus(ctx, primaryAgentState);
+			if (primaryAgentState.missingSelectedName) {
+				notifyPrimaryAgent(
+					ctx,
+					`Primary agent unavailable, reset to None: ${primaryAgentState.missingSelectedName}`,
+					"warning",
+				);
+			}
+		});
+
+		pi.on("session_shutdown", () => {
+			discovery.clear();
+			primaryAgentDiscovery.clear();
+		});
+
+		pi.registerCommand("mohawk", {
+			description: "Select current-session primary agent",
+			handler: async (args, ctx) => {
+				primaryAgentState = await runMohawkCommand(
+					pi,
+					ctx,
+					primaryAgentState,
+					primaryAgentDiscovery,
+					args,
+				);
+			},
+		});
+
+		pi.registerShortcut(PRIMARY_SHORTCUT, {
+			description: "Cycle primary agent",
+			handler: async (ctx) => {
+				primaryAgentState = await cyclePrimaryAgent(
+					pi,
+					ctx,
+					primaryAgentState,
+					primaryAgentDiscovery,
+				);
+			},
+		});
+
+		pi.on("before_agent_start", async (event, ctx) => {
+			const injection = await applyPrimaryAgentPromptInjection({
+				pi,
+				event,
+				ctx,
+				state: primaryAgentState,
+				discoveryCache: primaryAgentDiscovery,
+				updateStatus: updatePrimaryAgentStatus,
+				notify: notifyPrimaryAgent,
+			});
+			primaryAgentState = injection.state;
+			return injection.result;
+		});
+
+		type PiGremlinsArgs = { gremlins: GremlinRequest[] };
+		const tool = {
+			name: TOOL_NAME,
+			label: BRAND_NAME,
+			description: TOOL_DESCRIPTION,
+			parameters: PiGremlinsParams,
+
+			renderCall(params: PiGremlinsArgs) {
+				return new Text(renderCallText(params));
+			},
+
+			renderResult(
+				result: AgentToolResult<GremlinInvocationDetails>,
+				options: Parameters<typeof styleGremlinInvocationText>[2],
+				theme: Parameters<typeof styleGremlinInvocationText>[1],
+			) {
+				if (!result.details) {
+					const firstContent = result.content?.[0];
+					const fallbackText =
+						firstContent && "text" in firstContent ? firstContent.text : "";
+					return new Text(fallbackText);
+				}
+				const text = renderGremlinInvocationText(getInvocationDetails(result), {
+					expanded: options.expanded,
+				});
+				return new Text(styleGremlinInvocationText(text, theme, options));
+			},
+
+			async execute(
+				_toolCallId: string,
+				params: PiGremlinsArgs,
+				signal: AbortSignal | undefined,
+				onUpdate: AgentToolUpdateCallback<GremlinInvocationDetails> | undefined,
+				ctx: ExtensionContext,
+			) {
+				if (!Array.isArray(params.gremlins) || params.gremlins.length === 0) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: "Invalid parameters. Provide gremlins: [{ intent, agent, context, cwd? }, ...].",
+							},
+						],
+						isError: true,
+						details: normalizeInvocationDetails(),
+					};
+				}
+				const discovered = await discovery.get(ctx.cwd);
+				const batch = await runGremlinBatch({
+					gremlins: params.gremlins,
+					signal,
+					onUpdate: (details) => {
+						onUpdate?.({
+							content: [
+								{
+									type: "text",
+									text: buildGremlinProgressSummary(details),
+								},
+							],
+							details,
+						});
+					},
+					runGremlin: async ({
+						gremlin: rawRequest,
+						gremlinId,
+						signal: childSignal,
+						onUpdate: publishUpdate,
+					}) => {
+						const resolvedCwd = resolveGremlinCwd(rawRequest.cwd, ctx.cwd);
+						const request = resolvedCwd
+							? { ...rawRequest, cwd: resolvedCwd }
+							: rawRequest;
+						const validationError = validateGremlinRequest(request);
+						if (validationError) {
+							return createFailedGremlinResult(request, gremlinId, validationError);
+						}
+
+						const gremlin = resolveGremlinByName(discovered.gremlins, request.agent);
+						if (!gremlin) {
+							return createFailedGremlinResult(
+								request,
+								gremlinId,
+								`Unknown gremlin: ${request.agent}`,
+							);
+						}
+
+						return runSingleGremlin({
+							gremlinId,
+							request,
+							definition: gremlin,
+							parentSystemPrompt: ctx.getSystemPrompt(),
+							parentModel: ctx.model,
+							modelRegistry: ctx.modelRegistry,
+							signal: childSignal,
+							onUpdate: ({ patch }) => publishUpdate?.(patch),
+						});
+					},
+				});
+
+				const details = normalizeInvocationDetails({
+					requestedCount: params.gremlins.length,
+					activeCount: batch.results.filter(
+						(result) =>
+							result.status === "queued" ||
+							result.status === "starting" ||
+							result.status === "active",
+					).length,
+					completedCount: batch.results.filter(
+						(result) => result.status === "completed",
+					).length,
+					failedCount: batch.results.filter((result) => result.status === "failed")
+						.length,
+					canceledCount: batch.results.filter(
+						(result) => result.status === "canceled",
+					).length,
+					gremlins: batch.results,
+				});
+				const partial: AgentToolResult<GremlinInvocationDetails> = {
+					content: [{ type: "text", text: batch.summary }],
+					details,
+				};
+				onUpdate?.(partial);
+
 				return {
 					content: [
 						{
 							type: "text",
-							text: "Invalid parameters. Provide gremlins: [{ intent, agent, context, cwd? }, ...].",
+							text: batch.summary,
 						},
 					],
-					isError: true,
-					details: normalizeInvocationDetails(),
+					details,
+					...(batch.anyError ? { isError: true } : {}),
 				};
-			}
-			const discovered = await discovery.get(ctx.cwd);
-			const batch = await runGremlinBatch({
-				gremlins: params.gremlins,
-				signal,
-				onUpdate: (details) => {
-					onUpdate?.({
-						content: [
-							{
-								type: "text",
-								text: buildGremlinProgressSummary(details),
-							},
-						],
-						details,
-					});
-				},
-				runGremlin: async ({
-					gremlin: rawRequest,
-					gremlinId,
-					signal: childSignal,
-					onUpdate: publishUpdate,
-				}) => {
-					const resolvedCwd = resolveGremlinCwd(rawRequest.cwd, ctx.cwd);
-					const request = resolvedCwd
-						? { ...rawRequest, cwd: resolvedCwd }
-						: rawRequest;
-					const validationError = validateGremlinRequest(request);
-					if (validationError) {
-						return createFailedGremlinResult(request, gremlinId, validationError);
-					}
+			},
+		};
 
-					const gremlin = resolveGremlinByName(discovered.gremlins, request.agent);
-					if (!gremlin) {
-						return createFailedGremlinResult(
-							request,
-							gremlinId,
-							`Unknown gremlin: ${request.agent}`,
-						);
-					}
-
-					return runSingleGremlin({
-						gremlinId,
-						request,
-						definition: gremlin,
-						parentSystemPrompt: ctx.getSystemPrompt(),
-						parentModel: ctx.model,
-						modelRegistry: ctx.modelRegistry,
-						signal: childSignal,
-						onUpdate: ({ patch }) => publishUpdate?.(patch),
-					});
-				},
-			});
-
-			const details = normalizeInvocationDetails({
-				requestedCount: params.gremlins.length,
-				activeCount: batch.results.filter(
-					(result) =>
-						result.status === "queued" ||
-						result.status === "starting" ||
-						result.status === "active",
-				).length,
-				completedCount: batch.results.filter(
-					(result) => result.status === "completed",
-				).length,
-				failedCount: batch.results.filter((result) => result.status === "failed")
-					.length,
-				canceledCount: batch.results.filter(
-					(result) => result.status === "canceled",
-				).length,
-				gremlins: batch.results,
-			});
-			const partial: AgentToolResult<GremlinInvocationDetails> = {
-				content: [{ type: "text", text: batch.summary }],
-				details,
-			};
-			onUpdate?.(partial);
-
-			return {
-				content: [
-					{
-						type: "text",
-						text: batch.summary,
-					},
-				],
-				details,
-				...(batch.anyError ? { isError: true } : {}),
-			};
-		},
+		// FIXME: Cast kept because pi 0.69.0 + TypeBox 1.x triggers TS2589 deep-instantiation at registerTool().
+		// Keep unsoundness pinned to registration boundary. Revisit after upstream typings or TS inference improves.
+		pi.registerTool(tool as any);
 	};
-
-	// FIXME: Cast kept because pi 0.69.0 + TypeBox 1.x triggers TS2589 deep-instantiation at registerTool().
-	// Keep unsoundness pinned to registration boundary. Revisit after upstream typings or TS inference improves.
-	pi.registerTool(tool as any);
 }
+
+export default createPiGremlinsExtension();

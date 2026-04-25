@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Primary-agent selection and pi-mohawk deprecation path** (PRD-0003, ADR-0003, issue #39): `pi-gremlins` now includes primary-agent discovery, `/mohawk` selection, `Ctrl+Shift+M` cycling, session-scoped state, status UX, and `before_agent_start` prompt injection previously owned by `pi-mohawk`.
 - **V1 SDK rewrite** (PRD-0002, ADR-0002): `pi-gremlins` now runs gremlins through isolated in-process Pi SDK child sessions instead of nested Pi CLI subprocesses.
 - Public tool contract now exposes one invocation shape only: `gremlins: [{ intent, agent, context, cwd? }]` with `1..10` requests and parallel start for multi-gremlin runs; `intent`, `agent`, and `context` are required non-empty strings.
 - Discovery now loads only markdown agent files with `agent_type: sub-agent` from `~/.pi/agent/agents` plus nearest project `.pi/agents`, with typed project definitions overriding same-name typed user definitions.
@@ -22,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hardened gremlin runtime reliability around child-session cleanup, abort handling, discovery file failures, request validation, CRLF gremlin frontmatter parsing, unresolved model selection, and parent-abort progress updates.
 
 ### Added
+- Shared role-aware agent parsing/discovery modules now load `agent_type: sub-agent` gremlins and `agent_type: primary` primary agents from user/project agent directories while preserving strict role separation and project-over-user precedence.
+- Primary-agent state and prompt helpers persist new selections as `pi-gremlins-primary-agent`, read legacy `pi-mohawk-primary-agent` entries for migration, and strip legacy prompt blocks before appending the selected primary markdown.
 - New v1 runtime modules under `extensions/pi-gremlins/`: schema, definition parsing, discovery cache, prompt builder, isolated session factory, runner, scheduler, progress store, summary builder, and inline renderer.
 - Child prompt framing now separates caller intent from caller context so gremlins see delegation rationale apart from task details.
 - Focused v1 contract coverage for schema, discovery, session isolation, runner projection, scheduler cancellation, rendering, and entry-point execution.

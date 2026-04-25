@@ -1,14 +1,20 @@
-import { readFile } from "node:fs/promises";
-import type { GremlinSource } from "./gremlin-schema.js";
+import type { AgentSource, AgentFrontmatter } from "./agent-definition.js";
+import {
+	parseAgentMarkdown,
+	parseTools,
+	readAgentMarkdown,
+	readScalar,
+} from "./agent-definition.js";
 
-export interface GremlinFrontmatter {
+export type GremlinSource = AgentSource;
+
+export interface GremlinFrontmatter extends AgentFrontmatter {
 	name?: string;
 	description?: string;
 	model?: string;
 	thinking?: string;
 	tools?: string[];
 	body?: string;
-	[key: string]: unknown;
 }
 
 export interface GremlinDefinition {
@@ -20,80 +26,12 @@ export interface GremlinDefinition {
 	frontmatter: GremlinFrontmatter;
 }
 
-interface ParsedFrontmatterBlock {
-	frontmatter: Record<string, string | string[]>;
-	body: string;
-}
-
-function normalizeScalarValue(value: string): string {
-	return value.replace(/^['"]|['"]$/g, "").trim();
-}
-
-function parseFrontmatterBlock(markdown: string): ParsedFrontmatterBlock {
-	const match = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-	if (!match) {
-		return { frontmatter: {}, body: markdown };
-	}
-
-	const frontmatter: Record<string, string | string[]> = {};
-	let currentListKey: string | null = null;
-	for (const rawLine of match[1].split(/\r?\n/)) {
-		const line = rawLine.trimEnd();
-		if (!line.trim()) continue;
-		const listItemMatch = line.match(/^\s*-\s+(.*)$/);
-		if (listItemMatch && currentListKey) {
-			const current = frontmatter[currentListKey];
-			const nextValue = normalizeScalarValue(listItemMatch[1]);
-			frontmatter[currentListKey] = Array.isArray(current)
-				? [...current, nextValue]
-				: [nextValue];
-			continue;
-		}
-
-		const separatorIndex = line.indexOf(":");
-		if (separatorIndex === -1) {
-			currentListKey = null;
-			continue;
-		}
-
-		const key = line.slice(0, separatorIndex).trim();
-		const rawValue = line.slice(separatorIndex + 1).trim();
-		if (!key) {
-			currentListKey = null;
-			continue;
-		}
-		if (!rawValue) {
-			frontmatter[key] = [];
-			currentListKey = key;
-			continue;
-		}
-
-		frontmatter[key] = normalizeScalarValue(rawValue);
-		currentListKey = null;
-	}
-
-	return { frontmatter, body: match[2] };
-}
-
-function parseTools(value: string | string[] | undefined): string[] | undefined {
-	if (!value) return undefined;
-	const tools = (Array.isArray(value) ? value : value.split(","))
-		.map((tool) => normalizeScalarValue(tool))
-		.filter(Boolean);
-	return tools.length > 0 ? tools : undefined;
-}
-
-function readScalar(frontmatter: Record<string, string | string[]>, key: string) {
-	const value = frontmatter[key];
-	return typeof value === "string" ? normalizeScalarValue(value) : undefined;
-}
-
 export function parseGremlinDefinition(
 	markdown: string,
 	filePath: string,
 	source: GremlinSource,
 ): GremlinDefinition | null {
-	const { frontmatter, body } = parseFrontmatterBlock(markdown);
+	const { frontmatter, body } = parseAgentMarkdown(markdown);
 	const agentType = readScalar(frontmatter, "agent_type");
 	if (agentType !== "sub-agent") return null;
 
@@ -108,6 +46,7 @@ export function parseGremlinDefinition(
 		rawMarkdown: markdown,
 		frontmatter: {
 			...frontmatter,
+			agent_type: agentType,
 			description: readScalar(frontmatter, "description"),
 			model: readScalar(frontmatter, "model"),
 			thinking: readScalar(frontmatter, "thinking"),
@@ -121,6 +60,6 @@ export async function loadGremlinDefinition(
 	filePath: string,
 	source: GremlinSource,
 ): Promise<GremlinDefinition | null> {
-	const rawMarkdown = await readFile(filePath, "utf-8");
+	const rawMarkdown = await readAgentMarkdown(filePath);
 	return parseGremlinDefinition(rawMarkdown, filePath, source);
 }
