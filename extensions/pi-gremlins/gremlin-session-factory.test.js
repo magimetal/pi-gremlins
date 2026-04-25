@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 describe("gremlin session factory v1 contract", () => {
-	test("builds child session config from parent system prompt raw gremlin markdown and caller context only", async () => {
+	test("builds child session config from parent system prompt raw gremlin markdown caller intent and caller context only", async () => {
 		const { buildGremlinPrompt } = await import("./gremlin-prompt.ts");
 		const { buildGremlinSessionConfig } = await import(
 			"./gremlin-session-factory.ts"
@@ -17,10 +17,12 @@ describe("gremlin session factory v1 contract", () => {
 			"---",
 			"You are focused research gremlin.",
 		].join("\n");
+		const intent = "Map architecture before parent edits auth code";
 		const context = "Find auth flow entry points";
 		const prompt = buildGremlinPrompt({
 			parentSystemPrompt,
 			rawMarkdown,
+			intent,
 			context,
 		});
 		const config = buildGremlinSessionConfig({
@@ -37,11 +39,15 @@ describe("gremlin session factory v1 contract", () => {
 					tools: ["read", "grep"],
 				},
 			},
+			intent,
 			context,
 		});
 
 		expect(prompt).toContain(parentSystemPrompt);
 		expect(prompt).toContain(rawMarkdown);
+		expect(prompt).toContain("Caller intent:");
+		expect(prompt).toContain(intent);
+		expect(prompt).toContain("Caller context:");
 		expect(prompt).toContain(context);
 		expect(config).toMatchObject({
 			systemPrompt: parentSystemPrompt,
@@ -129,6 +135,7 @@ describe("gremlin session factory v1 contract", () => {
 					rawMarkdown: "---\nname: reviewer\nmodel: openai/missing\n---\nReview work",
 					frontmatter: { model: "openai/missing" },
 				},
+				intent: "Check model routing before session creation",
 				context: "Review diff",
 				modelRegistry,
 			}),
@@ -153,6 +160,7 @@ describe("gremlin session factory v1 contract", () => {
 				rawMarkdown: "---\nname: reviewer\n---\nReview work",
 				frontmatter: {},
 			},
+			intent: "Verify no subprocess path is used",
 			context: "Review diff",
 		});
 

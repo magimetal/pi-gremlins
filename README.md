@@ -14,7 +14,7 @@ Suggested GitHub About text:
 V1 contract:
 
 - one tool name: `pi-gremlins`
-- one input shape: `gremlins: [{ agent, context, cwd? }]`
+- one input shape: `gremlins: [{ intent, agent, context, cwd? }]`
 - array length `1..10`
 - one gremlin = single run
 - multiple gremlins = parallel run
@@ -74,7 +74,11 @@ Single summon:
 ```text
 pi-gremlins({
   gremlins: [
-    { agent: "researcher", context: "Summarize repo architecture" }
+    {
+      intent: "Get independent architecture read before editing runtime code",
+      agent: "researcher",
+      context: "Summarize repo architecture"
+    }
   ]
 })
 ```
@@ -84,9 +88,21 @@ Parallel swarm:
 ```text
 pi-gremlins({
   gremlins: [
-    { agent: "researcher", context: "Find auth flow" },
-    { agent: "reviewer", context: "Review recent changes" },
-    { agent: "writer", context: "Draft release note" }
+    {
+      intent: "Map auth implementation before parent changes code",
+      agent: "researcher",
+      context: "Find auth flow"
+    },
+    {
+      intent: "Catch risks in pending changes",
+      agent: "reviewer",
+      context: "Review recent changes"
+    },
+    {
+      intent: "Prepare concise user-facing release copy",
+      agent: "writer",
+      context: "Draft release note"
+    }
   ]
 })
 ```
@@ -96,20 +112,27 @@ Per-gremlin working directory override:
 ```text
 pi-gremlins({
   gremlins: [
-    { agent: "researcher", context: "Audit frontend auth code", cwd: "apps/web" }
+    {
+      intent: "Audit frontend auth before parent edits web app",
+      agent: "researcher",
+      context: "Audit frontend auth code",
+      cwd: "apps/web"
+    }
   ]
 })
 ```
 
 Runtime behavior:
 
+- `intent` is required and states why the parent is delegating or what outcome the gremlin should serve
+- `context` is required and carries concrete task details, constraints, paths, findings, and requested output
 - child sessions run in-process through Pi SDK
 - child sessions inherit parent system prompt snapshot only
 - no nested Pi CLI subprocesses
 - no temp prompt files
 - child sessions do not load extensions, skills, prompts, themes, or AGENTS files
 - collapsed tool row shows source, status, phase, and latest activity
-- expanded tool row shows task, cwd, model, thinking, latest text/tool data, usage, and errors
+- expanded tool row shows intent, task, cwd, model, thinking, latest text/tool data, usage, and errors
 
 ## Repo layout
 

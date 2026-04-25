@@ -103,7 +103,7 @@ describe("pi-gremlins index execute v1", () => {
 		const ctx = createExecutionContext(workspace.repoRoot);
 		const result = await tool.execute(
 			"run-known-gremlin",
-			{ gremlins: [{ agent: "researcher", context: "Find auth flow" }] },
+			{ gremlins: [{ intent: "Map auth behavior before parent edits", agent: "researcher", context: "Find auth flow" }] },
 			undefined,
 			(update) => updates.push(update),
 			ctx,
@@ -162,7 +162,7 @@ describe("pi-gremlins index execute v1", () => {
 		const ctx = createExecutionContext(workspace.repoRoot);
 		await tool.execute(
 			"run-known-gremlin-tool-visibility",
-			{ gremlins: [{ agent: "researcher", context: "Find auth flow" }] },
+			{ gremlins: [{ intent: "Map auth behavior before parent edits", agent: "researcher", context: "Find auth flow" }] },
 			undefined,
 			(update) => updates.push(update),
 			ctx,
@@ -175,7 +175,7 @@ describe("pi-gremlins index execute v1", () => {
 		expect(toolPhaseUpdate.content[0].text).toContain("read apps/web/src/main.ts");
 	});
 
-	test("returns structured failures for empty agent context and invalid cwd", async () => {
+	test("returns structured failures for empty intent agent context and invalid cwd", async () => {
 		const workspace = createWorkspace();
 		setMockAgentDir(workspace.userRoot);
 		const { tool } = createExtensionHarness();
@@ -185,9 +185,11 @@ describe("pi-gremlins index execute v1", () => {
 			"invalid-gremlins",
 			{
 				gremlins: [
-					{ agent: " ", context: "Do work" },
-					{ agent: "researcher", context: " " },
+					{ intent: " ", agent: "researcher", context: "Do work" },
+					{ intent: "Validate agent name", agent: " ", context: "Do work" },
+					{ intent: "Validate context", agent: "researcher", context: " " },
 					{
+						intent: "Validate cwd",
 						agent: "researcher",
 						context: "Do work",
 						cwd: path.join(workspace.root, "missing"),
@@ -201,6 +203,10 @@ describe("pi-gremlins index execute v1", () => {
 
 		expect(result.isError).toBe(true);
 		expect(result.details.gremlins).toEqual([
+			expect.objectContaining({
+				status: "failed",
+				errorMessage: "Gremlin intent is required",
+			}),
 			expect.objectContaining({
 				status: "failed",
 				errorMessage: "Gremlin agent is required",
@@ -245,7 +251,7 @@ describe("pi-gremlins index execute v1", () => {
 			"relative-cwd",
 			{
 				gremlins: [
-					{ agent: "researcher", context: "Find auth flow", cwd: "child" },
+					{ intent: "Run auth research from child workspace", agent: "researcher", context: "Find auth flow", cwd: "child" },
 				],
 			},
 			undefined,
@@ -266,7 +272,7 @@ describe("pi-gremlins index execute v1", () => {
 
 		const result = await tool.execute(
 			"unknown-gremlin",
-			{ gremlins: [{ agent: "missing", context: "Do work" }] },
+			{ gremlins: [{ intent: "Verify missing gremlin handling", agent: "missing", context: "Do work" }] },
 			undefined,
 			undefined,
 			ctx,
@@ -297,7 +303,7 @@ describe("pi-gremlins index execute v1", () => {
 		const ctx = createExecutionContext(workspace.repoRoot);
 		const result = await tool.execute(
 			"unresolved-model",
-			{ gremlins: [{ agent: "researcher", context: "Find auth flow" }] },
+			{ gremlins: [{ intent: "Map auth behavior before parent edits", agent: "researcher", context: "Find auth flow" }] },
 			undefined,
 			undefined,
 			ctx,

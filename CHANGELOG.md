@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **V1 SDK rewrite** (PRD-0002, ADR-0002): `pi-gremlins` now runs gremlins through isolated in-process Pi SDK child sessions instead of nested Pi CLI subprocesses.
-- Public tool contract now exposes one invocation shape only: `gremlins: [{ agent, context, cwd? }]` with `1..10` requests and parallel start for multi-gremlin runs.
+- Public tool contract now exposes one invocation shape only: `gremlins: [{ intent, agent, context, cwd? }]` with `1..10` requests and parallel start for multi-gremlin runs; `intent`, `agent`, and `context` are required non-empty strings.
 - Discovery now loads only markdown agent files with `agent_type: sub-agent` from `~/.pi/agent/agents` plus nearest project `.pi/agents`, with typed project definitions overriding same-name typed user definitions.
 - Live progress now stays inline in tool row and expands through Pi's standard `Ctrl+O` affordance.
 - Embedded rendering now uses stable gremlin ids (`g1`, `g2`, ...), cached line computation, and inline collapsed/expanded summaries built from shared v1 render components.
@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - New v1 runtime modules under `extensions/pi-gremlins/`: schema, definition parsing, discovery cache, prompt builder, isolated session factory, runner, scheduler, progress store, summary builder, and inline renderer.
+- Child prompt framing now separates caller intent from caller context so gremlins see delegation rationale apart from task details.
 - Focused v1 contract coverage for schema, discovery, session isolation, runner projection, scheduler cancellation, rendering, and entry-point execution.
 - `extensions/pi-gremlins/AGENTS_CUSTOM.md` override documenting current v1-only runtime boundaries until generated agent docs are refreshed.
 

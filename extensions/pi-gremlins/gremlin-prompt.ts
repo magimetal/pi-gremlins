@@ -1,12 +1,14 @@
 export interface BuildGremlinPromptOptions {
 	parentSystemPrompt: string;
 	rawMarkdown: string;
+	intent: string;
 	context: string;
 }
 
 export function buildGremlinPrompt({
 	parentSystemPrompt,
 	rawMarkdown,
+	intent,
 	context,
 }: BuildGremlinPromptOptions): string {
 	return [
@@ -15,6 +17,9 @@ export function buildGremlinPrompt({
 		"",
 		"Gremlin definition markdown:",
 		rawMarkdown,
+		"",
+		"Caller intent:",
+		intent,
 		"",
 		"Caller context:",
 		context,

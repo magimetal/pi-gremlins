@@ -17,6 +17,7 @@ describe("gremlin rendering v1 contract", () => {
 					{
 						gremlinId: "g1",
 						agent: "researcher",
+						intent: "Map auth architecture before parent edits",
 						source: "project",
 						status: "active",
 						currentPhase: "tool:read",
@@ -28,6 +29,7 @@ describe("gremlin rendering v1 contract", () => {
 					{
 						gremlinId: "g2",
 						agent: "reviewer",
+						intent: "Review auth findings independently",
 						source: "user",
 						status: "queued",
 						currentPhase: "prompting",
@@ -44,10 +46,12 @@ describe("gremlin rendering v1 contract", () => {
 
 		expect(text).toContain("Gremlins🧌 · requested:2 · active:1");
 		expect(text).toContain("[Active] · g1 researcher [project]");
+		expect(text).toContain("intent · Map auth architecture before parent edits");
 		expect(text).toContain("task · Find auth flow");
 		expect(text).toContain("latest · tool:read · Scanning auth entry points");
 		expect(text).toContain("usage · turns:1 · input:10 · output:4");
 		expect(text).toContain("[Queued] · g2 reviewer [user]");
+		expect(text).toContain("intent · Review auth findings independently");
 		expect(text).toContain("task · prompting · Review auth flow");
 		expect(text).toContain("Ctrl+O expands inline detail.");
 		expect(text).not.toContain("/gremlins:view");
@@ -245,6 +249,7 @@ describe("gremlin rendering v1 contract", () => {
 					{
 						gremlinId: "g1",
 						agent: "researcher",
+						intent: "Confirm auth entry before parent summarizes",
 						source: "project",
 						status: "completed",
 						currentPhase: "settling",
@@ -270,6 +275,7 @@ describe("gremlin rendering v1 contract", () => {
 		);
 
 		expect(text).toContain("[Completed] g1 researcher [project]");
+		expect(text).toContain("intent · Confirm auth entry before parent summarizes");
 		expect(text).toContain("task · Find auth flow");
 		expect(text).toContain("tool call · read apps/web/src/main.ts");
 		expect(text).toContain("tool result · import bootstrap from ./bootstrap");

@@ -14,7 +14,7 @@ This plan does **not** patch current runtime again. It assumes full replacement.
 Target v1 surface:
 
 - one tool only: `pi-gremlins`
-- one input shape only: `gremlins: [{ agent, context, cwd? }, ...]`
+- one input shape only: `gremlins: [{ intent, agent, context, cwd? }, ...]`
 - array length `1..10`
 - if more than one gremlin requested, all start in parallel
 - load both user and nearest project gremlins automatically
@@ -179,6 +179,7 @@ Keep repo convention of flat TS files under `extensions/pi-gremlins/`.
 pi-gremlins({
   gremlins: [
     {
+      intent: "Map auth flow before parent edits code",
       agent: "researcher",
       context: "Find auth flow and summarize entry points",
       cwd: "/optional/project/path"
@@ -202,7 +203,8 @@ Each child gremlin session must receive exactly these inputs:
 
 1. **computed system prompt snapshot** from parent turn via `ctx.getSystemPrompt()`
 2. **raw gremlin markdown contents** from resolved gremlin file
-3. **caller-supplied context string** from tool params
+3. **caller-supplied intent string** from tool params
+4. **caller-supplied context string** from tool params
 
 Everything else is intentionally excluded:
 
@@ -389,7 +391,7 @@ Per gremlin show:
   - `gremlin-session-factory.ts`
 - **Acceptance criteria:**
   - Child session receives parent computed system prompt snapshot.
-  - Child session prompt includes raw gremlin markdown and caller context only.
+  - Child session prompt includes raw gremlin markdown, caller intent, and caller context only.
   - Resource loader returns no extensions/skills/prompts/themes/AGENTS.
   - No temp prompt file write path exists.
   - No subprocess spawn path exists.

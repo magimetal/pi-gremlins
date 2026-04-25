@@ -1,12 +1,16 @@
 import { Type } from "typebox";
 
 export const GremlinRequestSchema = Type.Object({
+	intent: Type.String({
+		description: "Why parent agent is spawning this gremlin",
+		minLength: 1,
+	}),
 	agent: Type.String({
 		description: "Name of gremlin to invoke",
 		minLength: 1,
 	}),
 	context: Type.String({
-		description: "Task or context for gremlin",
+		description: "Task details and working context for gremlin",
 		minLength: 1,
 	}),
 	cwd: Type.Optional(
@@ -33,6 +37,7 @@ export type GremlinStatus =
 	| "canceled";
 
 export interface GremlinRequest {
+	intent: string;
 	agent: string;
 	context: string;
 	cwd?: string;
@@ -66,6 +71,7 @@ export interface GremlinActivity {
 
 export interface GremlinInvocationEntry {
 	gremlinId?: string;
+	intent: string;
 	agent: string;
 	source: GremlinSource;
 	status: GremlinStatus;

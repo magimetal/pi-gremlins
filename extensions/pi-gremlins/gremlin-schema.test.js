@@ -19,6 +19,7 @@ describe("gremlin schema v1 contract", () => {
 			maxItems: 10,
 		});
 		expect(tool.parameters.gremlins.value).toMatchObject({
+			intent: expect.objectContaining({ minLength: 1 }),
 			agent: expect.objectContaining({ minLength: 1 }),
 			context: expect.objectContaining({ minLength: 1 }),
 			cwd: expect.any(Object),
@@ -41,6 +42,8 @@ describe("gremlin schema v1 contract", () => {
 		const tool = createRegisteredTool();
 
 		expect(tool.description).toContain("gremlins");
+		expect(tool.description).toContain("intent is required");
+		expect(tool.description).toContain("context is required");
 		expect(tool.description).toContain("parallel");
 		expect(tool.description).not.toContain("Modes:");
 		expect(tool.description).not.toContain("chain");

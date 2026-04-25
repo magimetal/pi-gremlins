@@ -26,6 +26,7 @@ export interface BuildGremlinSessionConfigOptions {
 	parentModel?: string | Model<any>;
 	parentThinking?: ThinkingLevel;
 	gremlin: Pick<GremlinDefinition, "name" | "source" | "rawMarkdown" | "frontmatter">;
+	intent: string;
 	context: string;
 	cwd?: string;
 	modelRegistry?: ModelRegistry;
@@ -150,6 +151,7 @@ export function buildGremlinSessionConfig({
 	parentModel,
 	parentThinking,
 	gremlin,
+	intent,
 	context,
 	cwd,
 	modelRegistry,
@@ -171,6 +173,7 @@ export function buildGremlinSessionConfig({
 		prompt: buildGremlinPrompt({
 			parentSystemPrompt,
 			rawMarkdown: gremlin.rawMarkdown,
+			intent,
 			context,
 		}),
 		model: resolvedModel.label,

@@ -12,8 +12,8 @@ describe("pi-gremlins index render v1", () => {
 		expect(
 			tool.renderCall({
 				gremlins: [
-					{ agent: "researcher", context: "Find auth flow" },
-					{ agent: "reviewer", context: "Review auth flow" },
+					{ intent: "Map auth behavior before parent edits", agent: "researcher", context: "Find auth flow" },
+					{ intent: "Review auth findings independently", agent: "reviewer", context: "Review auth flow" },
 				],
 			}).text,
 		).toBe("🕯️🔥🕯️ Summoning the gremlins: researcher, reviewer");
@@ -44,6 +44,7 @@ describe("pi-gremlins index render v1", () => {
 					{
 						gremlinId: "g1",
 						agent: "researcher",
+						intent: "Map auth behavior before parent edits",
 						source: "project",
 						status: "active",
 						context: "Find auth flow",
@@ -54,6 +55,7 @@ describe("pi-gremlins index render v1", () => {
 					{
 						gremlinId: "g2",
 						agent: "reviewer",
+						intent: "Review auth findings independently",
 						source: "user",
 						status: "completed",
 						context: "Review auth flow",
@@ -75,6 +77,7 @@ describe("pi-gremlins index render v1", () => {
 
 		expect(collapsed).toContain("Gremlins🧌 · requested:2 · active:1 · completed:1");
 		expect(collapsed).toContain("[Active] · g1 researcher [project]");
+		expect(collapsed).toContain("intent · Map auth behavior before parent edits");
 		expect(collapsed).toContain("task · Find auth flow");
 		expect(collapsed).toContain("latest · tool:read · Scanning route handlers");
 		expect(collapsed).toContain("tool call · settling · read apps/web/src/main.ts");
@@ -85,6 +88,7 @@ describe("pi-gremlins index render v1", () => {
 		expect(collapsed).not.toContain("popup");
 
 		expect(expanded).toContain("[Completed] g2 reviewer [user]");
+		expect(expanded).toContain("intent · Review auth findings independently");
 		expect(expanded).toContain("task · Review auth flow");
 		expect(expanded).toContain("tool call · read apps/web/src/main.ts");
 		expect(expanded).toContain("usage · turns:2 · input:20 · output:8");

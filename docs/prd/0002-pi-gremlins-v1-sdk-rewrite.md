@@ -18,7 +18,7 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 - One invocation shape only.
 - One to ten gremlins only.
 - More than one gremlin means true parallel execution.
-- Each gremlin gets only current computed system prompt, its own markdown definition, and caller-supplied context.
+- Each gremlin gets only current computed system prompt, its own markdown definition, caller-supplied intent, and caller-supplied context.
 - No full parent conversation history.
 - No chain mode.
 - No popup viewer, no `/gremlins:view`, no targeted steering command.
@@ -53,7 +53,9 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
   - nearest project `.pi/agents/*.md`
 - Resolve duplicate gremlin names with nearest project `.pi/agents` taking precedence over user-level definitions among typed sub-agent files.
 - One tool parameter shape only:
-  - `gremlins: [{ agent, context, cwd? }, ...]`
+  - `gremlins: [{ intent, agent, context, cwd? }, ...]`
+  - `intent` is required delegation rationale or desired outcome
+  - `context` is required task detail, constraints, paths, findings, or requested output
   - array length constrained to `1..10`
 - If `gremlins.length === 1`, run one gremlin.
 - If `gremlins.length > 1`, start all gremlins in parallel with no hidden lower concurrency cap.
@@ -61,6 +63,7 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 - Build child sessions with:
   - current computed parent system prompt snapshot
   - raw gremlin markdown contents
+  - caller-supplied intent string
   - caller-supplied context string
   - in-memory session manager
   - custom resource loader that disables inherited extensions, prompts, skills, themes, AGENTS files, and conversation history
@@ -85,13 +88,13 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 
 ## Acceptance Criteria
 
-- [ ] Tool schema exposes exactly one invocation shape: `gremlins: [...]`, with minimum 1 and maximum 10 gremlin requests.
+- [ ] Tool schema exposes exactly one invocation shape: `gremlins: [{ intent, agent, context, cwd? }, ...]`, with minimum 1 and maximum 10 gremlin requests.
 - [ ] Public tool schema does not expose `agent`, `task`, `tasks`, `chain`, `agentScope`, or `confirmProjectAgents`.
 - [ ] Gremlin discovery loads only `agent_type: sub-agent` markdown files from user-level `~/.pi/agent/agents` plus nearest project `.pi/agents` and does not load package-provided agent resources.
 - [ ] Duplicate gremlin names resolve deterministically with project-local definition winning over user-level definition among typed sub-agent files.
 - [ ] Child gremlin sessions do not receive parent conversation history.
 - [ ] Child gremlin sessions do not load AGENTS files, extensions, prompts, skills, or themes from parent runtime.
-- [ ] Child gremlin sessions receive current computed system prompt snapshot, raw gremlin markdown contents, and supplied context only.
+- [ ] Child gremlin sessions receive current computed system prompt snapshot, raw gremlin markdown contents, supplied intent, and supplied context only.
 - [ ] More than one gremlin request starts parallel execution immediately; runtime does not serialize by default and does not impose lower internal concurrency than requested gremlin count.
 - [ ] Abort from parent tool execution cancels every running gremlin session and leaves no active child sessions registered after completion.
 - [ ] Tool row shows inline live progress for every gremlin while execution is active.
@@ -124,6 +127,7 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
   - status
   - gremlin name
   - source badge
+  - delegation intent
   - current/latest activity
   - short terminal summary
 - Expanded view should add detail, not alternate navigation.
@@ -154,3 +158,4 @@ Primary references used for this PRD:
 ## Revision History
 
 - 2026-04-22: Draft created
+- 2026-04-24: V1 request contract updated to require per-gremlin `intent` separate from `context`
