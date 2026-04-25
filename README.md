@@ -31,17 +31,7 @@ Gremlin definitions load from:
 - `~/.pi/agent/agents`
 - nearest project `.pi/agents`
 
-Only markdown files with `agent_type: sub-agent` frontmatter are loaded as gremlins. Untyped files and other agent types, such as `agent_type: primary`, are ignored.
-
-```yaml
----
-name: researcher
-description: Research-focused gremlin
-agent_type: sub-agent
----
-```
-
-If user and project define same gremlin name, project version wins among discovered sub-agent definitions.
+If user and project define same gremlin name, project version wins.
 
 Important: UI label may show `Gremlins🧌` for human-facing branding. Actual package/runtime/tool identifier stays `pi-gremlins` for install and invocation wiring.
 

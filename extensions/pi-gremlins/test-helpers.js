@@ -30,7 +30,7 @@ export function writeAgentFile(
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(
 		path.join(dir, fileName),
-		`---\nname: ${name}\ndescription: ${description}\nagent_type: sub-agent\n---\nsystem prompt`,
+		`---\nname: ${name}\ndescription: ${description}\n---\nsystem prompt`,
 		"utf-8",
 	);
 }

@@ -14,7 +14,7 @@ Main user need is narrower than current implementation: summon 1-10 gremlins, gi
 
 V1 rewrite must keep premise and operator value, but deliberately cut scope until runtime is dependable and fast:
 
-- Gremlin definitions still come from user and project agent directories, gated by `agent_type: sub-agent` frontmatter.
+- Gremlin definitions still come from user and project agent directories.
 - One invocation shape only.
 - One to ten gremlins only.
 - More than one gremlin means true parallel execution.
@@ -51,7 +51,7 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 - Discover gremlins from both:
   - `~/.pi/agent/agents/*.md`
   - nearest project `.pi/agents/*.md`
-- Resolve duplicate gremlin names with nearest project `.pi/agents` taking precedence over user-level definitions among typed sub-agent files.
+- Resolve duplicate gremlin names with nearest project `.pi/agents` taking precedence over user-level definitions.
 - One tool parameter shape only:
   - `gremlins: [{ agent, context, cwd? }, ...]`
   - array length constrained to `1..10`
@@ -87,8 +87,8 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 
 - [ ] Tool schema exposes exactly one invocation shape: `gremlins: [...]`, with minimum 1 and maximum 10 gremlin requests.
 - [ ] Public tool schema does not expose `agent`, `task`, `tasks`, `chain`, `agentScope`, or `confirmProjectAgents`.
-- [ ] Gremlin discovery loads only `agent_type: sub-agent` markdown files from user-level `~/.pi/agent/agents` plus nearest project `.pi/agents` and does not load package-provided agent resources.
-- [ ] Duplicate gremlin names resolve deterministically with project-local definition winning over user-level definition among typed sub-agent files.
+- [ ] Gremlin discovery loads only user-level `~/.pi/agent/agents` plus nearest project `.pi/agents` and does not load package-provided agent resources.
+- [ ] Duplicate gremlin names resolve deterministically with project-local definition winning over user-level definition.
 - [ ] Child gremlin sessions do not receive parent conversation history.
 - [ ] Child gremlin sessions do not load AGENTS files, extensions, prompts, skills, or themes from parent runtime.
 - [ ] Child gremlin sessions receive current computed system prompt snapshot, raw gremlin markdown contents, and supplied context only.
@@ -109,7 +109,7 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 ## Technical Surface
 
 - **Extension entry:** `extensions/pi-gremlins/index.ts` rewritten from zero to register only v1 tool and wire lifecycle cleanup.
-- **Discovery:** new modules for gremlin definition loading, frontmatter parsing, `agent_type: sub-agent` gating, both-scope resolution, and duplicate-name precedence.
+- **Discovery:** new modules for gremlin definition loading, frontmatter parsing, both-scope resolution, and duplicate-name precedence.
 - **Child-session runtime:** new SDK-based session factory using `createAgentSession()`, in-memory session state, and custom `ResourceLoader`/system prompt override.
 - **Execution:** new scheduler and invocation controller for 1-10 gremlins, structured cancellation, event fan-in, and aggregate result handling.
 - **Rendering:** new inline collapsed/expanded renderer only; no overlay, popup, viewer snapshot, or steering UI.

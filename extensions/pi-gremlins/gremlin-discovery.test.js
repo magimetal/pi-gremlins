@@ -44,7 +44,7 @@ describe("gremlin discovery v1 contract", () => {
 		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
 		fs.writeFileSync(
 			`${workspace.projectAgentsDir}/shared.md`,
-			"---\nname: shared\ndescription: project shared gremlin\nagent_type: sub-agent\n---\nproject prompt body",
+			"---\nname: shared\ndescription: project shared gremlin\n---\nproject prompt body",
 			"utf-8",
 		);
 		writeAgentFile(
@@ -76,65 +76,6 @@ describe("gremlin discovery v1 contract", () => {
 			});
 	});
 
-	test("skips agent files without sub-agent frontmatter marker", async () => {
-		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
-		const workspace = createWorkspace();
-		workspaceRoot = workspace.root;
-		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
-		fs.writeFileSync(
-			`${workspace.projectAgentsDir}/untyped.md`,
-			"---\nname: untyped\ndescription: untyped agent\n---\nUntyped prompt body",
-			"utf-8",
-		);
-		fs.writeFileSync(
-			`${workspace.projectAgentsDir}/primary.md`,
-			"---\nname: primary\ndescription: primary agent\nagent_type: primary\n---\nPrimary prompt body",
-			"utf-8",
-		);
-		fs.writeFileSync(
-			`${workspace.projectAgentsDir}/sub-agent.md`,
-			"---\nname: sub-agent\ndescription: sub agent\nagent_type: sub-agent\n---\nSub-agent prompt body",
-			"utf-8",
-		);
-
-		const discovery = createGremlinDiscoveryCache({
-			userAgentsDir: workspace.userAgentsDir,
-		});
-		const result = await discovery.get(workspace.repoRoot);
-
-		expect(result.gremlins.map((gremlin) => gremlin.name)).toEqual([
-			"sub-agent",
-		]);
-	});
-
-	test("does not let untyped project file override typed user sub-agent", async () => {
-		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
-		const workspace = createWorkspace();
-		workspaceRoot = workspace.root;
-		writeAgentFile(
-			workspace.userAgentsDir,
-			"shared.md",
-			"shared",
-			"user shared gremlin",
-		);
-		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
-		fs.writeFileSync(
-			`${workspace.projectAgentsDir}/shared.md`,
-			"---\nname: shared\ndescription: untyped project shared\n---\nproject prompt body",
-			"utf-8",
-		);
-
-		const discovery = createGremlinDiscoveryCache({
-			userAgentsDir: workspace.userAgentsDir,
-		});
-		const result = await discovery.get(workspace.repoRoot);
-
-		expect(result.gremlins).toEqual([
-			expect.objectContaining({ name: "shared", source: "user" }),
-		]);
-		expect(result.gremlins[0].rawMarkdown).toContain("system prompt");
-	});
-
 	test("parses frontmatter metadata and invalidates cache when file set changes", async () => {
 		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
 		const workspace = createWorkspace();
@@ -146,7 +87,6 @@ describe("gremlin discovery v1 contract", () => {
 				"---",
 				"name: researcher",
 				"description: project researcher",
-				"agent_type: sub-agent",
 				"model: openai/gpt-5-mini",
 				"thinking: high",
 				"tools:",
@@ -173,7 +113,7 @@ describe("gremlin discovery v1 contract", () => {
 
 		fs.writeFileSync(
 			`${workspace.projectAgentsDir}/reviewer.md`,
-			"---\nname: reviewer\ndescription: project reviewer\nagent_type: sub-agent\n---\nReview prompt body",
+			"---\nname: reviewer\ndescription: project reviewer\n---\nReview prompt body",
 			"utf-8",
 		);
 		const second = await discovery.get(workspace.repoRoot);
@@ -194,7 +134,7 @@ describe("gremlin discovery v1 contract", () => {
 		const researcherPath = `${workspace.projectAgentsDir}/researcher.md`;
 		fs.writeFileSync(
 			researcherPath,
-			"---\nname: researcher\ndescription: first\nagent_type: sub-agent\n---\nfirst prompt body",
+			"---\nname: researcher\ndescription: first\n---\nfirst prompt body",
 			"utf-8",
 		);
 		const { calls, fileSystem } = createCountingFileSystem();
@@ -212,7 +152,7 @@ describe("gremlin discovery v1 contract", () => {
 
 		fs.writeFileSync(
 			researcherPath,
-			"---\nname: researcher\ndescription: second\nagent_type: sub-agent\n---\nsecond prompt body",
+			"---\nname: researcher\ndescription: second\n---\nsecond prompt body",
 			"utf-8",
 		);
 		fs.utimesSync(researcherPath, new Date(), new Date(Date.now() + 1000));
@@ -230,7 +170,7 @@ describe("gremlin discovery v1 contract", () => {
 		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
 		fs.writeFileSync(
 			`${workspace.projectAgentsDir}/good.md`,
-			"---\nname: good\ndescription: good gremlin\nagent_type: sub-agent\n---\nGood prompt body",
+			"---\nname: good\ndescription: good gremlin\n---\nGood prompt body",
 			"utf-8",
 		);
 		fs.symlinkSync(
@@ -253,7 +193,7 @@ describe("gremlin discovery v1 contract", () => {
 		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
 		fs.writeFileSync(
 			`${workspace.projectAgentsDir}/crlf.md`,
-			"---\r\nname: crlf\r\ndescription: CRLF gremlin\r\nagent_type: sub-agent\r\n---\r\nPrompt body",
+			"---\r\nname: crlf\r\ndescription: CRLF gremlin\r\n---\r\nPrompt body",
 			"utf-8",
 		);
 
