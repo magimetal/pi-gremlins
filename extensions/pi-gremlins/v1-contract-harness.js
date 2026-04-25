@@ -101,16 +101,31 @@ export function setCreateAgentSessionImpl(impl) {
 export function createExtensionHarness() {
 	let registeredTool;
 	const commands = new Map();
+	const shortcuts = new Map();
+	const handlers = new Map();
+	const entries = [];
+	const messages = [];
 	registerPiGremlins({
-		on: () => {},
+		on: (event, handler) => {
+			handlers.set(event, handler);
+		},
 		registerCommand: (name, command) => {
 			commands.set(name, command);
+		},
+		registerShortcut: (shortcut, shortcutOptions) => {
+			shortcuts.set(shortcut, shortcutOptions);
 		},
 		registerTool: (tool) => {
 			registeredTool = tool;
 		},
+		appendEntry: (customType, data) => {
+			entries.push({ customType, data });
+		},
+		sendMessage: (message) => {
+			messages.push(message);
+		},
 	});
-	return { tool: registeredTool, commands };
+	return { tool: registeredTool, commands, shortcuts, handlers, entries, messages };
 }
 
 export function createRegisteredTool() {

@@ -35,11 +35,14 @@ describe("pi-gremlins index execute v1", () => {
 		resetV1ContractHarness();
 	});
 
-	test("registers only tool and no legacy viewer or steering commands", () => {
-		const { tool, commands } = createExtensionHarness();
+	test("registers tool plus primary-agent compatibility command with no legacy viewer or steering commands", () => {
+		const { tool, commands, shortcuts } = createExtensionHarness();
 
 		expect(tool.name).toBe("pi-gremlins");
-		expect(Array.from(commands.keys())).toEqual([]);
+		expect(Array.from(commands.keys())).toEqual(["mohawk"]);
+		expect(commands.has("gremlins:view")).toBe(false);
+		expect(commands.has("gremlins:steer")).toBe(false);
+		expect(Array.from(shortcuts.keys())).toEqual(["ctrl+shift+m"]);
 	});
 
 	test("rejects legacy parameter shapes at execute boundary", async () => {
