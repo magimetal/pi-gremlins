@@ -8,7 +8,7 @@ function writeGremlinFile(dir, fileName, name, extraFrontmatter = "") {
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(
 		path.join(dir, fileName),
-		`---\nname: ${name}\ndescription: ${name} description\n${extraFrontmatter}---\n${name} system prompt`,
+		`---\nname: ${name}\ndescription: ${name} description\nagent_type: sub-agent\n${extraFrontmatter}---\n${name} system prompt`,
 		"utf-8",
 	);
 }
