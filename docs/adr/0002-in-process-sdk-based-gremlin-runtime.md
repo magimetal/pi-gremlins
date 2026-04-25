@@ -42,7 +42,7 @@ Pi's own documentation in `docs/sdk.md` explicitly recommends using `AgentSessio
 
 - Reliability: eliminate stuck nested Pi subprocesses as default failure class.
 - Performance: remove CLI startup, JSON serialization/parsing, temp file I/O, and extra process lifetime management.
-- Isolation correctness: child gremlins must receive only computed system prompt, gremlin markdown, and passed context.
+- Isolation correctness: child gremlins must receive only computed system prompt, gremlin markdown, passed intent, and passed context.
 - Scope reduction: architecture should match slimmed v1 surface, not legacy viewer/chain feature set.
 - Maintainability: smaller, testable module graph with no new god file.
 - Abort behavior: cancellation must be structured, deterministic, and easy to prove in tests.
@@ -120,7 +120,7 @@ Rationale: User asked for full rewrite because subprocess termination has been p
 - **packages/utils:** N/A. No standalone utils package in this repository.
 - **Migration/ops:**
   - No persistence or config migration.
-  - Public tool schema changes materially: old multi-mode params are removed in favor of `gremlins: [...]`.
+  - Public tool schema changes materially: old multi-mode params are removed in favor of `gremlins: [{ intent, agent, context, cwd? }, ...]`.
   - Legacy commands `/gremlins:view` and `/gremlins:steer` are removed as part of rewrite.
   - Extension entry remains under `./extensions/pi-gremlins`, but implementation beneath it is rewritten from scratch and legacy modules deleted after cutover verification.
 
@@ -159,3 +159,4 @@ This ADR intentionally supersedes ADR-0001. ADR-0001 optimized popup viewer and 
 ## Status History
 
 - 2026-04-22: Accepted; supersedes ADR-0001 in favor of SDK-based in-process child sessions and inline-only v1 UI
+- 2026-04-24: Noted required per-gremlin `intent` field as part of public v1 request contract and child prompt framing

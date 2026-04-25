@@ -169,6 +169,7 @@ function styleLine(
 	if (line.startsWith("Gremlins🧌")) return theme.fg("accent", theme.bold(line));
 	if (line === "Ctrl+O expands inline detail.") return theme.fg("dim", line);
 	if (line === "No gremlins requested.") return theme.fg("muted", line);
+	if (line.startsWith("intent · ")) return theme.fg("muted", line);
 	if (line.startsWith("task · ")) return theme.fg("text", line);
 	if (line.startsWith("tool call · ")) return theme.fg("accent", line);
 	if (line.startsWith("tool result · ")) return theme.fg("toolOutput", line);

@@ -37,6 +37,7 @@ function createTerminalResult(
 	const errorMessage = error instanceof Error ? error.message : String(error);
 	return {
 		gremlinId,
+		intent: gremlin.intent ?? "",
 		agent: gremlin.agent,
 		source: "unknown",
 		status: aborted ? "canceled" : "failed",

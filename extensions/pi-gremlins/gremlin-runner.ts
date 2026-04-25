@@ -107,6 +107,7 @@ function buildBaseResult(
 	return {
 		gremlinId,
 		agent: request.agent,
+		intent: request.intent,
 		source: definition.source,
 		status: "starting",
 		context: request.context,
@@ -185,6 +186,7 @@ export async function runSingleGremlin({
 		parentModel,
 		parentThinking,
 		gremlin: definition,
+		intent: request.intent,
 		context: request.context,
 		cwd: request.cwd,
 		modelRegistry,
@@ -250,6 +252,7 @@ export async function runSingleGremlin({
 			parentModel,
 			parentThinking,
 			gremlin: definition,
+			intent: request.intent,
 			context: request.context,
 			cwd: request.cwd,
 			modelRegistry,

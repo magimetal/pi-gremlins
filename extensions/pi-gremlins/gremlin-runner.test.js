@@ -40,6 +40,9 @@ describe("gremlin runner v1 contract", () => {
 			onPrompt: async ({ text, emit }) => {
 				expect(text).toContain("Parent system prompt snapshot:");
 				expect(text).toContain("raw gremlin body");
+				expect(text).toContain("Caller intent:");
+				expect(text).toContain("Inspect implementation independently");
+				expect(text).toContain("Caller context:");
 				expect(text).toContain("Inspect auth flow");
 				emit({ type: "agent_start" });
 				emit({ type: "turn_start" });
@@ -87,7 +90,7 @@ describe("gremlin runner v1 contract", () => {
 
 		const result = await runSingleGremlin({
 			gremlinId: "g1",
-			request: { agent: "researcher", context: "Inspect auth flow" },
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
 			definition: {
 				name: "researcher",
 				source: "project",
@@ -162,7 +165,7 @@ describe("gremlin runner v1 contract", () => {
 
 		const result = await runSingleGremlin({
 			gremlinId: "g1",
-			request: { agent: "researcher", context: "Inspect auth flow" },
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
 			definition: {
 				name: "researcher",
 				source: "project",
@@ -208,7 +211,7 @@ describe("gremlin runner v1 contract", () => {
 
 		const result = await runSingleGremlin({
 			gremlinId: "g1",
-			request: { agent: "researcher", context: "Inspect auth flow" },
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
 			definition: {
 				name: "researcher",
 				source: "project",
@@ -233,7 +236,7 @@ describe("gremlin runner v1 contract", () => {
 		let disposed = 0;
 		const result = await runSingleGremlin({
 			gremlinId: "g1",
-			request: { agent: "researcher", context: "Inspect auth flow" },
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
 			definition: {
 				name: "researcher",
 				source: "project",
@@ -265,7 +268,7 @@ describe("gremlin runner v1 contract", () => {
 		let createCalls = 0;
 		const result = await runSingleGremlin({
 			gremlinId: "g1",
-			request: { agent: "researcher", context: "Inspect auth flow" },
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
 			definition: {
 				name: "researcher",
 				source: "project",
@@ -301,7 +304,7 @@ describe("gremlin runner v1 contract", () => {
 
 		const canceledPromise = runSingleGremlin({
 			gremlinId: "g1",
-			request: { agent: "researcher", context: "Inspect auth flow" },
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
 			definition: {
 				name: "researcher",
 				source: "project",
@@ -327,7 +330,7 @@ describe("gremlin runner v1 contract", () => {
 		});
 		const failed = await runSingleGremlin({
 			gremlinId: "g2",
-			request: { agent: "reviewer", context: "Review diff" },
+			request: { intent: "Review implementation independently", agent: "reviewer", context: "Review diff" },
 			definition: {
 				name: "reviewer",
 				source: "user",
@@ -365,7 +368,7 @@ describe("gremlin runner v1 contract", () => {
 
 		const result = await runSingleGremlin({
 			gremlinId: "g1",
-			request: { agent: "researcher", context: "Inspect auth flow" },
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
 			definition: {
 				name: "researcher",
 				source: "project",

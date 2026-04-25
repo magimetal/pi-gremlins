@@ -20,8 +20,8 @@ describe("gremlin scheduler v1 contract", () => {
 		const updates = [];
 		const batchPromise = runGremlinBatch({
 			gremlins: [
-				{ agent: "alpha", context: "Find alpha" },
-				{ agent: "beta", context: "Find beta" },
+				{ intent: "Find alpha independently", agent: "alpha", context: "Find alpha" },
+				{ intent: "Find beta independently", agent: "beta", context: "Find beta" },
 			],
 			onUpdate: (details) => updates.push(details),
 			runGremlin: async ({ gremlin, gremlinId, onUpdate }) => {
@@ -50,8 +50,8 @@ describe("gremlin scheduler v1 contract", () => {
 	test("publishes immutable snapshots with correct incremental status counts across updates", async () => {
 		const { createGremlinProgressStore } = await import("./gremlin-progress-store.ts");
 		const store = createGremlinProgressStore([
-			{ agent: "alpha", context: "Find alpha" },
-			{ agent: "beta", context: "Find beta" },
+			{ intent: "Find alpha independently", agent: "alpha", context: "Find alpha" },
+			{ intent: "Find beta independently", agent: "beta", context: "Find beta" },
 		]);
 
 		const queued = store.snapshot();
@@ -135,9 +135,9 @@ describe("gremlin scheduler v1 contract", () => {
 
 		const result = await runGremlinBatch({
 			gremlins: [
-				{ agent: "alpha", context: "Find alpha" },
-				{ agent: "beta", context: "Find beta" },
-				{ agent: "gamma", context: "Find gamma" },
+				{ intent: "Find alpha independently", agent: "alpha", context: "Find alpha" },
+				{ intent: "Find beta independently", agent: "beta", context: "Find beta" },
+				{ intent: "Find gamma independently", agent: "gamma", context: "Find gamma" },
 			],
 			runGremlin: async ({ gremlin, gremlinId }) => {
 				if (gremlin.agent === "alpha") {
@@ -168,8 +168,8 @@ describe("gremlin scheduler v1 contract", () => {
 
 		const batchPromise = runGremlinBatch({
 			gremlins: [
-				{ agent: "alpha", context: "Find alpha" },
-				{ agent: "beta", context: "Find beta" },
+				{ intent: "Find alpha independently", agent: "alpha", context: "Find alpha" },
+				{ intent: "Find beta independently", agent: "beta", context: "Find beta" },
 			],
 			signal: controller.signal,
 			onUpdate: (details) => updates.push(details),

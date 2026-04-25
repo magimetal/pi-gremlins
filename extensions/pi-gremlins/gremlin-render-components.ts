@@ -85,6 +85,7 @@ export function createEntryCacheKey(
 		createTextCacheToken(entry.agent),
 		entry.source,
 		entry.status,
+		createTextCacheToken(entry.intent),
 		createTextCacheToken(entry.context),
 		createTextCacheToken(entry.cwd),
 		createTextCacheToken(entry.model),
@@ -244,6 +245,11 @@ function formatContextPreviewLines(context: string): string[] {
 		.map((line) => `task · ${line}`);
 }
 
+function formatIntentPreviewLine(intent?: string): string | undefined {
+	const preview = normalizePreviewText(intent);
+	return preview ? `intent · ${preview}` : undefined;
+}
+
 export function formatBatchHeadline(details: GremlinInvocationDetails): string {
 	return [
 		"Gremlins🧌",
@@ -261,6 +267,8 @@ export function formatCollapsedGremlinLines(entry: GremlinInvocationEntry): stri
 	if (cached) return cached;
 
 	const lines = [`[${formatGremlinStatus(entry.status)}] · ${formatGremlinIdentity(entry)}`];
+	const intentLine = formatIntentPreviewLine(entry.intent);
+	if (intentLine) lines.push(intentLine);
 	lines.push(...formatContextPreviewLines(entry.context));
 	lines.push(...getRecentActivityPreviews(entry).map(formatActivityPreviewLine));
 	const usage = formatUsageSummary(entry.usage);
@@ -276,6 +284,7 @@ export function formatExpandedGremlinLines(entry: GremlinInvocationEntry): strin
 
 	const lines = [
 		`[${formatGremlinStatus(entry.status)}] ${formatGremlinIdentity(entry)}`,
+		...dedupeParts([formatIntentPreviewLine(entry.intent)]),
 		`task · ${entry.context}`,
 	];
 	const metaLines = dedupeParts([

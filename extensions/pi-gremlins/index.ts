@@ -31,7 +31,11 @@ const BRAND_NAME = "Gremlins🧌";
 const TOOL_NAME = "pi-gremlins";
 const TOOL_DESCRIPTION = [
 	"Summon specialized gremlins with isolated context.",
-	"Input uses gremlins: [{ agent, context, cwd? }].",
+	"Input uses gremlins: [{ intent, agent, context, cwd? }].",
+	"intent is required: concise delegation rationale or desired outcome.",
+	"context is required: task details, constraints, paths, findings, and requested output.",
+	"Example intent: Get independent architecture read before editing runtime code.",
+	"Example context: Inspect extensions/pi-gremlins scheduler and runner flow; report risks and exact files to change.",
 	"One gremlin runs single invocation. Multiple gremlins start in parallel.",
 	"Gremlin definitions load from user and nearest project directories when agent_type is sub-agent.",
 	"Progress stays inline and expands with Ctrl+O.",
@@ -72,6 +76,7 @@ function resolveGremlinCwd(
 }
 
 function validateGremlinRequest(request: GremlinRequest): string | null {
+	if (!request.intent?.trim()) return "Gremlin intent is required";
 	if (!request.agent?.trim()) return "Gremlin agent is required";
 	if (!request.context?.trim()) return "Gremlin context is required";
 	if (!request.cwd) return null;
@@ -92,6 +97,7 @@ function createFailedGremlinResult(
 ) {
 	return {
 		gremlinId,
+		intent: request.intent ?? "",
 		agent: request.agent,
 		source: "unknown" as const,
 		status: "failed" as const,
@@ -158,7 +164,7 @@ export default function registerPiGremlins(pi: ExtensionAPI) {
 					content: [
 						{
 							type: "text",
-							text: "Invalid parameters. Provide gremlins: [{ agent, context, cwd? }, ...].",
+							text: "Invalid parameters. Provide gremlins: [{ intent, agent, context, cwd? }, ...].",
 						},
 					],
 					isError: true,

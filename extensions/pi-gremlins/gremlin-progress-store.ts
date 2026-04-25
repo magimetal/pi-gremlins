@@ -18,6 +18,7 @@ function createInitialEntry(
 	const now = Date.now();
 	return {
 		gremlinId: `g${index + 1}`,
+		intent: request.intent ?? "",
 		agent: request.agent,
 		source: "unknown",
 		status: "queued",
