@@ -32,6 +32,7 @@ export interface BuildGremlinSessionConfigOptions {
 }
 
 export interface CreateGremlinSessionOptions extends BuildGremlinSessionConfigOptions {
+	sessionConfig?: GremlinSessionConfig;
 	agentDir?: string;
 	authStorage?: AuthStorage;
 	settingsManager?: SettingsManager;
@@ -198,7 +199,7 @@ export function buildGremlinSessionConfig({
 }
 
 export async function createGremlinSession(options: CreateGremlinSessionOptions) {
-	const plan = buildGremlinSessionConfig(options);
+	const plan = options.sessionConfig ?? buildGremlinSessionConfig(options);
 	const cwd = options.cwd ?? process.cwd();
 	const authStorage =
 		options.authStorage ?? options.modelRegistry?.authStorage ?? AuthStorage.inMemory();

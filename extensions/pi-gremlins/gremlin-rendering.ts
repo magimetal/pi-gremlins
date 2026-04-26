@@ -1,3 +1,4 @@
+import { pushLimitedCache } from "./gremlin-cache-utils.js";
 import type { GremlinInvocationDetails } from "./gremlin-schema.js";
 import {
 	createEntryCacheKey,
@@ -25,19 +26,6 @@ function clampLine(line: string, width?: number): string {
 	if (!width || width <= 0 || line.length <= width) return line;
 	if (width <= 1) return "…";
 	return `${line.slice(0, Math.max(0, width - 1))}…`;
-}
-
-function pushLimitedCache(
-	cache: Map<string, string>,
-	limit: number,
-	key: string,
-	value: string,
-): string {
-	cache.set(key, value);
-	if (cache.size <= limit) return value;
-	const firstKey = cache.keys().next().value;
-	if (typeof firstKey === "string") cache.delete(firstKey);
-	return value;
 }
 
 function pushRenderCache(key: string, value: string): string {

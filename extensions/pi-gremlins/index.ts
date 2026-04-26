@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import * as path from "node:path";
 import type {
 	AgentToolResult,
@@ -13,7 +12,6 @@ import { Text } from "@mariozechner/pi-tui";
 import {
 	createGremlinDiscoveryCache,
 	createPrimaryAgentDiscoveryCache,
-	resolveGremlinByName,
 	type AgentDiscoveryDiagnostic,
 	type GremlinDiscoveryCache,
 	type PrimaryAgentDiscoveryCache,
@@ -22,14 +20,15 @@ import {
 	renderGremlinInvocationText,
 	styleGremlinInvocationText,
 } from "./gremlin-rendering.js";
-import { runSingleGremlin } from "./gremlin-runner.js";
 import {
 	PiGremlinsParams,
 	type GremlinInvocationDetails,
-	type GremlinRequest,
 } from "./gremlin-schema.js";
-import { runGremlinBatch } from "./gremlin-scheduler.js";
-import { buildGremlinProgressSummary } from "./gremlin-summary.js";
+import {
+	executePiGremlinsTool,
+	normalizeInvocationDetails,
+	type PiGremlinsArgs,
+} from "./gremlin-tool-execution.js";
 import {
 	cyclePrimaryAgent,
 	notifyPrimaryAgent,
@@ -63,21 +62,7 @@ const TOOL_DESCRIPTION = [
 	"Progress stays inline and expands with Ctrl+O.",
 ].join(" ");
 
-function normalizeInvocationDetails(
-	details?: Partial<GremlinInvocationDetails>,
-): GremlinInvocationDetails {
-	return {
-		requestedCount: details?.requestedCount ?? 0,
-		activeCount: details?.activeCount ?? 0,
-		completedCount: details?.completedCount ?? 0,
-		failedCount: details?.failedCount ?? 0,
-		canceledCount: details?.canceledCount ?? 0,
-		gremlins: details?.gremlins ?? [],
-		revision: details?.revision,
-	};
-}
-
-function getInvocationDetails(result: AgentToolResult<any>) {
+function getInvocationDetails(result: AgentToolResult<GremlinInvocationDetails>) {
 	return normalizeInvocationDetails(result.details);
 }
 
@@ -87,16 +72,6 @@ function renderCallText(params: { gremlins?: Array<{ agent?: string }> }): strin
 	return `🕯️🔥🕯️ Summoning the gremlins: ${names.join(", ")}`;
 }
 
-function resolveGremlinCwd(
-	requestCwd: string | undefined,
-	baseCwd: string,
-): string | undefined {
-	if (!requestCwd) return undefined;
-	return path.isAbsolute(requestCwd)
-		? requestCwd
-		: path.resolve(baseCwd, requestCwd);
-}
-
 function notifyDiscoveryDiagnostics(
 	ctx: ExtensionContext,
 	diagnostics: AgentDiscoveryDiagnostic[],
@@ -104,42 +79,6 @@ function notifyDiscoveryDiagnostics(
 	for (const diagnostic of diagnostics) {
 		ctx.ui?.notify?.(`Gremlin discovery skipped ${diagnostic.message}`, "warning");
 	}
-}
-
-function validateGremlinRequest(request: GremlinRequest): string | null {
-	if (!request.intent?.trim()) return "Gremlin intent is required";
-	if (!request.agent?.trim()) return "Gremlin agent is required";
-	if (!request.context?.trim()) return "Gremlin context is required";
-	if (!request.cwd) return null;
-	try {
-		if (!fs.statSync(request.cwd).isDirectory()) {
-			return `Invalid gremlin cwd: ${request.cwd}`;
-		}
-	} catch {
-		return `Invalid gremlin cwd: ${request.cwd}`;
-	}
-	return null;
-}
-
-function createFailedGremlinResult(
-	request: GremlinRequest,
-	gremlinId: string,
-	errorMessage: string,
-) {
-	return {
-		gremlinId,
-		intent: request.intent ?? "",
-		agent: request.agent,
-		source: "unknown" as const,
-		status: "failed" as const,
-		context: request.context,
-		cwd: request.cwd,
-		currentPhase: "settling",
-		errorMessage,
-		activities: [{ kind: "error" as const, phase: "settling", text: errorMessage }],
-		usage: { turns: 0, input: 0, output: 0 },
-		finishedAt: Date.now(),
-	};
 }
 
 export interface PiGremlinsExtensionOptions {
@@ -236,7 +175,6 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 			return injection.result;
 		});
 
-		type PiGremlinsArgs = { gremlins: GremlinRequest[] };
 		const tool = {
 			name: TOOL_NAME,
 			label: BRAND_NAME,
@@ -271,105 +209,15 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 				onUpdate: AgentToolUpdateCallback<GremlinInvocationDetails> | undefined,
 				ctx: ExtensionContext,
 			) {
-				if (!Array.isArray(params.gremlins) || params.gremlins.length === 0) {
-					return {
-						content: [
-							{
-								type: "text",
-								text: "Invalid parameters. Provide gremlins: [{ intent, agent, context, cwd? }, ...].",
-							},
-						],
-						isError: true,
-						details: normalizeInvocationDetails(),
-					};
-				}
-				const batch = await runGremlinBatch({
-					gremlins: params.gremlins,
+				return executePiGremlinsTool({
+					params,
 					signal,
-					onUpdate: (details) => {
-						onUpdate?.({
-							content: [
-								{
-									type: "text",
-									text: buildGremlinProgressSummary(details),
-								},
-							],
-							details,
-						});
-					},
-					runGremlin: async ({
-						gremlin: rawRequest,
-						gremlinId,
-						signal: childSignal,
-						onUpdate: publishUpdate,
-					}) => {
-						const resolvedCwd = resolveGremlinCwd(rawRequest.cwd, ctx.cwd);
-						const request = resolvedCwd
-							? { ...rawRequest, cwd: resolvedCwd }
-							: rawRequest;
-						const validationError = validateGremlinRequest(request);
-						if (validationError) {
-							return createFailedGremlinResult(request, gremlinId, validationError);
-						}
-
-						const effectiveCwd = request.cwd ?? ctx.cwd;
-						const discovered = await discovery.get(effectiveCwd);
-						notifyDiscoveryDiagnostics(ctx, discovered.diagnostics);
-						const gremlin = resolveGremlinByName(discovered.gremlins, request.agent);
-						if (!gremlin) {
-							return createFailedGremlinResult(
-								request,
-								gremlinId,
-								`Unknown gremlin: ${request.agent}`,
-							);
-						}
-
-						return runSingleGremlin({
-							gremlinId,
-							request,
-							definition: gremlin,
-							parentModel: ctx.model,
-							modelRegistry: ctx.modelRegistry,
-							signal: childSignal,
-							onUpdate: ({ patch }) => publishUpdate?.(patch),
-						});
-					},
+					onUpdate,
+					ctx,
+					discovery,
+					notifyDiagnostics: (diagnostics) =>
+						notifyDiscoveryDiagnostics(ctx, diagnostics),
 				});
-
-				const details = normalizeInvocationDetails({
-					requestedCount: params.gremlins.length,
-					activeCount: batch.results.filter(
-						(result) =>
-							result.status === "queued" ||
-							result.status === "starting" ||
-							result.status === "active",
-					).length,
-					completedCount: batch.results.filter(
-						(result) => result.status === "completed",
-					).length,
-					failedCount: batch.results.filter((result) => result.status === "failed")
-						.length,
-					canceledCount: batch.results.filter(
-						(result) => result.status === "canceled",
-					).length,
-					gremlins: batch.results,
-				});
-				const partial: AgentToolResult<GremlinInvocationDetails> = {
-					content: [{ type: "text", text: batch.summary }],
-					details,
-				};
-				onUpdate?.(partial);
-
-				return {
-					content: [
-						{
-							type: "text",
-							text: batch.summary,
-						},
-					],
-					details,
-					...(batch.anyError ? { isError: true } : {}),
-				};
 			},
 		};
 

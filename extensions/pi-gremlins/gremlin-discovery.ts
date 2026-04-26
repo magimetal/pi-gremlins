@@ -7,6 +7,7 @@ import {
 	loadGremlinDefinition,
 	type GremlinDefinition,
 } from "./gremlin-definition.js";
+import { hashString } from "./gremlin-cache-utils.js";
 import {
 	loadPrimaryAgentDefinition,
 	type PrimaryAgentDefinition,
@@ -118,15 +119,6 @@ async function listMarkdownFiles(
 
 function createDirectorySignature(dirStat: fs.Stats): string {
 	return [dirStat.mtimeMs, dirStat.ctimeMs, dirStat.size].join(":");
-}
-
-function hashString(value: string): string {
-	let hash = 2166136261;
-	for (let index = 0; index < value.length; index++) {
-		hash ^= value.charCodeAt(index);
-		hash = Math.imul(hash, 16777619);
-	}
-	return (hash >>> 0).toString(36);
 }
 
 async function readFileContents(
@@ -376,7 +368,7 @@ export function createGremlinDiscoveryCache(
 			fingerprint,
 			diagnostics,
 		}),
-	}) as GremlinDiscoveryCache;
+	});
 }
 
 export function createPrimaryAgentDiscoveryCache(
@@ -392,5 +384,5 @@ export function createPrimaryAgentDiscoveryCache(
 			fingerprint,
 			diagnostics,
 		}),
-	}) as PrimaryAgentDiscoveryCache;
+	});
 }

@@ -1,3 +1,4 @@
+import { hashString, pushLimitedCache } from "./gremlin-cache-utils.js";
 import type {
 	GremlinActivity,
 	GremlinActivityKind,
@@ -23,23 +24,6 @@ function normalizePreviewText(value?: string): string | undefined {
 	if (!normalized) return undefined;
 	if (normalized.length <= COLLAPSED_PREVIEW_LIMIT) return normalized;
 	return `${normalized.slice(0, COLLAPSED_PREVIEW_LIMIT - 1).trimEnd()}…`;
-}
-
-function pushCacheEntry<T>(cache: Map<string, T>, key: string, value: T): T {
-	cache.set(key, value);
-	if (cache.size <= ENTRY_CACHE_LIMIT) return value;
-	const firstKey = cache.keys().next().value;
-	if (typeof firstKey === "string") cache.delete(firstKey);
-	return value;
-}
-
-function hashString(value: string): string {
-	let hash = 2166136261;
-	for (let index = 0; index < value.length; index++) {
-		hash ^= value.charCodeAt(index);
-		hash = Math.imul(hash, 16777619);
-	}
-	return (hash >>> 0).toString(36);
 }
 
 function createTextCacheToken(value?: string): string {
@@ -274,7 +258,7 @@ export function formatCollapsedGremlinLines(entry: GremlinInvocationEntry): stri
 	const usage = formatUsageSummary(entry.usage);
 	if (usage) lines.push(`usage · ${usage}`);
 
-	return pushCacheEntry(collapsedLinesCache, cacheKey, lines);
+	return pushLimitedCache(collapsedLinesCache, ENTRY_CACHE_LIMIT, cacheKey, lines);
 }
 
 export function formatExpandedGremlinLines(entry: GremlinInvocationEntry): string[] {
@@ -305,5 +289,5 @@ export function formatExpandedGremlinLines(entry: GremlinInvocationEntry): strin
 	const usage = formatUsageSummary(entry.usage);
 	if (usage) lines.push(`usage · ${usage}`);
 
-	return pushCacheEntry(expandedLinesCache, cacheKey, lines);
+	return pushLimitedCache(expandedLinesCache, ENTRY_CACHE_LIMIT, cacheKey, lines);
 }
