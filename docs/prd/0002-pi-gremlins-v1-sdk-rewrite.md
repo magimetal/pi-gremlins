@@ -18,7 +18,7 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 - One invocation shape only.
 - One to ten gremlins only.
 - More than one gremlin means true parallel execution.
-- Each gremlin gets only current computed system prompt, its own markdown definition, caller-supplied intent, and caller-supplied context.
+- Each gremlin gets its own markdown definition as child system prompt, plus caller-supplied intent and caller-supplied context as the child user prompt.
 - No full parent conversation history.
 - No chain mode.
 - No popup viewer, no `/gremlins:view`, no targeted steering command.
@@ -30,7 +30,7 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 - Remove subprocess-management class of bugs from default runtime architecture.
 - Reduce latency per gremlin by eliminating extra Pi CLI startup, JSONL parsing, and temp prompt files.
 - Ship one narrow, easy-to-understand v1 surface instead of many partially overlapping modes.
-- Preserve prompt isolation strictly: no inherited conversation transcript, no inherited AGENTS files, no inherited extensions/skills/prompts in child sessions.
+- Preserve prompt isolation strictly: no inherited conversation transcript, parent prompt snapshot, primary-agent prompt block, AGENTS file, extension, skill, or prompt in child sessions.
 - Keep inline progress useful during execution without restoring popup/view complexity.
 
 ## User Stories
@@ -61,10 +61,10 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 - If `gremlins.length > 1`, start all gremlins in parallel with no hidden lower concurrency cap.
 - Parse gremlin frontmatter for runtime config such as model / thinking / tools when present.
 - Build child sessions with:
-  - current computed parent system prompt snapshot
-  - raw gremlin markdown contents
-  - caller-supplied intent string
-  - caller-supplied context string
+  - selected gremlin raw markdown contents as the child system prompt
+  - caller-supplied intent string in the child user prompt
+  - caller-supplied context string in the child user prompt
+  - no parent system prompt snapshot, primary-agent prompt block, active primary-agent markdown, orchestration rules, or parent conversation history
   - in-memory session manager
   - custom resource loader that disables inherited extensions, prompts, skills, themes, AGENTS files, and conversation history
 - Inline progress model with per-gremlin status, current activity, latest text/tool summary, usage, and terminal outcome.
@@ -94,7 +94,8 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 - [ ] Duplicate gremlin names resolve deterministically with project-local definition winning over user-level definition among typed sub-agent files.
 - [ ] Child gremlin sessions do not receive parent conversation history.
 - [ ] Child gremlin sessions do not load AGENTS files, extensions, prompts, skills, or themes from parent runtime.
-- [ ] Child gremlin sessions receive current computed system prompt snapshot, raw gremlin markdown contents, supplied intent, and supplied context only.
+- [ ] Child gremlin sessions receive selected gremlin raw markdown as system prompt plus supplied intent and context as user prompt only.
+- [ ] Child gremlin sessions do not receive parent system prompt snapshots, primary-agent prompt blocks, active primary-agent markdown, orchestration rules, or parent conversation history.
 - [ ] More than one gremlin request starts parallel execution immediately; runtime does not serialize by default and does not impose lower internal concurrency than requested gremlin count.
 - [ ] Abort from parent tool execution cancels every running gremlin session and leaves no active child sessions registered after completion.
 - [ ] Tool row shows inline live progress for every gremlin while execution is active.
@@ -159,3 +160,4 @@ Primary references used for this PRD:
 
 - 2026-04-22: Draft created
 - 2026-04-24: V1 request contract updated to require per-gremlin `intent` separate from `context`
+- 2026-04-25: Prompt isolation refined for issue #41 so gremlin child sessions receive selected sub-agent markdown only as system prompt; parent snapshots and primary-agent prompt blocks stay out of child sessions

@@ -27,7 +27,6 @@ export interface RunSingleGremlinOptions {
 	gremlinId: string;
 	request: GremlinRequest;
 	definition: GremlinDefinition;
-	parentSystemPrompt: string;
 	parentModel?: string | Model<any>;
 	parentThinking?: ThinkingLevel;
 	modelRegistry?: ModelRegistry;
@@ -125,7 +124,6 @@ export async function runSingleGremlin({
 	gremlinId,
 	request,
 	definition,
-	parentSystemPrompt,
 	parentModel,
 	parentThinking,
 	modelRegistry,
@@ -182,7 +180,6 @@ export async function runSingleGremlin({
 	});
 
 	const sessionPlan = buildGremlinSessionConfig({
-		parentSystemPrompt,
 		parentModel,
 		parentThinking,
 		gremlin: definition,
@@ -248,7 +245,6 @@ export async function runSingleGremlin({
 
 	try {
 		const created = await createSession({
-			parentSystemPrompt,
 			parentModel,
 			parentThinking,
 			gremlin: definition,

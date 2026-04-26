@@ -42,7 +42,7 @@ Pi's own documentation in `docs/sdk.md` explicitly recommends using `AgentSessio
 
 - Reliability: eliminate stuck nested Pi subprocesses as default failure class.
 - Performance: remove CLI startup, JSON serialization/parsing, temp file I/O, and extra process lifetime management.
-- Isolation correctness: child gremlins must receive only computed system prompt, gremlin markdown, passed intent, and passed context.
+- Isolation correctness: child gremlins must receive selected gremlin markdown as their system prompt plus passed intent/context as their user prompt; parent system prompt snapshots, primary-agent prompt blocks, and orchestration rules must not cross into child sessions.
 - Scope reduction: architecture should match slimmed v1 surface, not legacy viewer/chain feature set.
 - Maintainability: smaller, testable module graph with no new god file.
 - Abort behavior: cancellation must be structured, deterministic, and easy to prove in tests.
@@ -105,10 +105,11 @@ Rationale: User asked for full rewrite because subprocess termination has been p
   - Architecture better matches Pi's documented SDK usage model.
 - **Negative:**
   - OS-process isolation is intentionally traded away.
-  - Child-session isolation must be enforced through custom resource loading and test coverage, not by separate process default.
+  - Child-session isolation must be enforced through custom resource loading, gremlin-only system prompt construction, and test coverage, not by separate process default.
   - Existing viewer-specific architecture and chain runtime become dead code and must be deleted after cutover.
 - **Follow-on constraints:**
   - Child gremlins must not bind parent extensions or load ambient AGENTS/skills/prompts/themes.
+  - Child gremlins must not receive parent system prompt snapshots, primary-agent prompt blocks, active primary-agent markdown, or parent orchestration rules.
   - Inline rendering becomes only supported inspection surface for v1.
   - If subprocess isolation is revisited later, it requires a new ADR instead of quietly reintroducing process management.
 
@@ -160,3 +161,4 @@ This ADR intentionally supersedes ADR-0001. ADR-0001 optimized popup viewer and 
 
 - 2026-04-22: Accepted; supersedes ADR-0001 in favor of SDK-based in-process child sessions and inline-only v1 UI
 - 2026-04-24: Noted required per-gremlin `intent` field as part of public v1 request contract and child prompt framing
+- 2026-04-25: Clarified issue #41 prompt-isolation boundary after primary-agent merge: gremlin child sessions use selected sub-agent markdown as system prompt and do not propagate parent prompt snapshots or primary-agent blocks
