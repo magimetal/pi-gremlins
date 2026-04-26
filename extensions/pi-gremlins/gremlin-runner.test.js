@@ -181,8 +181,78 @@ describe("gremlin runner v1 contract", () => {
 				.filter((update) => update.patch.currentPhase === "streaming")
 				.map((update) => update.patch.latestText)
 				.filter(Boolean),
-		).toEqual(["draft", "draftanswer"]);
+		).toEqual(["draftanswer"]);
 		expect(result.latestText).toBe("final answer");
+	});
+
+	test("coalesces many tiny text deltas while retaining final latestText", async () => {
+		const { runSingleGremlin } = await import("./gremlin-runner.ts");
+		const updates = [];
+		const fake = createFakeSession({
+			onPrompt: async ({ emit }) => {
+				emit({ type: "turn_start" });
+				for (let index = 0; index < 200; index++) {
+					emit({
+						type: "message_update",
+						assistantMessageEvent: { type: "text_delta", delta: "x" },
+					});
+				}
+				emit({
+					type: "message_end",
+					message: { content: [{ type: "text", text: "final answer" }] },
+				});
+			},
+		});
+
+		const result = await runSingleGremlin({
+			gremlinId: "g1",
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
+			definition: {
+				name: "researcher",
+				source: "project",
+				filePath: "/tmp/researcher.md",
+				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
+				frontmatter: {},
+			},
+			onUpdate: (update) => updates.push(update),
+			createSession: async () => fake,
+		});
+
+		const streamingUpdates = updates.filter(
+			(update) => update.patch.currentPhase === "streaming" && update.patch.latestText,
+		);
+		expect(streamingUpdates.length).toBeLessThanOrEqual(4);
+		expect(result.latestText).toBe("final answer");
+	});
+
+	test("stores activity text previews instead of full streaming snapshots", async () => {
+		const { runSingleGremlin } = await import("./gremlin-runner.ts");
+		const largeText = "large response chunk ".repeat(80);
+		const fake = createFakeSession({
+			onPrompt: async ({ emit }) => {
+				emit({
+					type: "message_update",
+					assistantMessageEvent: { type: "text_delta", delta: largeText },
+				});
+			},
+		});
+
+		const result = await runSingleGremlin({
+			gremlinId: "g1",
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
+			definition: {
+				name: "researcher",
+				source: "project",
+				filePath: "/tmp/researcher.md",
+				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
+				frontmatter: {},
+			},
+			createSession: async () => fake,
+		});
+
+		expect(result.latestText).toBe(largeText.trimEnd());
+		expect(result.activities?.[0].text.length).toBeLessThan(largeText.length);
+		expect(result.activities?.[0].text.endsWith("…")).toBe(true);
 	});
 
 	test("uses current context window tokens instead of cumulative total token usage", async () => {

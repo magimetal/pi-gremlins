@@ -31,6 +31,13 @@ function createTextCacheToken(value?: string): string {
 	return `${value.length}:${hashString(value)}`;
 }
 
+function createBoundedTextCacheToken(value?: string): string {
+	if (!value) return "";
+	const normalized = value.replace(/\s+/g, " ");
+	if (normalized.length <= 24) return normalized;
+	return `${normalized.length}:${normalized.slice(0, 12)}:${normalized.slice(-12)}`;
+}
+
 function createUsageCacheToken(usage?: GremlinUsage): string {
 	if (!usage) return "";
 	return [
@@ -62,10 +69,28 @@ export function createEntryCacheKey(
 	prefix: string,
 	entry: GremlinInvocationEntry,
 ): string {
+	if (typeof entry.revision === "number") {
+		return [
+			prefix,
+			"rev",
+			entry.gremlinId,
+			entry.agent,
+			entry.source,
+			entry.status,
+			String(entry.revision),
+			createBoundedTextCacheToken(entry.currentPhase),
+			createBoundedTextCacheToken(entry.context),
+			createBoundedTextCacheToken(entry.latestText),
+			createBoundedTextCacheToken(entry.latestToolCall),
+			createBoundedTextCacheToken(entry.latestToolResult),
+			createBoundedTextCacheToken(entry.errorMessage),
+			createUsageCacheToken(entry.usage),
+		].join("\u001f");
+	}
+
 	return [
 		prefix,
 		createTextCacheToken(entry.gremlinId),
-		String(entry.revision ?? ""),
 		createTextCacheToken(entry.agent),
 		entry.source,
 		entry.status,

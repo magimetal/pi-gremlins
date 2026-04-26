@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inline progress rendering now shows collapsed gremlin context, the three latest activity rows, usage rows, flattened multiline previews, and clearer status/text/tool/result separation in tool-row output.
 - Pi SDK/runtime deps now target `0.69.0`, package/tool schemas now import `typebox` 1.x instead of `@sinclair/typebox`, and tool registration includes a localized TS inference workaround until upstream typings stop triggering `TS2589` deep-instantiation errors.
 - Gremlin runner usage now reports current context-window token usage from Pi SDK session context instead of summing cumulative per-turn `totalTokens`, preventing inflated `contextTokens` in multi-turn runs.
-- Runtime cache hot paths now use compact render cache keys, per-entry render segment reuse, and memoized discovery directory listings to reduce repeated string and filesystem churn during active gremlin runs.
+- Runtime cache hot paths now use compact render cache keys, per-entry render segment reuse, memoized discovery directory listings, reused file fingerprints, in-flight discovery sharing, coalesced streaming text updates, and truncated activity previews to reduce repeated string, filesystem, and UI churn during active gremlin runs.
 - `pi-gremlins` maintainability improved by extracting shared cache helpers, tool execution flow, and gremlin runner event projection into smaller focused modules/functions without changing the public tool contract.
 
 ### Fixed

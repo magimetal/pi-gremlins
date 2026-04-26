@@ -22,6 +22,9 @@ export interface GremlinRunnerUpdate {
 }
 
 const ACTIVITY_HISTORY_LIMIT = 12;
+const ACTIVITY_TEXT_PREVIEW_LIMIT = 512;
+const STREAM_TEXT_UPDATE_MIN_CHARS = 64;
+const STREAM_TEXT_UPDATE_MIN_MS = 50;
 
 interface GremlinSessionMessage {
 	content?: unknown;
@@ -54,6 +57,11 @@ type PublishGremlinPatch = (
 	patch: Partial<GremlinRunResult>,
 	activity?: Omit<GremlinActivity, "sequence" | "timestamp">,
 ) => void;
+
+interface TextDeltaPublisher {
+	apply(delta: unknown): void;
+	flush(): void;
+}
 
 export interface RunSingleGremlinOptions {
 	gremlinId: string;
@@ -156,11 +164,17 @@ function buildBaseResult(
 	};
 }
 
+function createActivityTextPreview(text: string): string {
+	if (text.length <= ACTIVITY_TEXT_PREVIEW_LIMIT) return text;
+	return `${text.slice(0, ACTIVITY_TEXT_PREVIEW_LIMIT - 1).trimEnd()}…`;
+}
+
 function createActivityRecorder(state: GremlinRunResult) {
 	let activitySequence = 0;
 	return (activity: Omit<GremlinActivity, "sequence" | "timestamp">) => {
 		const nextActivity: GremlinActivity = {
 			...activity,
+			text: createActivityTextPreview(activity.text),
 			timestamp: Date.now(),
 			sequence: ++activitySequence,
 		};
@@ -198,36 +212,67 @@ function appendLatestTextDelta(currentText: string | undefined, delta: unknown) 
 	return end === nextText.length ? nextText : nextText.slice(0, end);
 }
 
+function createTextDeltaPublisher(
+	state: GremlinRunResult,
+	publish: PublishGremlinPatch,
+): TextDeltaPublisher {
+	let unpublishedChars = 0;
+	let lastPublishedAt = Date.now();
+
+	function publishStreamingText() {
+		if (!unpublishedChars) return;
+		unpublishedChars = 0;
+		lastPublishedAt = Date.now();
+		publish(
+			{
+				status: "active",
+				currentPhase: "streaming",
+				latestText: state.latestText,
+			},
+			{ kind: "text", phase: "streaming", text: state.latestText },
+		);
+	}
+
+	return {
+		apply(delta: unknown) {
+			if (typeof delta !== "string" || !delta) return;
+			state.latestText = appendLatestTextDelta(state.latestText, delta);
+			unpublishedChars += delta.length;
+			const elapsedMs = Date.now() - lastPublishedAt;
+			if (
+				unpublishedChars >= STREAM_TEXT_UPDATE_MIN_CHARS ||
+				elapsedMs >= STREAM_TEXT_UPDATE_MIN_MS
+			) {
+				publishStreamingText();
+			}
+		},
+		flush: publishStreamingText,
+	};
+}
+
 function projectGremlinEvent(
 	event: GremlinEvent,
 	state: GremlinRunResult,
 	session: GremlinSession | undefined,
 	publish: PublishGremlinPatch,
+	textDeltaPublisher: TextDeltaPublisher,
 ) {
 	switch (event?.type) {
 		case "agent_start":
+			textDeltaPublisher.flush();
 			publish({ status: "active", currentPhase: "prompting" });
 			break;
 		case "turn_start":
+			textDeltaPublisher.flush();
 			publish({ status: "active", currentPhase: "streaming" });
 			break;
 		case "message_update":
 			if (event.assistantMessageEvent?.type === "text_delta") {
-				const latestText = appendLatestTextDelta(
-					state.latestText,
-					event.assistantMessageEvent.delta,
-				);
-				publish(
-					{
-						status: "active",
-						currentPhase: "streaming",
-						latestText,
-					},
-					{ kind: "text", phase: "streaming", text: latestText },
-				);
+				textDeltaPublisher.apply(event.assistantMessageEvent.delta);
 			}
 			break;
 		case "tool_execution_start": {
+			textDeltaPublisher.flush();
 			const phase = `tool:${event.toolName}`;
 			const latestToolCall = formatToolCall(event.toolName, event.args);
 			publish(
@@ -241,6 +286,7 @@ function projectGremlinEvent(
 			break;
 		}
 		case "tool_execution_update": {
+			textDeltaPublisher.flush();
 			const phase = `tool:${event.toolName}`;
 			const latestToolResult = extractToolResultText(event.partialResult);
 			publish(
@@ -254,6 +300,7 @@ function projectGremlinEvent(
 			break;
 		}
 		case "tool_execution_end": {
+			textDeltaPublisher.flush();
 			const latestToolResult = extractToolResultText(event.result);
 			publish(
 				{
@@ -266,6 +313,7 @@ function projectGremlinEvent(
 			break;
 		}
 		case "message_end": {
+			textDeltaPublisher.flush();
 			const latestText = extractTextFromContent(event.message?.content);
 			const finalText = latestText || state.latestText;
 			const patch = {
@@ -290,6 +338,7 @@ function projectGremlinEvent(
 			break;
 		}
 		case "agent_end":
+			textDeltaPublisher.flush();
 			publish({ currentPhase: "settling" });
 			break;
 	}
@@ -308,6 +357,7 @@ export async function runSingleGremlin({
 }: RunSingleGremlinOptions): Promise<GremlinRunResult> {
 	const state = buildBaseResult(gremlinId, request, definition);
 	const publish = createGremlinPublisher(gremlinId, state, onUpdate);
+	const textDeltaPublisher = createTextDeltaPublisher(state, publish);
 
 	if (signal?.aborted) {
 		const errorMessage = "Gremlin run was aborted before start";
@@ -391,12 +441,13 @@ export async function runSingleGremlin({
 		});
 		session = created.session as GremlinSession;
 		unsubscribe = session.subscribe?.((event: GremlinEvent) => {
-			projectGremlinEvent(event, state, session, publish);
+			projectGremlinEvent(event, state, session, publish, textDeltaPublisher);
 		});
 		signal?.addEventListener("abort", abortListener, { once: true });
 		if (signal?.aborted && !abortRequested) abortListener();
 
 		await session.prompt(sessionPlan.prompt);
+		textDeltaPublisher.flush();
 		publish({
 			status: abortRequested ? "canceled" : "completed",
 			currentPhase: "settling",

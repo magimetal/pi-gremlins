@@ -3,8 +3,8 @@ import * as fs from "node:fs";
 
 import { createWorkspace, writeAgentFile } from "./test-helpers.js";
 
-function createCountingFileSystem() {
-	const calls = { readdir: 0, stat: 0 };
+function createCountingFileSystem({ statDelayMs = 0 } = {}) {
+	const calls = { readdir: 0, stat: 0, readFile: 0 };
 	return {
 		calls,
 		fileSystem: {
@@ -14,7 +14,14 @@ function createCountingFileSystem() {
 			},
 			async stat(candidatePath) {
 				calls.stat++;
+				if (statDelayMs) {
+					await new Promise((resolve) => setTimeout(resolve, statDelayMs));
+				}
 				return fs.promises.stat(candidatePath);
+			},
+			async readFile(candidatePath, encoding) {
+				calls.readFile++;
+				return fs.promises.readFile(candidatePath, encoding);
 			},
 		},
 	};
@@ -223,7 +230,58 @@ describe("gremlin discovery v1 contract", () => {
 		expect(third.gremlins[0].rawMarkdown).toContain("second prompt body");
 	});
 
-	test("detects same-size same-mtime markdown content changes", async () => {
+	test("does not read markdown contents again when stat metadata is unchanged", async () => {
+		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
+		fs.writeFileSync(
+			`${workspace.projectAgentsDir}/researcher.md`,
+			"---\nname: researcher\ndescription: first\nagent_type: sub-agent\n---\nfirst prompt body",
+			"utf-8",
+		);
+		const { calls, fileSystem } = createCountingFileSystem();
+		const discovery = createGremlinDiscoveryCache({
+			userAgentsDir: workspace.userAgentsDir,
+			fileSystem,
+		});
+
+		const first = await discovery.get(workspace.repoRoot);
+		const readsAfterFirst = calls.readFile;
+		const second = await discovery.get(workspace.repoRoot);
+
+		expect(second).toBe(first);
+		expect(calls.readFile).toBe(readsAfterFirst);
+	});
+
+	test("shares concurrent discovery work for the same effective directories", async () => {
+		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
+		writeAgentFile(
+			workspace.projectAgentsDir,
+			"researcher.md",
+			"researcher",
+			"project researcher",
+		);
+		const { calls, fileSystem } = createCountingFileSystem({ statDelayMs: 5 });
+		const discovery = createGremlinDiscoveryCache({
+			userAgentsDir: workspace.userAgentsDir,
+			fileSystem,
+		});
+
+		const [first, second] = await Promise.all([
+			discovery.get(workspace.repoRoot),
+			discovery.get(workspace.repoRoot),
+		]);
+
+		expect(second).toBe(first);
+		expect(first.gremlins.map((gremlin) => gremlin.name)).toEqual(["researcher"]);
+		expect(calls.readFile).toBe(1);
+	});
+
+	test("detects same-size markdown content changes when stat metadata changes", async () => {
 		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;
@@ -239,7 +297,11 @@ describe("gremlin discovery v1 contract", () => {
 
 		const first = await discovery.get(workspace.repoRoot);
 		fs.writeFileSync(agentPath, secondContent, "utf-8");
-		fs.utimesSync(agentPath, originalMtime, originalMtime);
+		fs.utimesSync(
+			agentPath,
+			new Date("2024-01-01T00:00:01.000Z"),
+			new Date("2024-01-01T00:00:01.000Z"),
+		);
 		const second = await discovery.get(workspace.repoRoot);
 
 		expect(second).not.toBe(first);

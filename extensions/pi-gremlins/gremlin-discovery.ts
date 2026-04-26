@@ -48,10 +48,16 @@ interface DirectoryFingerprint {
 	files: string[];
 }
 
+interface FileFingerprintSnapshot {
+	metadataSignature: string;
+	fingerprintPart: string;
+}
+
 interface DirectorySnapshot {
 	dir: string;
 	dirSignature: string;
 	files: string[];
+	fileFingerprints: Map<string, FileFingerprintSnapshot>;
 }
 
 export interface AgentDiscoveryFileSystem {
@@ -129,23 +135,41 @@ async function readFileContents(
 	return fs.promises.readFile(filePath, "utf-8");
 }
 
+function createFileMetadataSignature(fileStat: fs.Stats): string {
+	return [fileStat.mtimeMs, fileStat.ctimeMs, fileStat.size].join(":");
+}
+
 async function fingerprintKnownFiles(
 	files: string[],
+	previousFingerprints: Map<string, FileFingerprintSnapshot>,
 	fileSystem: AgentDiscoveryFileSystem,
-): Promise<string[]> {
-	return Promise.all(
+): Promise<{
+	parts: string[];
+	fileFingerprints: Map<string, FileFingerprintSnapshot>;
+}> {
+	const nextFingerprints = new Map<string, FileFingerprintSnapshot>();
+	const parts = await Promise.all(
 		files.map(async (filePath) => {
 			try {
-				const [fileStat, content] = await Promise.all([
-					fileSystem.stat(filePath),
-					readFileContents(filePath, fileSystem),
-				]);
-				return `${path.basename(filePath)}:${fileStat.mtimeMs}:${fileStat.size}:${hashString(content)}`;
+				const fileStat = await fileSystem.stat(filePath);
+				const metadataSignature = createFileMetadataSignature(fileStat);
+				const cached = previousFingerprints.get(filePath);
+				if (cached?.metadataSignature === metadataSignature) {
+					nextFingerprints.set(filePath, cached);
+					return cached.fingerprintPart;
+				}
+
+				const content = await readFileContents(filePath, fileSystem);
+				const fingerprintPart = `${path.basename(filePath)}:${metadataSignature}:${hashString(content)}`;
+				const snapshot = { metadataSignature, fingerprintPart };
+				nextFingerprints.set(filePath, snapshot);
+				return fingerprintPart;
 			} catch {
 				return `${path.basename(filePath)}:missing`;
 			}
 		}),
 	);
+	return { parts, fileFingerprints: nextFingerprints };
 }
 
 async function fingerprintDirectory(
@@ -170,18 +194,28 @@ async function fingerprintDirectory(
 	const dirSignature = createDirectorySignature(dirStat);
 	const cached = snapshots.get(dir);
 	if (cached && cached.dirSignature === dirSignature) {
-		const parts = await fingerprintKnownFiles(cached.files, fileSystem);
+		const { parts, fileFingerprints } = await fingerprintKnownFiles(
+			cached.files,
+			cached.fileFingerprints,
+			fileSystem,
+		);
 		const fingerprint = `${dir}|${parts.join(",")}`;
+		snapshots.set(dir, { ...cached, fileFingerprints });
 		return { dir, fingerprint, files: cached.files };
 	}
 
 	const files = await listMarkdownFiles(dir, fileSystem, includeSymlinks);
-	const parts = await fingerprintKnownFiles(files, fileSystem);
+	const { parts, fileFingerprints } = await fingerprintKnownFiles(
+		files,
+		cached?.fileFingerprints ?? new Map(),
+		fileSystem,
+	);
 	const fingerprint = `${dir}|${parts.join(",")}`;
 	snapshots.set(dir, {
 		dir,
 		dirSignature,
 		files,
+		fileFingerprints,
 	});
 	return { dir, fingerprint, files };
 }
@@ -297,56 +331,70 @@ function createRoleDiscoveryCache<T extends { name: string }, TResult>(options: 
 	let cachedFingerprint: string | null = null;
 	let cachedProjectAgentsDir: string | null = null;
 	let cachedUserAgentsDir: string | null = null;
+	const inFlightDiscoveries = new Map<string, Promise<TResult>>();
+
+	async function discover(userAgentsDir: string, projectAgentsDir: string | null) {
+		const userFingerprint = await fingerprintDirectory(
+			userAgentsDir,
+			directorySnapshots,
+			fileSystem,
+			options.includeSymlinks,
+		);
+		const projectFingerprint = await fingerprintDirectory(
+			projectAgentsDir,
+			directorySnapshots,
+			fileSystem,
+			options.includeSymlinks,
+		);
+		const fingerprint = [userFingerprint.fingerprint, projectFingerprint.fingerprint].join(
+			"::",
+		);
+		if (
+			cachedResult &&
+			cachedFingerprint === fingerprint &&
+			cachedProjectAgentsDir === projectAgentsDir &&
+			cachedUserAgentsDir === userAgentsDir
+		) {
+			return cachedResult;
+		}
+
+		const userLoad = await options.loadDefinitions(
+			userFingerprint.files,
+			"user",
+		);
+		const projectLoad = await options.loadDefinitions(
+			projectFingerprint.files,
+			"project",
+		);
+		cachedResult = options.toResult({
+			definitions: mergeByName(userLoad.definitions, projectLoad.definitions),
+			projectAgentsDir,
+			fingerprint,
+			diagnostics: [...userLoad.diagnostics, ...projectLoad.diagnostics],
+		});
+		cachedFingerprint = fingerprint;
+		cachedProjectAgentsDir = projectAgentsDir;
+		cachedUserAgentsDir = userAgentsDir;
+		return cachedResult;
+	}
 
 	return {
 		async get(cwd: string) {
 			const userAgentsDir = getUserGremlinsDir(discoveryOptions);
 			const projectAgentsDir = findNearestProjectAgentsDir(cwd);
-			const userFingerprint = await fingerprintDirectory(
-				userAgentsDir,
-				directorySnapshots,
-				fileSystem,
-				options.includeSymlinks,
-			);
-			const projectFingerprint = await fingerprintDirectory(
-				projectAgentsDir,
-				directorySnapshots,
-				fileSystem,
-				options.includeSymlinks,
-			);
-			const fingerprint = [userFingerprint.fingerprint, projectFingerprint.fingerprint].join(
-				"::",
-			);
-			if (
-				cachedResult &&
-				cachedFingerprint === fingerprint &&
-				cachedProjectAgentsDir === projectAgentsDir &&
-				cachedUserAgentsDir === userAgentsDir
-			) {
-				return cachedResult;
-			}
+			const discoveryKey = [userAgentsDir, projectAgentsDir ?? ""].join("\u001f");
+			const inFlight = inFlightDiscoveries.get(discoveryKey);
+			if (inFlight) return inFlight;
 
-			const userLoad = await options.loadDefinitions(
-				userFingerprint.files,
-				"user",
-			);
-			const projectLoad = await options.loadDefinitions(
-				projectFingerprint.files,
-				"project",
-			);
-			cachedResult = options.toResult({
-				definitions: mergeByName(userLoad.definitions, projectLoad.definitions),
-				projectAgentsDir,
-				fingerprint,
-				diagnostics: [...userLoad.diagnostics, ...projectLoad.diagnostics],
+			const discovery = discover(userAgentsDir, projectAgentsDir).finally(() => {
+				inFlightDiscoveries.delete(discoveryKey);
 			});
-			cachedFingerprint = fingerprint;
-			cachedProjectAgentsDir = projectAgentsDir;
-			cachedUserAgentsDir = userAgentsDir;
-			return cachedResult;
+			inFlightDiscoveries.set(discoveryKey, discovery);
+			return discovery;
 		},
 		clear() {
 			directorySnapshots.clear();
+			inFlightDiscoveries.clear();
 			cachedResult = null;
 			cachedFingerprint = null;
 			cachedProjectAgentsDir = null;
