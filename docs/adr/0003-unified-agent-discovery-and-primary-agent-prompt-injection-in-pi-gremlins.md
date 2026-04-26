@@ -109,6 +109,7 @@ The implementation must follow these architectural constraints:
   - Future changes to primary-agent persisted state or prompt-injection delimiters require ADR review because they affect session compatibility and runtime prompt composition.
   - Any future removal of `/mohawk` compatibility controls must be treated as a user-facing product decision, not hidden cleanup.
   - Shared discovery must continue to enforce role separation and must not use primary-agent markdown as gremlin prompt material or gremlin markdown as primary-agent prompt material.
+  - Primary-agent prompt injection is parent-session-only; gremlin child sessions must not receive injected primary-agent blocks or active primary-agent markdown.
 
 ## Implementation Impact
 
@@ -130,6 +131,7 @@ The implementation must follow these architectural constraints:
   - Focused Bun tests for session state reconstruction from `pi-gremlins-primary-agent` and legacy `pi-mohawk-primary-agent` entries, with writes only to `pi-gremlins-primary-agent`.
   - Focused Bun tests for `/mohawk` command behavior, `ctrl+shift+m` cycling, no-UI fallback messaging, and `Primary: <name|None>` status updates.
   - Focused Bun tests for `before_agent_start` injection, duplicate block stripping, legacy block stripping, missing selected-agent reset, and no prompt mutation when selection is `None`.
+  - Focused Bun tests proving gremlin child-session prompts exclude primary-agent markers and active primary-agent markdown even when parent-session injection is enabled.
   - Full repository verification after implementation: `npm run typecheck`, `npm test`, and `npm run check`.
 - **Manual:**
   - Install updated `pi-gremlins`, select a primary agent, send a prompt, and confirm selected primary markdown affects the parent agent.
@@ -145,3 +147,4 @@ ADR-0002 still governs gremlin execution architecture. If implementation pressur
 ## Status History
 
 - 2026-04-25: Accepted; records issue #39 package-boundary decision to merge primary-agent selection and prompt injection into `pi-gremlins` while deprecating separate `pi-mohawk` package after equivalent behavior ships
+- 2026-04-25: Clarified issue #41 isolation constraint that primary-agent prompt injection stays parent-only and is excluded from gremlin child sessions

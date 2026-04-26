@@ -299,7 +299,6 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 							gremlinId,
 							request,
 							definition: gremlin,
-							parentSystemPrompt: ctx.getSystemPrompt(),
 							parentModel: ctx.model,
 							modelRegistry: ctx.modelRegistry,
 							signal: childSignal,

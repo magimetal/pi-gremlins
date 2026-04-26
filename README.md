@@ -143,7 +143,9 @@ Runtime behavior:
 - `intent` is required and states why the parent is delegating or what outcome the gremlin should serve
 - `context` is required and carries concrete task details, constraints, paths, findings, and requested output
 - child sessions run in-process through Pi SDK
-- child sessions inherit parent system prompt snapshot only
+- child session system prompt is the selected gremlin raw markdown only
+- child user prompt carries caller `intent` and `context` only
+- child sessions do not inherit parent system prompt snapshots, primary-agent prompt blocks, active primary-agent markdown, orchestration rules, or conversation history
 - no nested Pi CLI subprocesses
 - no temp prompt files
 - child sessions do not load extensions, skills, prompts, themes, or AGENTS files
@@ -175,6 +177,7 @@ Prompt behavior:
 
 - selected primary-agent raw markdown is appended during `before_agent_start` inside `<!-- pi-gremlins primary agent:start -->` / `<!-- pi-gremlins primary agent:end -->`.
 - existing `pi-gremlins` and legacy `pi-mohawk` primary-agent blocks are stripped before appending to avoid duplicate injection.
+- primary-agent prompt blocks stay parent-only and are never propagated into gremlin child sessions.
 - `agent_type: sub-agent` gremlins are never injected as primary agents.
 
 Migration from `pi-mohawk`:

@@ -22,7 +22,6 @@ const VALID_THINKING_LEVELS = new Set<ThinkingLevel>([
 ]);
 
 export interface BuildGremlinSessionConfigOptions {
-	parentSystemPrompt: string;
 	parentModel?: string | Model<any>;
 	parentThinking?: ThinkingLevel;
 	gremlin: Pick<GremlinDefinition, "name" | "source" | "rawMarkdown" | "frontmatter">;
@@ -147,7 +146,6 @@ export function resolveGremlinThinking(
 }
 
 export function buildGremlinSessionConfig({
-	parentSystemPrompt,
 	parentModel,
 	parentThinking,
 	gremlin,
@@ -167,12 +165,10 @@ export function buildGremlinSessionConfig({
 		gremlin.frontmatter.thinking,
 		parentThinking,
 	);
-	const systemPrompt = parentSystemPrompt;
+	const systemPrompt = gremlin.rawMarkdown;
 	return {
 		systemPrompt,
 		prompt: buildGremlinPrompt({
-			parentSystemPrompt,
-			rawMarkdown: gremlin.rawMarkdown,
 			intent,
 			context,
 		}),

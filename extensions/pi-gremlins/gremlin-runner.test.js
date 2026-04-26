@@ -38,8 +38,8 @@ describe("gremlin runner v1 contract", () => {
 		const fake = createFakeSession({
 			getContextUsage: () => ({ tokens: 6, contextWindow: 200000, percent: 0.003 }),
 			onPrompt: async ({ text, emit }) => {
-				expect(text).toContain("Parent system prompt snapshot:");
-				expect(text).toContain("raw gremlin body");
+				expect(text).not.toContain("Parent system prompt snapshot:");
+				expect(text).not.toContain("raw gremlin body");
 				expect(text).toContain("Caller intent:");
 				expect(text).toContain("Inspect implementation independently");
 				expect(text).toContain("Caller context:");
@@ -98,7 +98,6 @@ describe("gremlin runner v1 contract", () => {
 				rawMarkdown: "---\nname: researcher\nmodel: openai/gpt-5-mini\n---\nraw gremlin body",
 				frontmatter: { model: "openai/gpt-5-mini" },
 			},
-			parentSystemPrompt: "system snapshot",
 			onUpdate: (update) => updates.push(update),
 			createSession: async () => fake,
 		});
@@ -173,7 +172,6 @@ describe("gremlin runner v1 contract", () => {
 				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
 				frontmatter: {},
 			},
-			parentSystemPrompt: "system snapshot",
 			onUpdate: (update) => updates.push(update),
 			createSession: async () => fake,
 		});
@@ -219,7 +217,6 @@ describe("gremlin runner v1 contract", () => {
 				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
 				frontmatter: {},
 			},
-			parentSystemPrompt: "system snapshot",
 			createSession: async () => fake,
 		});
 
@@ -244,7 +241,6 @@ describe("gremlin runner v1 contract", () => {
 				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
 				frontmatter: {},
 			},
-			parentSystemPrompt: "system snapshot",
 			createSession: async () => ({
 				session: {
 					subscribe() {
@@ -276,7 +272,6 @@ describe("gremlin runner v1 contract", () => {
 				rawMarkdown: "---\nname: researcher\nmodel: openai/missing\n---\nraw gremlin body",
 				frontmatter: { model: "openai/missing" },
 			},
-			parentSystemPrompt: "system snapshot",
 			modelRegistry: {
 				getAll: () => [],
 				find: () => undefined,
@@ -312,7 +307,6 @@ describe("gremlin runner v1 contract", () => {
 				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
 				frontmatter: {},
 			},
-			parentSystemPrompt: "system snapshot",
 			signal: controller.signal,
 			createSession: async () => fake,
 		});
@@ -338,7 +332,6 @@ describe("gremlin runner v1 contract", () => {
 				rawMarkdown: "---\nname: reviewer\n---\nreview body",
 				frontmatter: {},
 			},
-			parentSystemPrompt: "system snapshot",
 			createSession: async () => failing,
 		});
 		expect(failed.status).toBe("failed");
@@ -376,7 +369,6 @@ describe("gremlin runner v1 contract", () => {
 				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
 				frontmatter: {},
 			},
-			parentSystemPrompt: "system snapshot",
 			signal: controller.signal,
 			createSession: async () => fake,
 		});
