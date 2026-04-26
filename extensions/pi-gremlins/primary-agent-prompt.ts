@@ -6,6 +6,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import type { PrimaryAgentDiscoveryCache } from "./gremlin-discovery.js";
 import type { PrimaryAgentDefinition } from "./primary-agent-definition.js";
+import { clearPersistedPrimaryAgentSelection } from "./primary-agent-persistence.js";
 import {
 	PRIMARY_AGENT_ENTRY_TYPE,
 	selectAgentInState,
@@ -69,6 +70,7 @@ export async function applyPrimaryAgentPromptInjection(args: {
 	if (!agent) {
 		const missingName = args.state.selectedName;
 		args.pi.appendEntry(PRIMARY_AGENT_ENTRY_TYPE, toSessionEntryData(null));
+		clearPersistedPrimaryAgentSelection(args.ctx.cwd);
 		const nextState = selectAgentInState(args.state, null);
 		args.updateStatus(args.ctx, nextState);
 		args.notify(

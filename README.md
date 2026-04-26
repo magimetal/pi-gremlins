@@ -167,11 +167,13 @@ Controls:
 
 Session behavior:
 
-- selection is current-session branch state, not global config.
-- new entries are persisted as `pi-gremlins-primary-agent` with selected name, source, and file path only.
+- selection is restored across Pi sessions from project-local `.pi/settings.json` under `pi-gremlins.primaryAgent`; this avoids surprising cross-project primary-agent injection.
+- current-session branch entries still take precedence when present.
+- `/mohawk <name>`, picker selection, `Ctrl+Shift+M`, and `/mohawk none` persist selected name, source, and file path only.
+- new session entries are also appended as `pi-gremlins-primary-agent` for branch history compatibility.
 - legacy `pi-mohawk-primary-agent` entries are read for migration; new writes use `pi-gremlins-primary-agent`.
-- raw primary-agent markdown is never stored in session entries.
-- missing selected primary agent resets to `None` and warns instead of injecting stale markdown.
+- raw primary-agent markdown is never stored in session entries or settings.
+- missing selected primary agent resets to `None` in project settings and warns instead of injecting stale markdown.
 
 Prompt behavior:
 

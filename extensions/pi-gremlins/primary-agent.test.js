@@ -193,6 +193,70 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: None" });
 	});
 
+	test("selection persists to project settings and restores in a new session without raw markdown", async () => {
+		const { createPrimaryAgentDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const { createPiGremlinsExtension } = await import("./index.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		writePrimaryFile(workspace.projectAgentsDir, "alpha.md", "---\nname: Alpha\nagent_type: primary\n---\nalpha prompt");
+		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
+
+		const firstPi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(firstPi);
+		const firstCtx = createMockContext(workspace);
+		await firstPi.handler("session_start")({ type: "session_start", reason: "startup" }, firstCtx);
+		await firstPi.commands.get("mohawk").handler("Alpha", firstCtx);
+
+		const settingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const settingsContent = fs.readFileSync(settingsPath, "utf-8");
+		expect(settingsContent).toContain('"selectedName": "Alpha"');
+		expect(settingsContent).toContain('"source": "project"');
+		expect(settingsContent).not.toContain("alpha prompt");
+
+		const secondPi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(secondPi);
+		const secondCtx = createMockContext(workspace);
+		await secondPi.handler("session_start")({ type: "session_start", reason: "startup" }, secondCtx);
+		expect(secondCtx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: Alpha" });
+		const injected = await secondPi.handler("before_agent_start")({ type: "before_agent_start", systemPrompt: "system", prompt: "go", systemPromptOptions: {} }, secondCtx);
+		expect(injected.systemPrompt).toContain("alpha prompt");
+	});
+
+	test("cleared and missing persisted primary-agent selections reset to None", async () => {
+		const { createPrimaryAgentDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const { createPiGremlinsExtension } = await import("./index.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		writePrimaryFile(workspace.projectAgentsDir, "alpha.md", "---\nname: Alpha\nagent_type: primary\n---\nalpha prompt");
+		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
+		const settingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+
+		const firstPi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(firstPi);
+		const firstCtx = createMockContext(workspace);
+		await firstPi.handler("session_start")({ type: "session_start", reason: "startup" }, firstCtx);
+		await firstPi.commands.get("mohawk").handler("Alpha", firstCtx);
+		await firstPi.commands.get("mohawk").handler("none", firstCtx);
+		expect(fs.readFileSync(settingsPath, "utf-8")).toContain('"selectedName": null');
+
+		const clearedPi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(clearedPi);
+		const clearedCtx = createMockContext(workspace);
+		await clearedPi.handler("session_start")({ type: "session_start", reason: "startup" }, clearedCtx);
+		expect(clearedCtx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: None" });
+
+		fs.writeFileSync(settingsPath, JSON.stringify({ "pi-gremlins": { primaryAgent: { selectedName: "Missing", source: "project", filePath: path.join(workspace.projectAgentsDir, "missing.md") } } }, null, 2), "utf-8");
+		const missingPi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(missingPi);
+		const missingCtx = createMockContext(workspace);
+		await missingPi.handler("session_start")({ type: "session_start", reason: "startup" }, missingCtx);
+		expect(missingCtx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: None" });
+		expect(missingCtx.ui.notifications.at(-1)).toEqual({ message: "Primary agent unavailable, reset to None: Missing", type: "warning" });
+		expect(fs.readFileSync(settingsPath, "utf-8")).toContain('"selectedName": null');
+		const injected = await missingPi.handler("before_agent_start")({ type: "before_agent_start", systemPrompt: "system", prompt: "go", systemPromptOptions: {} }, missingCtx);
+		expect(injected).toBeUndefined();
+	});
+
 	test("prompt injection strips existing pi-gremlins and legacy pi-mohawk blocks", async () => {
 		const { appendPrimaryAgentPromptBlock } = await import("./primary-agent-prompt.ts");
 		const agent = { name: "Wall", rawMarkdown: "---\nname: Wall\nagent_type: primary\n---\nwall prompt" };
