@@ -11,30 +11,25 @@ Suggested GitHub About text:
 
 `Gremlins🧌` runs one or more gremlins with isolated child-session context. Primary-agent controls select one parent-session agent role and inject its raw markdown into the parent system prompt before each turn.
 
-V1 contract:
+Current contract:
 
-- one tool name: `pi-gremlins`
+- one tool/runtime identifier: `pi-gremlins`
 - one input shape: `gremlins: [{ intent, agent, context, cwd? }]`
+- `intent`, `agent`, and `context` are required non-empty strings
 - array length `1..10`
 - one gremlin = single run
 - multiple gremlins = parallel run
-- no chain mode
-- no popup viewer
-- no `/gremlins:view`
-- no `/gremlins:steer`
-- no package gremlin discovery
-- no scope toggles
-- inline progress only, expand with `Ctrl+O`
+- inline progress only, expand the tool row with `Ctrl+O`
 
-Agent definitions load from:
+Agent definitions load direct `.md` files from:
 
 - `~/.pi/agent/agents`
-- nearest project `.pi/agents`
+- nearest ancestor `.pi/agents` for the effective working directory
 
 Roles stay separated by frontmatter:
 
-- `agent_type: sub-agent` files are gremlins that the `pi-gremlins` tool can summon.
-- `agent_type: primary` files are parent-session primary agents selected through `/mohawk` or `Ctrl+Shift+M`.
+- `agent_type: sub-agent` files are gremlins that the `pi-gremlins` tool can summon. They must have a frontmatter `name`; optional `description`, `model`, `thinking`, and `tools` fields can guide the child session. Symlinked markdown is included for gremlin discovery.
+- `agent_type: primary` files are parent-session primary agents selected through `/mohawk` or `Ctrl+Shift+M`. Their display names fall back from frontmatter `name`, to first H1, to filename stem. Symlinked markdown is ignored for primary-agent discovery.
 - untyped files and other agent types are ignored.
 
 Gremlin example:
@@ -57,7 +52,7 @@ agent_type: primary
 ---
 ```
 
-If user and project define same display name for the same role, nearest project version wins. Primary-agent display names fall back from frontmatter `name`, to first H1, to filename stem.
+If user and nearest-project directories define the same display name for the same role, the project definition wins. Names are sorted for display/cycling after role filtering and precedence merge.
 
 Important: UI label may show `Gremlins🧌` for human-facing branding. Actual package/runtime/tool identifier stays `pi-gremlins` for install and invocation wiring.
 
@@ -141,15 +136,19 @@ pi-gremlins({
 Runtime behavior:
 
 - `intent` is required and states why the parent is delegating or what outcome the gremlin should serve
+- `agent` is required and resolves by exact name first, then the first case-insensitive name match from the sorted discovered gremlin list
+- unknown gremlin names, invalid `cwd` values, unresolved or ambiguous explicit gremlin models, failures, and cancellations are reported per gremlin and mark the aggregate tool result as an error
 - `context` is required and carries concrete task details, constraints, paths, findings, and requested output
+- `cwd`, when provided, is resolved against the parent session cwd unless already absolute; it must point to an existing directory, and discovery/session execution use that effective cwd
 - child sessions run in-process through Pi SDK
 - child session system prompt is the selected gremlin raw markdown only
 - child user prompt carries caller `intent` and `context` only
+- child sessions can use gremlin frontmatter `model`, `thinking`, and `tools`; when `model` or `thinking` is omitted, the parent setting is used as fallback
+- explicit gremlin `model` may be provider-qualified (`provider/model-id`) or a bare model id; bare ids must resolve to exactly one provider/model in Pi's model registry
 - child sessions do not inherit parent system prompt snapshots, primary-agent prompt blocks, active primary-agent markdown, orchestration rules, or conversation history
-- no nested Pi CLI subprocesses
-- no temp prompt files
 - child sessions do not load extensions, skills, prompts, themes, or AGENTS files
-- collapsed tool row shows source, status, phase, and latest activity
+- parent abort cancels all active gremlins; completed sibling results remain visible in the aggregate result
+- collapsed tool row shows source, status, intent/task preview, latest activity, usage, and errors
 - expanded tool row shows intent, task, cwd, model, thinking, latest text/tool data, usage, and errors
 
 ## Primary agents
@@ -158,17 +157,17 @@ Primary-agent support replaces the separate `pi-mohawk` extension inside `pi-gre
 
 Controls:
 
-- `/mohawk` opens a picker when UI exists.
+- `/mohawk` opens a `Select primary agent` picker when UI exists.
 - `/mohawk` without UI writes `Primary agents: None, ...` into the transcript.
-- `/mohawk <name>` selects exact or single case-insensitive primary-agent match.
+- `/mohawk <name>` selects exact or single case-insensitive primary-agent match; ambiguous case-insensitive matches leave state unchanged and warn with exact-case options.
 - `/mohawk none` clears selection.
 - `Ctrl+Shift+M` cycles deterministically through `[None, ...sorted primary agents]`.
 - status key is `pi-gremlins-primary`; visible label is `Primary: <name|None>`.
 
 Session behavior:
 
-- selection is restored across Pi sessions from project-local `.pi/settings.json` under `pi-gremlins.primaryAgent`; this avoids surprising cross-project primary-agent injection.
-- current-session branch entries still take precedence when present.
+- selection is restored from nearest project `.pi/settings.json` under `pi-gremlins.primaryAgent`; project-local storage avoids surprising cross-project primary-agent injection.
+- current-branch session entries still take precedence when present.
 - `/mohawk <name>`, picker selection, `Ctrl+Shift+M`, and `/mohawk none` persist selected name, source, and file path only.
 - new session entries are also appended as `pi-gremlins-primary-agent` for branch history compatibility.
 - legacy `pi-mohawk-primary-agent` entries are read for migration; new writes use `pi-gremlins-primary-agent`.
@@ -186,7 +185,7 @@ Migration from `pi-mohawk`:
 
 - install updated `pi-gremlins` and use existing `/mohawk` / `Ctrl+Shift+M` controls.
 - after confirming primary-agent behavior works in `pi-gremlins`, disable or uninstall `pi-mohawk` to avoid duplicate command, shortcut, status, or prompt-hook behavior.
-- keep agent markdown in same user/project directories; no schema rename needed for `agent_type: primary`.
+- keep agent markdown in the same user/project directories; no schema rename is needed for `agent_type: primary`.
 
 ## Repo layout
 
@@ -228,7 +227,7 @@ Run checks:
 
 ```bash
 npm run typecheck
-npm test
+npm test        # runs Bun tests under extensions/pi-gremlins/*.test.js
 # or
 npm run check
 ```

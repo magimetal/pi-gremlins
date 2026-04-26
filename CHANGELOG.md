@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- README documentation now reflects the current `pi-gremlins` contract, discovery precedence, runtime behavior, primary-agent controls, and test command details.
 - Generated `AGENTS.md` guidance for the root, docs, and extension scopes now reflects the current primary-agent, runtime, and governance boundaries.
 - **Primary-agent selection and pi-mohawk deprecation path** (PRD-0003, ADR-0003, issue #39): `pi-gremlins` now includes primary-agent discovery, `/mohawk` selection, `Ctrl+Shift+M` cycling, session-scoped state, status UX, and `before_agent_start` prompt injection previously owned by `pi-mohawk`.
 - **V1 SDK rewrite** (PRD-0002, ADR-0002): `pi-gremlins` now runs gremlins through isolated in-process Pi SDK child sessions instead of nested Pi CLI subprocesses.
