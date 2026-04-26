@@ -4,65 +4,66 @@
 
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-04-26T00:10:48Z
-**Commit:** 1bab6b0
+**Generated:** 2026-04-26T05:03:51Z
+**Commit:** 98722c7
 **Branch:** main
 
 ## OVERVIEW
-Standalone Pi package for `Gremlins🧌`: in-process SDK child-session delegation plus primary-agent selection merged from `pi-mohawk`. Package ships one extension from `extensions/pi-gremlins/`; human-facing branding differs from machine id `pi-gremlins`.
+Standalone Pi package for `Gremlins🧌`: isolated in-process SDK child-session delegation plus primary-agent selection formerly in `pi-mohawk`. Root is the installable package; runtime lives under `extensions/pi-gremlins/`.
 
 ## STRUCTURE
 ```text
 pi-gremlins/
-├── extensions/pi-gremlins/   # runtime, renderer, primary-agent controls, Bun tests
-├── docs/adr/                 # architecture decisions + index
-├── docs/prd/                 # product scope records + index
-├── docs/plans/               # execution plans, remediation notes
-├── README.md                 # install, use, public contract
-├── CHANGELOG.md              # release history with PRD/ADR refs
-└── package.json              # scripts, peers, Pi extension manifest
+├── extensions/pi-gremlins/   # Pi extension runtime, renderers, primary-agent controls, Bun tests
+├── docs/                     # PRD/ADR governance plus historical plans
+├── README.md                 # public install/use contract
+├── CHANGELOG.md              # user-facing release history with PRD/ADR refs
+├── package.json              # package manifest, scripts, Pi extension entry
+└── tsconfig.json             # strict-ish TS compile surface for extension TS only
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| Package shape | `package.json` | root install; `pi.extensions` -> `./extensions/pi-gremlins` |
-| Public usage contract | `README.md` | current schema: `gremlins: [{ intent, agent, context, cwd? }]` |
-| Runtime implementation | `extensions/pi-gremlins/` | see child `AGENTS.md` before edits |
-| Product scope | `docs/prd/` | PRD-0002 v1 rewrite; PRD-0003 primary-agent merge |
-| Architecture scope | `docs/adr/` | ADR-0002 SDK runtime; ADR-0003 unified discovery/prompt injection |
-| Plans / historical rationale | `docs/plans/` | long task plans; do not treat old plans as current source of truth over PRD/ADR/README |
-| Release notes | `CHANGELOG.md` | cite PRD/ADR ids for user-facing or architecture changes |
+| Install/package shape | `package.json` | `pi.extensions` must remain `./extensions/pi-gremlins` |
+| Public contract | `README.md` | tool input: `gremlins: [{ intent, agent, context, cwd? }]`, length `1..10` |
+| Runtime implementation | `extensions/pi-gremlins/` | read child `AGENTS.md` before edits |
+| Product / architecture authority | `docs/` | read child `AGENTS.md`; PRD/ADR beat old plans |
+| Release notes | `CHANGELOG.md` | cite PRD/ADR ids for major behavior or architecture changes |
+| Tests | `extensions/pi-gremlins/*.test.js` | Bun JS tests beside TS modules |
 
 ## CODE MAP
 | Symbol | Type | Location | Role |
 |--------|------|----------|------|
-| `createPiGremlinsExtension` | function | `extensions/pi-gremlins/index.ts` | Pi extension registration |
-| `GremlinRequestSchema` | schema | `extensions/pi-gremlins/gremlin-schema.ts` | public tool input contract |
-| `createGremlinDiscoveryCache` | function | `extensions/pi-gremlins/gremlin-discovery.ts` | sub-agent discovery cache |
-| `createPrimaryAgentDiscoveryCache` | function | `extensions/pi-gremlins/gremlin-discovery.ts` | primary-agent discovery cache |
-| `runGremlinBatch` | function | `extensions/pi-gremlins/gremlin-scheduler.ts` | parallel execution and cancellation |
+| `createPiGremlinsExtension` | function | `extensions/pi-gremlins/index.ts` | registers tool, renderers, lifecycle hooks, primary controls |
+| `executePiGremlinsTool` | function | `extensions/pi-gremlins/gremlin-tool-execution.ts` | validates invocation and dispatches batch execution |
+| `GremlinRequestSchema` | schema | `extensions/pi-gremlins/gremlin-schema.ts` | public tool parameter contract |
+| `createGremlinDiscoveryCache` | function | `extensions/pi-gremlins/gremlin-discovery.ts` | sub-agent discovery/cache |
+| `createPrimaryAgentDiscoveryCache` | function | `extensions/pi-gremlins/gremlin-discovery.ts` | primary-agent discovery/cache |
+| `runGremlinBatch` | function | `extensions/pi-gremlins/gremlin-scheduler.ts` | parallel run orchestration and cancellation |
 | `runSingleGremlin` | function | `extensions/pi-gremlins/gremlin-runner.ts` | child session event projection |
-| `buildGremlinSessionConfig` | function | `extensions/pi-gremlins/gremlin-session-factory.ts` | isolation boundary |
-| `appendPrimaryAgentPromptBlock` | function | `extensions/pi-gremlins/primary-agent-prompt.ts` | parent prompt injection block |
+| `buildGremlinSessionConfig` | function | `extensions/pi-gremlins/gremlin-session-factory.ts` | child isolation boundary |
+| `applyPrimaryAgentPromptInjection` | function | `extensions/pi-gremlins/primary-agent-prompt.ts` | parent-only primary markdown injection |
 
 ## CONVENTIONS
-- Keep repo installable from root; GitHub `pi install` expects root `package.json`.
-- Machine ids stay `pi-gremlins`; `Gremlins🧌` is presentation copy only.
-- Runtime TypeScript and JS Bun tests live side by side in `extensions/pi-gremlins/`.
-- Significant user-facing behavior change -> PRD update first. Runtime boundary change -> ADR update first.
+- Root stays installable; GitHub `pi install` reads root `package.json`.
+- Runtime id stays `pi-gremlins`; `Gremlins🧌` is UI copy only.
+- TypeScript source and JS Bun tests live side by side in `extensions/pi-gremlins/`.
+- Significant user-facing behavior -> PRD/changelog alignment. Runtime boundary/persistence/pipeline change -> ADR alignment.
 - Generated agent docs may be replaced; manual overrides belong in `AGENTS_CUSTOM.md`.
 
 ## ANTI-PATTERNS (THIS PROJECT)
-- Do not reintroduce nested Pi CLI subprocess runtime, temp prompt files, chain mode, popup viewer, `/gremlins:view`, `/gremlins:steer`, package discovery, or scope toggles.
-- Do not change public schema/discovery precedence without updating README, CHANGELOG, tests, and PRD/ADR when warranted.
+- Do not revive nested Pi CLI subprocess runtime, temp prompt files, chain mode, popup viewer, `/gremlins:view`, `/gremlins:steer`, package discovery, or scope toggles.
+- Do not leak parent extensions, prompts, themes, skills, AGENTS files, primary-agent markdown, or transcript/history into gremlin child sessions.
+- Do not change schema/discovery precedence without README, CHANGELOG, tests, and PRD/ADR alignment when warranted.
 - Do not move extension entry from `./extensions/pi-gremlins` without package/readme/test alignment.
-- Do not leak parent extensions, prompts, themes, skills, AGENTS files, or conversation history into child sessions.
+- Do not spread `as any`; localized `registerTool(tool as any)` in `index.ts` is the known Pi TypeBox workaround.
 
 ## UNIQUE STYLES
-- Docs use lightweight numbered PRD/ADR records plus README index tables.
-- Changelog references PRD/ADR ids for major scope shifts.
-- Tests mock Pi runtime modules in local JS harnesses rather than deep external fixtures.
+- Lightweight numbered PRD/ADR records plus index tables.
+- Changelog bullets cite PRD/ADR ids for major scope shifts.
+- Tests mock Pi runtime modules locally rather than using external fixtures.
+- Telegraphic docs preferred; old plans are history, not live contract.
 
 ## COMMANDS
 ```bash
@@ -74,5 +75,5 @@ npm run check
 
 ## NOTES
 - `.pi/agents` directories are runtime inputs, not package source.
-- `package-lock.json` inflates line counts; source concentration is `extensions/pi-gremlins/`.
-- Current implementation includes primary-agent merge work; older v1-only wording may be stale if copied from historical plans.
+- `node_modules/` and `package-lock.json` dominate size; source concentration is `extensions/pi-gremlins/`.
+- Current implementation includes primary-agent merge work; older v1-only plan text can be stale.
