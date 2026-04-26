@@ -189,6 +189,31 @@ describe("gremlin session factory v1 contract", () => {
 		});
 	});
 
+	test("reports ambiguous bare gremlin model ids with provider-qualified matches", async () => {
+		const { resolveGremlinModel } = await import("./gremlin-session-factory.ts");
+		const modelRegistry = {
+			getAll: () => [
+				{ provider: "openai", id: "gpt-5" },
+				{ provider: "anthropic", id: "gpt-5" },
+				{ provider: "openai", id: "gpt-5-mini" },
+			],
+			find: () => undefined,
+		};
+
+		expect(resolveGremlinModel("gpt-5", "openai/gpt-5-mini", modelRegistry)).toEqual({
+			label: "gpt-5",
+			error: "Ambiguous gremlin model: gpt-5. Matches: anthropic/gpt-5, openai/gpt-5",
+		});
+		expect(resolveGremlinModel("missing", "openai/gpt-5-mini", modelRegistry)).toEqual({
+			label: "missing",
+			error: "Unknown gremlin model: missing",
+		});
+		expect(resolveGremlinModel("gpt-5-mini", "openai/gpt-5", modelRegistry)).toMatchObject({
+			label: "openai/gpt-5-mini",
+			model: { provider: "openai", id: "gpt-5-mini" },
+		});
+	});
+
 	test("keeps v1 no-subprocess no-temp-file contract explicit in session config", async () => {
 		const { buildGremlinSessionConfig } = await import(
 			"./gremlin-session-factory.ts"

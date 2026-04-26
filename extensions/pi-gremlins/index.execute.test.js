@@ -267,6 +267,46 @@ describe("pi-gremlins index execute v1", () => {
 		expect(result.details.gremlins[0].cwd).toBe(childDir);
 	});
 
+	test("discovers project gremlins from effective request cwd", async () => {
+		const workspace = createWorkspace();
+		setMockAgentDir(workspace.userRoot);
+		const { tool } = createExtensionHarness();
+		writeGremlinFile(workspace.userAgentsDir, "researcher.md", "researcher");
+		writeGremlinFile(workspace.projectAgentsDir, "researcher.md", "researcher");
+		const targetRepo = path.join(workspace.repoRoot, "child", "target");
+		const targetAgentsDir = path.join(targetRepo, ".pi", "agents");
+		writeGremlinFile(targetAgentsDir, "researcher.md", "researcher");
+		fs.writeFileSync(
+			path.join(targetAgentsDir, "researcher.md"),
+			"---\nname: researcher\ndescription: target researcher\nagent_type: sub-agent\n---\ntarget project prompt",
+			"utf-8",
+		);
+		let sessionOptions;
+		setCreateAgentSessionImpl(async (options) => {
+			sessionOptions = options;
+			return {
+				session: createMockSession([
+					{ type: "message_end", message: { content: [{ type: "text", text: "target done" }], usage: { input: 1, output: 1 } } },
+				]),
+				extensionsResult: {},
+			};
+		});
+
+		const ctx = createExecutionContext(workspace.repoRoot);
+		const result = await tool.execute(
+			"effective-cwd-discovery",
+			{ gremlins: [{ intent: "Use target project gremlin", agent: "researcher", context: "Do target work", cwd: path.relative(workspace.repoRoot, targetRepo) }] },
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(result.isError).toBeUndefined();
+		expect(result.details.gremlins[0]).toMatchObject({ source: "project", cwd: targetRepo });
+		expect(sessionOptions.cwd).toBe(targetRepo);
+		expect(sessionOptions.resourceLoader.getSystemPrompt()).toContain("target project prompt");
+	});
+
 	test("returns explicit failed result for unknown gremlin names", async () => {
 		const workspace = createWorkspace();
 		setMockAgentDir(workspace.userRoot);

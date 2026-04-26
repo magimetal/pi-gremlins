@@ -222,6 +222,45 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		expect(injected.systemPrompt).toContain("alpha prompt");
 	});
 
+	test("corrupt project settings does not crash startup and reports warning", async () => {
+		const { createPrimaryAgentDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const { createPiGremlinsExtension } = await import("./index.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		fs.mkdirSync(path.join(workspace.repoRoot, ".pi"), { recursive: true });
+		fs.writeFileSync(path.join(workspace.repoRoot, ".pi", "settings.json"), "{not json", "utf-8");
+		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
+		const pi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(pi);
+		const ctx = createMockContext(workspace);
+
+		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
+
+		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: None" });
+		expect(ctx.ui.notifications.at(-1)).toMatchObject({ type: "warning" });
+		expect(ctx.ui.notifications.at(-1).message).toContain("Could not read primary-agent settings");
+	});
+
+	test("selection replaces corrupt project settings with valid persisted primary", async () => {
+		const { createPrimaryAgentDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const { createPiGremlinsExtension } = await import("./index.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		writePrimaryFile(workspace.projectAgentsDir, "alpha.md", "---\nname: Alpha\nagent_type: primary\n---\nalpha prompt");
+		const settingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		fs.writeFileSync(settingsPath, "{not json", "utf-8");
+		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
+		const pi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(pi);
+		const ctx = createMockContext(workspace);
+
+		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
+		await pi.commands.get("mohawk").handler("Alpha", ctx);
+
+		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+		expect(settings["pi-gremlins"].primaryAgent).toMatchObject({ selectedName: "Alpha", source: "project" });
+	});
+
 	test("cleared and missing persisted primary-agent selections reset to None", async () => {
 		const { createPrimaryAgentDiscoveryCache } = await import("./gremlin-discovery.ts");
 		const { createPiGremlinsExtension } = await import("./index.ts");

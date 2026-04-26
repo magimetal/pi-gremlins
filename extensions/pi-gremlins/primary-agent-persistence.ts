@@ -15,6 +15,11 @@ interface PrimaryAgentSettingsRoot {
 	};
 }
 
+interface PrimaryAgentSettingsReadResult {
+	settings: PrimaryAgentSettingsRoot;
+	diagnostic?: string;
+}
+
 function findNearestPiDir(cwd: string): string | null {
 	let currentDir = path.resolve(cwd);
 	while (true) {
@@ -35,9 +40,16 @@ export function getPrimaryAgentSettingsPath(cwd: string): string {
 	return path.join(nearestPiDir ?? path.join(path.resolve(cwd), ".pi"), "settings.json");
 }
 
-function readSettingsFile(settingsPath: string): PrimaryAgentSettingsRoot {
+function formatSettingsReadError(settingsPath: string, error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	return `Could not read primary-agent settings at ${settingsPath}: ${message}`;
+}
+
+function readSettingsFile(settingsPath: string): PrimaryAgentSettingsReadResult {
 	try {
-		return JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as PrimaryAgentSettingsRoot;
+		return {
+			settings: JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as PrimaryAgentSettingsRoot,
+		};
 	} catch (error) {
 		if (
 			error &&
@@ -45,18 +57,28 @@ function readSettingsFile(settingsPath: string): PrimaryAgentSettingsRoot {
 			"code" in error &&
 			error.code === "ENOENT"
 		) {
-			return {};
+			return { settings: {} };
 		}
-		throw error;
+		return { settings: {}, diagnostic: formatSettingsReadError(settingsPath, error) };
 	}
+}
+
+export function readPersistedPrimaryAgentSelectionWithDiagnostics(cwd: string): {
+	selection: PrimaryAgentSessionEntryData | null;
+	diagnostic?: string;
+} {
+	const { settings, diagnostic } = readSettingsFile(getPrimaryAgentSettingsPath(cwd));
+	const value = settings[PRIMARY_AGENT_SETTINGS_NAMESPACE]?.[PRIMARY_AGENT_SETTINGS_KEY];
+	return {
+		selection: isPrimaryAgentSessionEntryData(value) ? value : null,
+		diagnostic,
+	};
 }
 
 export function readPersistedPrimaryAgentSelection(
 	cwd: string,
 ): PrimaryAgentSessionEntryData | null {
-	const settings = readSettingsFile(getPrimaryAgentSettingsPath(cwd));
-	const value = settings[PRIMARY_AGENT_SETTINGS_NAMESPACE]?.[PRIMARY_AGENT_SETTINGS_KEY];
-	return isPrimaryAgentSessionEntryData(value) ? value : null;
+	return readPersistedPrimaryAgentSelectionWithDiagnostics(cwd).selection;
 }
 
 export function writePersistedPrimaryAgentSelection(
@@ -64,7 +86,7 @@ export function writePersistedPrimaryAgentSelection(
 	selection: PrimaryAgentSessionEntryData,
 ): void {
 	const settingsPath = getPrimaryAgentSettingsPath(cwd);
-	const settings = readSettingsFile(settingsPath);
+	const { settings } = readSettingsFile(settingsPath);
 	settings[PRIMARY_AGENT_SETTINGS_NAMESPACE] = {
 		...(settings[PRIMARY_AGENT_SETTINGS_NAMESPACE] ?? {}),
 		[PRIMARY_AGENT_SETTINGS_KEY]: selection,

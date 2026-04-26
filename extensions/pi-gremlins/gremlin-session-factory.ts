@@ -128,6 +128,16 @@ export function resolveGremlinModel(
 			model: matches[0],
 		};
 	}
+	if (matches.length > 1) {
+		const labels = matches
+			.map((match) => `${match.provider}/${match.id}`)
+			.sort()
+			.join(", ");
+		return {
+			label: gremlinModel,
+			error: `Ambiguous gremlin model: ${gremlinModel}. Matches: ${labels}`,
+		};
+	}
 
 	return { label: gremlinModel, error: `Unknown gremlin model: ${gremlinModel}` };
 }

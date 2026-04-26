@@ -286,6 +286,48 @@ describe("gremlin rendering v1 contract", () => {
 		expect(text).not.toContain("popup");
 	});
 
+	test("does not reuse full render cache across different invocations sharing revision and counts", async () => {
+		const { renderGremlinInvocationText } = await import(
+			"./gremlin-rendering.ts"
+		);
+		const baseDetails = {
+			requestedCount: 1,
+			activeCount: 1,
+			completedCount: 0,
+			failedCount: 0,
+			canceledCount: 0,
+			revision: 99,
+		};
+
+		const first = renderGremlinInvocationText(
+			{
+				...baseDetails,
+				gremlins: [{ gremlinId: "g1", agent: "alpha", source: "project", status: "active", context: "Alpha task", latestText: "Alpha output", revision: 1 }],
+			},
+			{ expanded: false, width: 120 },
+		);
+		const second = renderGremlinInvocationText(
+			{
+				...baseDetails,
+				gremlins: [{ gremlinId: "g2", agent: "beta", source: "user", status: "active", context: "Beta task", latestText: "Beta output", revision: 1 }],
+			},
+			{ expanded: false, width: 120 },
+		);
+		const expandedSecond = renderGremlinInvocationText(
+			{
+				...baseDetails,
+				gremlins: [{ gremlinId: "g3", agent: "gamma", source: "project", status: "active", context: "Gamma task", latestText: "Gamma output", revision: 1 }],
+			},
+			{ expanded: true, width: 120 },
+		);
+
+		expect(first).toContain("Alpha output");
+		expect(second).toContain("Beta output");
+		expect(second).not.toContain("Alpha output");
+		expect(expandedSecond).toContain("Gamma output");
+		expect(expandedSecond).not.toContain("Alpha output");
+	});
+
 	test("uses compact entry cache keys without embedding mutable text payloads", async () => {
 		const { createEntryCacheKey } = await import("./gremlin-render-components.ts");
 		const payload = "large mutable tool output ".repeat(400);

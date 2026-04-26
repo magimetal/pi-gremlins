@@ -54,10 +54,13 @@ function pushRenderSegmentCache(key: string, value: string): string {
 }
 
 function getDetailsRevisionKey(details: GremlinInvocationDetails): string {
-	if (typeof details.revision === "number") return `details:${details.revision}`;
-	return details.gremlins
+	const entryKeys = details.gremlins
 		.map((entry) => createEntryCacheKey("details-entry", entry))
 		.join("|");
+	if (typeof details.revision === "number") {
+		return [`details:${details.revision}`, entryKeys].join("\u001e");
+	}
+	return entryKeys;
 }
 
 function createRenderCacheKey(

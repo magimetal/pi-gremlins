@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Primary-agent selection persistence** (PRD-0003, ADR-0003, issue #42): `/mohawk` selections, shortcut cycling, and cleared primary-agent state now persist in project-local `.pi/settings.json`, restore in fresh Pi sessions, and reset with a warning if the saved primary agent disappears.
 - **Gremlin child prompt isolation** (PRD-0002, ADR-0002, ADR-0003, issue #41): child sessions now use selected sub-agent markdown as their system prompt and no longer receive parent prompt snapshots, primary-agent prompt blocks, active primary-agent markdown, or orchestration rules.
 - Hardened gremlin runtime reliability around child-session cleanup, abort handling, discovery file failures, request validation, CRLF gremlin frontmatter parsing, unresolved model selection, and parent-abort progress updates.
+- Repaired reliability audit findings for renderer cache uniqueness, same-size agent discovery changes, corrupt primary-agent settings recovery, effective request-cwd discovery, and ambiguous gremlin model reporting.
 
 ### Added
 - Generated agent guidance now covers root, docs, and extension scopes so contributors get current PRD/ADR, primary-agent, and runtime boundaries before editing.

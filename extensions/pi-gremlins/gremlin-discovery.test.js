@@ -223,6 +223,31 @@ describe("gremlin discovery v1 contract", () => {
 		expect(third.gremlins[0].rawMarkdown).toContain("second prompt body");
 	});
 
+	test("detects same-size same-mtime markdown content changes", async () => {
+		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
+		const agentPath = `${workspace.projectAgentsDir}/researcher.md`;
+		const firstContent = "---\nname: researcher\ndescription: first1\nagent_type: sub-agent\n---\nprompt one";
+		const secondContent = "---\nname: researcher\ndescription: second\nagent_type: sub-agent\n---\nprompt two";
+		expect(secondContent.length).toBe(firstContent.length);
+		fs.writeFileSync(agentPath, firstContent, "utf-8");
+		const originalMtime = new Date("2024-01-01T00:00:00.000Z");
+		fs.utimesSync(agentPath, originalMtime, originalMtime);
+		const discovery = createGremlinDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
+
+		const first = await discovery.get(workspace.repoRoot);
+		fs.writeFileSync(agentPath, secondContent, "utf-8");
+		fs.utimesSync(agentPath, originalMtime, originalMtime);
+		const second = await discovery.get(workspace.repoRoot);
+
+		expect(second).not.toBe(first);
+		expect(second.fingerprint).not.toBe(first.fingerprint);
+		expect(second.gremlins[0].rawMarkdown).toContain("prompt two");
+		expect(second.gremlins[0].rawMarkdown).not.toContain("prompt one");
+	});
+
 	test("skips unreadable markdown files without rejecting whole discovery", async () => {
 		const { createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
 		const workspace = createWorkspace();
@@ -244,6 +269,12 @@ describe("gremlin discovery v1 contract", () => {
 		const result = await discovery.get(workspace.repoRoot);
 
 		expect(result.gremlins.map((gremlin) => gremlin.name)).toEqual(["good"]);
+		expect(result.diagnostics).toEqual([
+			expect.objectContaining({
+				filePath: `${workspace.projectAgentsDir}/broken.md`,
+				message: expect.stringContaining("broken.md"),
+			}),
+		]);
 	});
 
 	test("parses CRLF frontmatter delimiters", async () => {

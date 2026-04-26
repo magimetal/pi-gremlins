@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir } from "@mariozechner/pi-coding-agent";
 import type { AgentSource } from "./agent-definition.js";
@@ -12,10 +12,16 @@ import {
 	type PrimaryAgentDefinition,
 } from "./primary-agent-definition.js";
 
+export interface AgentDiscoveryDiagnostic {
+	filePath: string;
+	message: string;
+}
+
 export interface GremlinDiscoveryResult {
 	gremlins: GremlinDefinition[];
 	projectAgentsDir: string | null;
 	fingerprint: string;
+	diagnostics: AgentDiscoveryDiagnostic[];
 }
 
 export interface GremlinDiscoveryCache {
@@ -27,6 +33,7 @@ export interface PrimaryAgentDiscoveryResult {
 	agents: PrimaryAgentDefinition[];
 	projectAgentsDir: string | null;
 	fingerprint: string;
+	diagnostics: AgentDiscoveryDiagnostic[];
 }
 
 export interface PrimaryAgentDiscoveryCache {
@@ -49,6 +56,7 @@ interface DirectorySnapshot {
 export interface AgentDiscoveryFileSystem {
 	readdir(dir: string): Promise<fs.Dirent[]>;
 	stat(candidatePath: string): Promise<fs.Stats>;
+	readFile?(candidatePath: string, encoding: BufferEncoding): Promise<string>;
 }
 
 export interface AgentDiscoveryOptions {
@@ -65,6 +73,7 @@ export type PrimaryAgentNameResolution =
 const nodeFileSystem: AgentDiscoveryFileSystem = {
 	readdir: (dir) => readdir(dir, { withFileTypes: true }),
 	stat,
+	readFile,
 };
 
 export function getUserGremlinsDir(options: AgentDiscoveryOptions = {}): string {
@@ -111,6 +120,23 @@ function createDirectorySignature(dirStat: fs.Stats): string {
 	return [dirStat.mtimeMs, dirStat.ctimeMs, dirStat.size].join(":");
 }
 
+function hashString(value: string): string {
+	let hash = 2166136261;
+	for (let index = 0; index < value.length; index++) {
+		hash ^= value.charCodeAt(index);
+		hash = Math.imul(hash, 16777619);
+	}
+	return (hash >>> 0).toString(36);
+}
+
+async function readFileContents(
+	filePath: string,
+	fileSystem: AgentDiscoveryFileSystem,
+): Promise<string> {
+	if (fileSystem.readFile) return fileSystem.readFile(filePath, "utf-8");
+	return fs.promises.readFile(filePath, "utf-8");
+}
+
 async function fingerprintKnownFiles(
 	files: string[],
 	fileSystem: AgentDiscoveryFileSystem,
@@ -118,8 +144,11 @@ async function fingerprintKnownFiles(
 	return Promise.all(
 		files.map(async (filePath) => {
 			try {
-				const fileStat = await fileSystem.stat(filePath);
-				return `${path.basename(filePath)}:${fileStat.mtimeMs}:${fileStat.size}`;
+				const [fileStat, content] = await Promise.all([
+					fileSystem.stat(filePath),
+					readFileContents(filePath, fileSystem),
+				]);
+				return `${path.basename(filePath)}:${fileStat.mtimeMs}:${fileStat.size}:${hashString(content)}`;
 			} catch {
 				return `${path.basename(filePath)}:missing`;
 			}
@@ -165,36 +194,47 @@ async function fingerprintDirectory(
 	return { dir, fingerprint, files };
 }
 
-async function loadGremlinsFromFiles(
+function formatLoadDiagnostic(filePath: string, error: unknown): AgentDiscoveryDiagnostic {
+	const message = error instanceof Error ? error.message : String(error);
+	return { filePath, message: `${path.basename(filePath)}: ${message}` };
+}
+
+async function loadDefinitionsFromFiles<T>(
 	files: string[],
 	source: AgentSource,
-): Promise<GremlinDefinition[]> {
-	const definitions = await Promise.all(
+	loader: (filePath: string, source: AgentSource) => Promise<T | null>,
+): Promise<{ definitions: T[]; diagnostics: AgentDiscoveryDiagnostic[] }> {
+	const results = await Promise.all(
 		files.map(async (filePath) => {
 			try {
-				return await loadGremlinDefinition(filePath, source);
-			} catch {
-				return null;
+				return { definition: await loader(filePath, source), diagnostic: null };
+			} catch (error) {
+				return { definition: null, diagnostic: formatLoadDiagnostic(filePath, error) };
 			}
 		}),
 	);
-	return definitions.filter((definition): definition is GremlinDefinition => Boolean(definition));
+	return {
+		definitions: results
+			.map((result) => result.definition)
+			.filter((definition): definition is T => Boolean(definition)),
+		diagnostics: results
+			.map((result) => result.diagnostic)
+			.filter((diagnostic): diagnostic is AgentDiscoveryDiagnostic => Boolean(diagnostic)),
+	};
+}
+
+async function loadGremlinsFromFiles(
+	files: string[],
+	source: AgentSource,
+): Promise<{ definitions: GremlinDefinition[]; diagnostics: AgentDiscoveryDiagnostic[] }> {
+	return loadDefinitionsFromFiles(files, source, loadGremlinDefinition);
 }
 
 async function loadPrimaryAgentsFromFiles(
 	files: string[],
 	source: AgentSource,
-): Promise<PrimaryAgentDefinition[]> {
-	const definitions = await Promise.all(
-		files.map(async (filePath) => {
-			try {
-				return await loadPrimaryAgentDefinition(filePath, source);
-			} catch {
-				return null;
-			}
-		}),
-	);
-	return definitions.filter((definition): definition is PrimaryAgentDefinition => Boolean(definition));
+): Promise<{ definitions: PrimaryAgentDefinition[]; diagnostics: AgentDiscoveryDiagnostic[] }> {
+	return loadDefinitionsFromFiles(files, source, loadPrimaryAgentDefinition);
 }
 
 function mergeByName<T extends { name: string }>(
@@ -247,11 +287,15 @@ interface RoleDiscoveryCache<TResult> {
 function createRoleDiscoveryCache<T extends { name: string }, TResult>(options: {
 	discoveryOptions?: AgentDiscoveryOptions;
 	includeSymlinks: boolean;
-	loadDefinitions: (files: string[], source: AgentSource) => Promise<T[]>;
+	loadDefinitions: (
+		files: string[],
+		source: AgentSource,
+	) => Promise<{ definitions: T[]; diagnostics: AgentDiscoveryDiagnostic[] }>;
 	toResult: (args: {
 		definitions: T[];
 		projectAgentsDir: string | null;
 		fingerprint: string;
+		diagnostics: AgentDiscoveryDiagnostic[];
 	}) => TResult;
 }): RoleDiscoveryCache<TResult> {
 	const discoveryOptions = options.discoveryOptions ?? {};
@@ -290,18 +334,19 @@ function createRoleDiscoveryCache<T extends { name: string }, TResult>(options: 
 				return cachedResult;
 			}
 
-			const userDefinitions = await options.loadDefinitions(
+			const userLoad = await options.loadDefinitions(
 				userFingerprint.files,
 				"user",
 			);
-			const projectDefinitions = await options.loadDefinitions(
+			const projectLoad = await options.loadDefinitions(
 				projectFingerprint.files,
 				"project",
 			);
 			cachedResult = options.toResult({
-				definitions: mergeByName(userDefinitions, projectDefinitions),
+				definitions: mergeByName(userLoad.definitions, projectLoad.definitions),
 				projectAgentsDir,
 				fingerprint,
+				diagnostics: [...userLoad.diagnostics, ...projectLoad.diagnostics],
 			});
 			cachedFingerprint = fingerprint;
 			cachedProjectAgentsDir = projectAgentsDir;
@@ -325,10 +370,11 @@ export function createGremlinDiscoveryCache(
 		discoveryOptions: options,
 		includeSymlinks: options.includeSymlinks ?? true,
 		loadDefinitions: loadGremlinsFromFiles,
-		toResult: ({ definitions, projectAgentsDir, fingerprint }) => ({
+		toResult: ({ definitions, projectAgentsDir, fingerprint, diagnostics }) => ({
 			gremlins: definitions,
 			projectAgentsDir,
 			fingerprint,
+			diagnostics,
 		}),
 	}) as GremlinDiscoveryCache;
 }
@@ -340,10 +386,11 @@ export function createPrimaryAgentDiscoveryCache(
 		discoveryOptions: options,
 		includeSymlinks: options.includeSymlinks ?? false,
 		loadDefinitions: loadPrimaryAgentsFromFiles,
-		toResult: ({ definitions, projectAgentsDir, fingerprint }) => ({
+		toResult: ({ definitions, projectAgentsDir, fingerprint, diagnostics }) => ({
 			agents: definitions,
 			projectAgentsDir,
 			fingerprint,
+			diagnostics,
 		}),
 	}) as PrimaryAgentDiscoveryCache;
 }

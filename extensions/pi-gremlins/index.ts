@@ -14,6 +14,7 @@ import {
 	createGremlinDiscoveryCache,
 	createPrimaryAgentDiscoveryCache,
 	resolveGremlinByName,
+	type AgentDiscoveryDiagnostic,
 	type GremlinDiscoveryCache,
 	type PrimaryAgentDiscoveryCache,
 } from "./gremlin-discovery.js";
@@ -39,7 +40,7 @@ import {
 import { applyPrimaryAgentPromptInjection } from "./primary-agent-prompt.js";
 import {
 	clearPersistedPrimaryAgentSelection,
-	readPersistedPrimaryAgentSelection,
+	readPersistedPrimaryAgentSelectionWithDiagnostics,
 } from "./primary-agent-persistence.js";
 import {
 	createInitialPrimaryAgentState,
@@ -94,6 +95,15 @@ function resolveGremlinCwd(
 	return path.isAbsolute(requestCwd)
 		? requestCwd
 		: path.resolve(baseCwd, requestCwd);
+}
+
+function notifyDiscoveryDiagnostics(
+	ctx: ExtensionContext,
+	diagnostics: AgentDiscoveryDiagnostic[],
+): void {
+	for (const diagnostic of diagnostics) {
+		ctx.ui?.notify?.(`Gremlin discovery skipped ${diagnostic.message}`, "warning");
+	}
 }
 
 function validateGremlinRequest(request: GremlinRequest): string | null {
@@ -155,15 +165,20 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 		pi.on("session_start", async (_event, ctx) => {
 			discovery.clear();
 			primaryAgentDiscovery.clear();
-			const { agents } = await primaryAgentDiscovery.get(ctx.cwd);
+			const primaryAgentDiscoveryResult = await primaryAgentDiscovery.get(ctx.cwd);
+			const { agents } = primaryAgentDiscoveryResult;
 			const branchSelection = getLatestPrimaryAgentSessionEntryData(
 				ctx.sessionManager.getBranch(),
 			);
-			const persistedSelection = branchSelection
-				? null
-				: readPersistedPrimaryAgentSelection(ctx.cwd);
+			const persistedRead = branchSelection
+				? { selection: null as null, diagnostic: undefined }
+				: readPersistedPrimaryAgentSelectionWithDiagnostics(ctx.cwd);
+			if (persistedRead.diagnostic) {
+				notifyPrimaryAgent(ctx, persistedRead.diagnostic, "warning");
+			}
+			notifyDiscoveryDiagnostics(ctx, primaryAgentDiscoveryResult.diagnostics);
 			primaryAgentState = reconstructPrimaryAgentStateFromData(
-				branchSelection ?? persistedSelection,
+				branchSelection ?? persistedRead.selection,
 				agents,
 			);
 			updatePrimaryAgentStatus(ctx, primaryAgentState);
@@ -268,7 +283,6 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 						details: normalizeInvocationDetails(),
 					};
 				}
-				const discovered = await discovery.get(ctx.cwd);
 				const batch = await runGremlinBatch({
 					gremlins: params.gremlins,
 					signal,
@@ -298,6 +312,9 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 							return createFailedGremlinResult(request, gremlinId, validationError);
 						}
 
+						const effectiveCwd = request.cwd ?? ctx.cwd;
+						const discovered = await discovery.get(effectiveCwd);
+						notifyDiscoveryDiagnostics(ctx, discovered.diagnostics);
 						const gremlin = resolveGremlinByName(discovered.gremlins, request.agent);
 						if (!gremlin) {
 							return createFailedGremlinResult(
