@@ -8,6 +8,7 @@ import {
 	type PrimaryAgentDiscoveryCache,
 } from "./gremlin-discovery.js";
 import type { PrimaryAgentDefinition } from "./primary-agent-definition.js";
+import { writePersistedPrimaryAgentSelection } from "./primary-agent-persistence.js";
 import {
 	hasSelectionChanged,
 	PRIMARY_AGENT_ENTRY_TYPE,
@@ -70,7 +71,9 @@ export async function persistPrimaryAgentSelection(
 		updatePrimaryAgentStatus(ctx, state);
 		return state;
 	}
-	pi.appendEntry(PRIMARY_AGENT_ENTRY_TYPE, toSessionEntryData(agent));
+	const entryData = toSessionEntryData(agent);
+	pi.appendEntry(PRIMARY_AGENT_ENTRY_TYPE, entryData);
+	writePersistedPrimaryAgentSelection(ctx.cwd, entryData);
 	const nextState = selectAgentInState(state, agent);
 	updatePrimaryAgentStatus(ctx, nextState);
 	notifyPrimaryAgent(ctx, `Primary agent: ${nextName ?? "None"}`);

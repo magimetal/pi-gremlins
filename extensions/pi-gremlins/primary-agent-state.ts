@@ -51,11 +51,9 @@ interface BranchCustomEntry {
 	data?: unknown;
 }
 
-export function reconstructPrimaryAgentStateFromBranch(
+export function getLatestPrimaryAgentSessionEntryData(
 	branchEntries: readonly BranchCustomEntry[],
-	agents: readonly PrimaryAgentDefinition[],
-): PrimaryAgentState {
-	let latestData: PrimaryAgentSessionEntryData | null = null;
+): PrimaryAgentSessionEntryData | null {
 	for (const entry of [...branchEntries].reverse()) {
 		if (
 			entry.type === "custom" &&
@@ -63,20 +61,33 @@ export function reconstructPrimaryAgentStateFromBranch(
 				entry.customType === LEGACY_PRIMARY_AGENT_ENTRY_TYPE) &&
 			isPrimaryAgentSessionEntryData(entry.data)
 		) {
-			latestData = entry.data;
-			break;
+			return entry.data;
 		}
 	}
+	return null;
+}
 
-	if (!latestData) return createInitialPrimaryAgentState();
-	if (latestData.selectedName === null) return createInitialPrimaryAgentState();
+export function reconstructPrimaryAgentStateFromData(
+	data: PrimaryAgentSessionEntryData | null,
+	agents: readonly PrimaryAgentDefinition[],
+): PrimaryAgentState {
+	if (!data) return createInitialPrimaryAgentState();
+	if (data.selectedName === null) return createInitialPrimaryAgentState();
 
-	const selectedExists = agents.some(
-		(agent) => agent.name === latestData.selectedName,
-	);
+	const selectedExists = agents.some((agent) => agent.name === data.selectedName);
 	return selectedExists
-		? { selectedName: latestData.selectedName, missingSelectedName: null }
-		: { selectedName: null, missingSelectedName: latestData.selectedName };
+		? { selectedName: data.selectedName, missingSelectedName: null }
+		: { selectedName: null, missingSelectedName: data.selectedName };
+}
+
+export function reconstructPrimaryAgentStateFromBranch(
+	branchEntries: readonly BranchCustomEntry[],
+	agents: readonly PrimaryAgentDefinition[],
+): PrimaryAgentState {
+	return reconstructPrimaryAgentStateFromData(
+		getLatestPrimaryAgentSessionEntryData(branchEntries),
+		agents,
+	);
 }
 
 export function toSessionEntryData(

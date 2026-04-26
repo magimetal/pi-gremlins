@@ -38,8 +38,13 @@ import {
 } from "./primary-agent-controls.js";
 import { applyPrimaryAgentPromptInjection } from "./primary-agent-prompt.js";
 import {
+	clearPersistedPrimaryAgentSelection,
+	readPersistedPrimaryAgentSelection,
+} from "./primary-agent-persistence.js";
+import {
 	createInitialPrimaryAgentState,
-	reconstructPrimaryAgentStateFromBranch,
+	getLatestPrimaryAgentSessionEntryData,
+	reconstructPrimaryAgentStateFromData,
 	type PrimaryAgentState,
 } from "./primary-agent-state.js";
 
@@ -151,12 +156,19 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 			discovery.clear();
 			primaryAgentDiscovery.clear();
 			const { agents } = await primaryAgentDiscovery.get(ctx.cwd);
-			primaryAgentState = reconstructPrimaryAgentStateFromBranch(
+			const branchSelection = getLatestPrimaryAgentSessionEntryData(
 				ctx.sessionManager.getBranch(),
+			);
+			const persistedSelection = branchSelection
+				? null
+				: readPersistedPrimaryAgentSelection(ctx.cwd);
+			primaryAgentState = reconstructPrimaryAgentStateFromData(
+				branchSelection ?? persistedSelection,
 				agents,
 			);
 			updatePrimaryAgentStatus(ctx, primaryAgentState);
 			if (primaryAgentState.missingSelectedName) {
+				clearPersistedPrimaryAgentSelection(ctx.cwd);
 				notifyPrimaryAgent(
 					ctx,
 					`Primary agent unavailable, reset to None: ${primaryAgentState.missingSelectedName}`,
