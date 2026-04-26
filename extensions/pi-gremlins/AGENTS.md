@@ -1,39 +1,41 @@
-<!--THIS IS A GENERATED FILE - DO NOT MODIFY DIRECTLY. FOR MANUAL ADJUSTMENTS, CREATE OR UPDATE AGENTS_CUSTOM.md-->
+<!--THIS IS A GENERATED FILE - DO NOT MODIFY DIRECTLY, FOR MANUAL ADJUSTMENTS UPDATE `AGENTS_CUSTOM.MD`-->
 # PI-GREMLINS EXTENSION KNOWLEDGE BASE
 
-**Generated:** 2026-04-24T07:52:56Z
-**Commit:** 7ca5d69
+**Generated:** 2026-04-26T00:10:48Z
+**Commit:** 1bab6b0
 **Branch:** main
 
 ## OVERVIEW
-Single-package Pi extension. Owns one v1-only tool at `pi-gremlins` for isolated in-process SDK child sessions, inline progress rendering, and deterministic user+project gremlin discovery.
+Extension runtime for `pi-gremlins`: gremlin sub-agent execution, inline progress rendering, unified agent discovery, and parent-session primary-agent selection.
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| Tool registration and live update wiring | `index.ts` | registers only `pi-gremlins`; clears discovery cache on session start/shutdown |
-| Public schema and result state | `gremlin-schema.ts` | `gremlins: [{ agent, context, cwd? }]`, `1..10`, per-gremlin status/result types |
-| Definition parsing and discovery | `gremlin-definition.ts`, `gremlin-discovery.ts` | user `~/.pi/agent/agents` + nearest project `.pi/agents`; project overrides user |
-| Prompt and child-session isolation | `gremlin-prompt.ts`, `gremlin-session-factory.ts` | prompt assembly, model/thinking resolution, empty resource world |
-| Runtime execution | `gremlin-runner.ts`, `gremlin-scheduler.ts`, `gremlin-progress-store.ts` | child event projection, parallel scheduling, cancellation, progress snapshots |
-| Inline rendering | `gremlin-render-components.ts`, `gremlin-rendering.ts`, `gremlin-summary.ts` | collapsed/expanded inline output, cached line computation |
-| Regression coverage | `gremlin-*.test.js`, `index.execute.test.js`, `index.render.test.js`, `v1-contract-harness.js` | Bun tests for schema, discovery, isolation, scheduling, rendering |
+| Extension registration | `index.ts` | registers tool, renderers, lifecycle hooks, primary-agent UI surfaces |
+| Tool schema and result types | `gremlin-schema.ts` | `gremlins: [{ intent, agent, context, cwd? }]`, length `1..10` |
+| Shared markdown parsing | `agent-definition.ts` | frontmatter/body parsing used by both roles |
+| Gremlin definition parsing | `gremlin-definition.ts` | `agent_type: sub-agent` only |
+| Primary definition parsing | `primary-agent-definition.ts` | `agent_type: primary` only; persisted selection shape |
+| Discovery/cache precedence | `gremlin-discovery.ts` | user + nearest project `.pi/agents`; project wins by name |
+| Child prompt/session | `gremlin-prompt.ts`, `gremlin-session-factory.ts` | prompt-only context; empty child resources |
+| Execution path | `gremlin-scheduler.ts`, `gremlin-runner.ts`, `gremlin-progress-store.ts` | parallel starts, abort handling, event/activity projection |
+| Rendering path | `gremlin-render-components.ts`, `gremlin-rendering.ts`, `gremlin-summary.ts` | collapsed/expanded inline rows and summary text |
+| Primary-agent state/UI | `primary-agent-state.ts`, `primary-agent-controls.ts`, `primary-agent-prompt.ts` | selection, `/mohawk`, `Ctrl+Shift+M`, prompt block injection |
+| Test harness | `v1-contract-harness.js`, `test-helpers.js`, `*.test.js` | Bun tests mock Pi runtime modules locally |
 
 ## CONVENTIONS
-- Human-facing copy may say `Gremlins🧌`; runtime/tool/package identifier stays `pi-gremlins`.
-- Public invocation shape is `gremlins: [{ agent, context, cwd? }]` only.
-- One gremlin runs once. Multiple gremlins start in parallel.
-- Discovery loads only user and nearest project gremlins. No package discovery surface.
-- Inline progress only. Pi built-in `Ctrl+O` handles expansion.
-- JS tests live beside TS source and mock Pi runtime modules inline.
+- Runtime ids remain `pi-gremlins`; labels may say `Gremlins🧌`.
+- Role split is frontmatter-driven: `sub-agent` for gremlins, `primary` for parent-session agent.
+- Repeated gremlin names require stable ids (`g1`, `g2`, ...); never key progress only by agent name.
+- Keep `registerTool(tool as any)` localized to `index.ts` until Pi TypeBox typing no longer needs it.
+- Tests stay as JS beside TS modules and use the local harness for Pi API mocks.
 
 ## ANTI-PATTERNS
-- Do not reintroduce chain mode, popup viewer, steering command, package discovery, or scope toggles without new PRD/ADR coverage.
-- Do not spawn nested Pi CLI subprocesses or write temp prompt files for normal runtime path.
-- Do not leak parent extensions, skills, prompts, themes, AGENTS files, or conversation history into child sessions.
-- Keep `registerTool(tool as any)` pinned to `index.ts` registration boundary until Pi 0.69.0 TypeBox typing issue is gone.
-- Do not key live progress by agent name alone; repeated names require stable gremlin ids.
-- Do not change tool schema or discovery precedence without updating README, changelog, and v1 tests together.
+- No nested Pi CLI subprocesses or temp prompt files in normal runtime.
+- No chain mode, popup viewer, targeted steering, package discovery, or scope toggles.
+- No parent resource leakage into child sessions: extensions, skills, prompts, themes, AGENTS files, transcript/history.
+- No schema/discovery changes without paired README, CHANGELOG, tests, and governance docs when scope changes.
+- No primary-agent prompt injection without stripping/replacing prior `pi-gremlins primary agent` blocks first.
 
 ## COMMANDS
 ```bash
@@ -42,6 +44,6 @@ npm test
 ```
 
 ## NOTES
-- Main runtime path starts in `index.ts`, then `gremlin-scheduler.ts`, then `gremlin-runner.ts`.
-- Rendering work usually spans `gremlin-render-components.ts`, `gremlin-rendering.ts`, and `gremlin-summary.ts`.
-- Discovery work usually spans `gremlin-definition.ts` + `gremlin-discovery.ts`.
+- Start execution debugging in `index.ts` -> `gremlin-scheduler.ts` -> `gremlin-runner.ts`.
+- Start rendering debugging in `gremlin-render-components.ts`; `gremlin-rendering.ts` mostly styles/caches final text.
+- Start primary-agent bugs in `primary-agent-controls.ts` for UI action and `primary-agent-state.ts` for transcript restore.

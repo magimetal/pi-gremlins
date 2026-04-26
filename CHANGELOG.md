@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hardened gremlin runtime reliability around child-session cleanup, abort handling, discovery file failures, request validation, CRLF gremlin frontmatter parsing, unresolved model selection, and parent-abort progress updates.
 
 ### Added
+- Generated agent guidance now covers root, docs, and extension scopes so contributors get current PRD/ADR, primary-agent, and runtime boundaries before editing.
 - Shared role-aware agent parsing/discovery modules now load `agent_type: sub-agent` gremlins and `agent_type: primary` primary agents from user/project agent directories while preserving strict role separation and project-over-user precedence.
 - Primary-agent state and prompt helpers persist new selections as `pi-gremlins-primary-agent`, read legacy `pi-mohawk-primary-agent` entries for migration, and strip legacy prompt blocks before appending the selected primary markdown.
 - New v1 runtime modules under `extensions/pi-gremlins/`: schema, definition parsing, discovery cache, prompt builder, isolated session factory, runner, scheduler, progress store, summary builder, and inline renderer.

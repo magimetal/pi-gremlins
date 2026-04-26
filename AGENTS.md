@@ -1,60 +1,68 @@
-<!--THIS IS A GENERATED FILE - DO NOT MODIFY DIRECTLY. FOR MANUAL ADJUSTMENTS, CREATE OR UPDATE AGENTS_CUSTOM.md-->
+<!--THIS IS A GENERATED FILE - DO NOT MODIFY DIRECTLY, FOR MANUAL ADJUSTMENTS UPDATE `AGENTS_CUSTOM.MD`-->
 # ALWAYS READ THESE FILE(S)
-- @AGENTS_CUSTOM.md (optional local override; absent by default)
+- @AGENTS_CUSTOM.md
 
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-04-24T07:52:56Z
-**Commit:** 7ca5d69
+**Generated:** 2026-04-26T00:10:48Z
+**Commit:** 1bab6b0
 **Branch:** main
 
 ## OVERVIEW
-Standalone Pi package. Ships one v1-only extension at `extensions/pi-gremlins/` for isolated in-process SDK child-session delegation, inline progress rendering, and human-facing `Gremlins🧌` branding over machine-facing `pi-gremlins` identifiers.
+Standalone Pi package for `Gremlins🧌`: in-process SDK child-session delegation plus primary-agent selection merged from `pi-mohawk`. Package ships one extension from `extensions/pi-gremlins/`; human-facing branding differs from machine id `pi-gremlins`.
 
 ## STRUCTURE
 ```text
 pi-gremlins/
-├── extensions/pi-gremlins/   # runtime, inline renderer, Bun tests
-├── docs/adr/                 # architecture records + status index
-├── docs/prd/                 # product scope records + acceptance
-├── docs/plans/               # implementation plans, remediation notes
-├── README.md                 # install, use, v1 contract
+├── extensions/pi-gremlins/   # runtime, renderer, primary-agent controls, Bun tests
+├── docs/adr/                 # architecture decisions + index
+├── docs/prd/                 # product scope records + index
+├── docs/plans/               # execution plans, remediation notes
+├── README.md                 # install, use, public contract
 ├── CHANGELOG.md              # release history with PRD/ADR refs
-└── package.json              # package root, scripts, Pi extension manifest
+└── package.json              # scripts, peers, Pi extension manifest
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| Package manifest, scripts, publish shape | `package.json` | `pi.extensions` points at `./extensions/pi-gremlins` |
-| Install, usage, branding, public contract | `README.md` | documents `gremlins: [{ agent, context, cwd? }]` and v1 limits |
-| Runtime entry and live updates | `extensions/pi-gremlins/index.ts` | registers only `pi-gremlins`; clears discovery cache on session lifecycle |
-| Discovery + precedence | `extensions/pi-gremlins/gremlin-discovery.ts`, `gremlin-definition.ts` | loads user + nearest project gremlins; project wins on name collision |
-| Session isolation | `extensions/pi-gremlins/gremlin-session-factory.ts`, `gremlin-prompt.ts` | builds SDK child sessions with isolated resources and prompt-only context |
-| Scheduling, progress, result summaries | `extensions/pi-gremlins/gremlin-scheduler.ts`, `gremlin-runner.ts`, `gremlin-progress-store.ts`, `gremlin-summary.ts` | parallel start, cancellation, aggregate status |
-| Inline rendering | `extensions/pi-gremlins/gremlin-render-components.ts`, `gremlin-rendering.ts` | collapsed and expanded tool-row output; no popup viewer |
-| Architecture and scope records | `docs/adr/0002-*.md`, `docs/prd/0002-*.md` | ADR-0002 locks SDK runtime; PRD-0002 tracks v1 rewrite scope |
-| Change history | `CHANGELOG.md` | unreleased section records rewrite and removals |
+| Package shape | `package.json` | root install; `pi.extensions` -> `./extensions/pi-gremlins` |
+| Public usage contract | `README.md` | current schema: `gremlins: [{ intent, agent, context, cwd? }]` |
+| Runtime implementation | `extensions/pi-gremlins/` | see child `AGENTS.md` before edits |
+| Product scope | `docs/prd/` | PRD-0002 v1 rewrite; PRD-0003 primary-agent merge |
+| Architecture scope | `docs/adr/` | ADR-0002 SDK runtime; ADR-0003 unified discovery/prompt injection |
+| Plans / historical rationale | `docs/plans/` | long task plans; do not treat old plans as current source of truth over PRD/ADR/README |
+| Release notes | `CHANGELOG.md` | cite PRD/ADR ids for user-facing or architecture changes |
+
+## CODE MAP
+| Symbol | Type | Location | Role |
+|--------|------|----------|------|
+| `createPiGremlinsExtension` | function | `extensions/pi-gremlins/index.ts` | Pi extension registration |
+| `GremlinRequestSchema` | schema | `extensions/pi-gremlins/gremlin-schema.ts` | public tool input contract |
+| `createGremlinDiscoveryCache` | function | `extensions/pi-gremlins/gremlin-discovery.ts` | sub-agent discovery cache |
+| `createPrimaryAgentDiscoveryCache` | function | `extensions/pi-gremlins/gremlin-discovery.ts` | primary-agent discovery cache |
+| `runGremlinBatch` | function | `extensions/pi-gremlins/gremlin-scheduler.ts` | parallel execution and cancellation |
+| `runSingleGremlin` | function | `extensions/pi-gremlins/gremlin-runner.ts` | child session event projection |
+| `buildGremlinSessionConfig` | function | `extensions/pi-gremlins/gremlin-session-factory.ts` | isolation boundary |
+| `appendPrimaryAgentPromptBlock` | function | `extensions/pi-gremlins/primary-agent-prompt.ts` | parent prompt injection block |
 
 ## CONVENTIONS
-- Keep repo installable from root. GitHub `pi install` expects `package.json` at repo root.
-- Human-facing copy may say `Gremlins🧌`; package/tool/install/runtime identifiers stay `pi-gremlins`.
-- Public tool contract is `gremlins: [{ agent, context, cwd? }]` only, length `1..10`.
-- TypeScript runtime lives in `extensions/pi-gremlins/*.ts`; Bun tests stay beside modules as `*.test.js`.
-- Significant user-facing scope change -> write/update PRD first. Significant runtime or architectural boundary change -> write/update ADR first.
-- Runtime state stays session-local. No persistence, archive, or cross-session history without fresh decision docs.
+- Keep repo installable from root; GitHub `pi install` expects root `package.json`.
+- Machine ids stay `pi-gremlins`; `Gremlins🧌` is presentation copy only.
+- Runtime TypeScript and JS Bun tests live side by side in `extensions/pi-gremlins/`.
+- Significant user-facing behavior change -> PRD update first. Runtime boundary change -> ADR update first.
+- Generated agent docs may be replaced; manual overrides belong in `AGENTS_CUSTOM.md`.
 
 ## ANTI-PATTERNS (THIS PROJECT)
-- Do not reintroduce nested Pi CLI subprocess runtime, temp prompt files, or legacy mode matrix. ADR-0002 rejected that architecture.
-- Do not add chain mode, popup viewer, `/gremlins:view`, targeted steering, package discovery, or scope toggles under “polish”.
-- Do not rebrand machine-facing ids or schema keys to `Gremlins🧌`; branding is presentation-only.
-- Do not move extension entry away from `./extensions/pi-gremlins` without updating `package.json`, README install flow, and tests.
-- Do not skip PRD/ADR rubric when work changes product scope or runtime architecture.
+- Do not reintroduce nested Pi CLI subprocess runtime, temp prompt files, chain mode, popup viewer, `/gremlins:view`, `/gremlins:steer`, package discovery, or scope toggles.
+- Do not change public schema/discovery precedence without updating README, CHANGELOG, tests, and PRD/ADR when warranted.
+- Do not move extension entry from `./extensions/pi-gremlins` without package/readme/test alignment.
+- Do not leak parent extensions, prompts, themes, skills, AGENTS files, or conversation history into child sessions.
 
 ## UNIQUE STYLES
-- Changelog entries cite PRD/ADR ids for major work.
-- Docs use lightweight numbered records under `docs/prd/` and `docs/adr/`, with README index files.
-- Tests mock Pi runtime modules directly inside Bun tests; extension-level behavior coverage matters more than deep mocking layers.
+- Docs use lightweight numbered PRD/ADR records plus README index tables.
+- Changelog references PRD/ADR ids for major scope shifts.
+- Tests mock Pi runtime modules in local JS harnesses rather than deep external fixtures.
 
 ## COMMANDS
 ```bash
@@ -65,8 +73,6 @@ npm run check
 ```
 
 ## NOTES
-- Ignore `.pi-lens/` cache noise unless changing local analysis artifacts.
-- Hidden `.pi/agents` directories are runtime inputs, not package source.
-- `package-lock.json` can dominate line-count scans; source concentration is still `extensions/pi-gremlins/`.
-- Current architecture center: `extensions/pi-gremlins/`, ADR-0002, PRD-0002.
-- If task touches runtime behavior, start in `extensions/pi-gremlins/` before touching docs.
+- `.pi/agents` directories are runtime inputs, not package source.
+- `package-lock.json` inflates line counts; source concentration is `extensions/pi-gremlins/`.
+- Current implementation includes primary-agent merge work; older v1-only wording may be stale if copied from historical plans.
