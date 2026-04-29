@@ -25,7 +25,7 @@ Fix GitHub issue [#39](https://github.com/magimetal/pi-gremlins/issues/39) by mo
 - Persist new primary selection entries as `pi-gremlins-primary-agent`.
 - Read legacy `pi-mohawk-primary-agent` entries during transition; write only `pi-gremlins-primary-agent`.
 - Persist only selected identity: name, source, path. Never persist raw markdown.
-- Keep `/mohawk`, `/mohawk <name>`, `/mohawk none`, and `ctrl+shift+m` as compatibility controls unless a hard Pi conflict appears.
+- Register `/gremlins:primary` (formerly `/mohawk`), `/gremlins:primary <name>`, `/gremlins:primary none`, and `ctrl+shift+m` as primary-agent controls.
 - Use status key `pi-gremlins-primary` and visible label `Primary: <name|None>`.
 - Delimit injected primary-agent markdown with:
   - `<!-- pi-gremlins primary agent:start -->`
@@ -196,11 +196,11 @@ Fix GitHub issue [#39](https://github.com/magimetal/pi-gremlins/issues/39) by mo
 
 **What**
 
-- In `index.ts` or extracted module, register compatibility command `/mohawk`.
+- In `index.ts` or extracted module, register command `/gremlins:primary` (formerly `/mohawk`).
 - Support:
-  - `/mohawk` -> picker when `ctx.hasUI`; transcript-visible list when no UI.
-  - `/mohawk <name>` -> exact or unambiguous case-insensitive select.
-  - `/mohawk none` -> clear selected primary.
+  - `/gremlins:primary` -> picker when `ctx.hasUI`; transcript-visible list when no UI.
+  - `/gremlins:primary <name>` -> exact or unambiguous case-insensitive select.
+  - `/gremlins:primary none` -> clear selected primary.
 - Register `ctrl+shift+m` shortcut to cycle `[None, ...sorted primary agents]`.
 - Update status after session start and every selection change with key `pi-gremlins-primary` and label `Primary: <name|None>`.
 - Use `ctx.ui.select` for picker unless implementation needs a custom TUI list; include `None` as first option.
@@ -220,7 +220,7 @@ Fix GitHub issue [#39](https://github.com/magimetal/pi-gremlins/issues/39) by mo
 - Exact command selection works.
 - Single case-insensitive command selection works.
 - Ambiguous case-insensitive selection leaves current state unchanged and reports exact-case options.
-- `/mohawk none` clears and persists `None`.
+- `/gremlins:primary none` clears and persists `None`.
 - No-args command opens picker with UI.
 - No-args command without UI emits `Primary agents: None, ...` or equivalent transcript-visible names.
 - Shortcut cycles deterministically through `[None, ...sorted primary agents]`.
@@ -230,7 +230,7 @@ Fix GitHub issue [#39](https://github.com/magimetal/pi-gremlins/issues/39) by mo
 
 - Do not remove `pi.registerTool(tool as any)` boundary or alter existing tool registration semantics.
 - Do not overload gremlin tool invocation with primary selection.
-- Do not make `/mohawk` write stale state when discovery fails.
+- Do not make `/gremlins:primary` write stale state when discovery fails.
 
 **Verification**
 
@@ -410,7 +410,7 @@ gh pr create --fill --body-file <prepared-body-with-Closes-39>
 | Definition parsing | Focused Bun tests for role filters, primary fallback names, malformed/untyped ignored |
 | Discovery | Focused Bun tests for user/project precedence, role separation, cache invalidation, primary name resolution |
 | Session state | Focused Bun tests for current branch reconstruction, legacy read, new write type, explicit None, no raw markdown persistence |
-| Command/status/shortcut | Extension-level Bun tests for `/mohawk`, no-UI fallback, picker path, `ctrl+shift+m`, `Primary: ...` |
+| Command/status/shortcut | Extension-level Bun tests for `/gremlins:primary` (formerly `/mohawk`), no-UI fallback, picker path, `ctrl+shift+m`, `Primary: ...` |
 | Prompt injection | Bun tests for delimiter append, duplicate stripping, legacy stripping, missing selected reset, `None` no-op |
 | Existing gremlin contract | Existing `npm test`, schema tests, execute/render tests, plus no schema changes |
 | Docs | Readback README, CHANGELOG, PRD/ADR links; string consistency search |

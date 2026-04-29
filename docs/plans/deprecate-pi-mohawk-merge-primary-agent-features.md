@@ -26,7 +26,7 @@ Observed files:
 - User definitions load first; nearest project definitions override by display name.
 - Symlinked markdown ignored for primary-agent discovery.
 - Exact and case-insensitive selection, with ambiguous case-insensitive names rejected.
-- `/mohawk`, `/mohawk <name>`, `/mohawk none` command.
+- `/gremlins:primary` (formerly `/mohawk`), `/gremlins:primary <name>`, `/gremlins:primary none` command.
 - `ctrl+shift+m` shortcut cycling `[None, ...sorted primary agents]`.
 - UI status key `pi-mohawk`, label `Primary: <name|None>`.
 - Non-UI command fallback that emits transcript-visible available names.
@@ -109,7 +109,7 @@ ADR must decide:
 - primary-agent prompt injection runs in same extension as gremlin tool registration;
 - shared discovery module handles `primary` and `sub-agent` without loading untyped markdown;
 - persisted entry strategy: whether to read legacy `pi-mohawk-primary-agent` entries during transition, write only new `pi-gremlins-primary-agent` entries, or intentionally skip legacy session migration;
-- status/command naming: whether compatibility aliases `/mohawk` and `ctrl+shift+m` remain, and what new `pi-gremlins`-branded controls exist.
+- status/command naming: canonical command is `/gremlins:primary` (formerly `/mohawk`); `ctrl+shift+m` shortcut retained.
 
 ## Scope boundaries
 
@@ -122,7 +122,7 @@ ADR must decide:
 - Add session-scoped selected primary-agent state in `pi-gremlins`.
 - Add prompt injection through `before_agent_start` for the selected primary agent.
 - Add user controls for selecting/clearing/cycling primary agents.
-- Preserve or intentionally alias existing pi-mohawk UX: `/mohawk`, `/mohawk none`, `ctrl+shift+m`, `Primary: None` status semantics.
+- Register `/gremlins:primary` (formerly `/mohawk`), `/gremlins:primary none`, `ctrl+shift+m`, `Primary: None` status semantics.
 - Update README and changelog.
 - Add deprecation documentation to `pi-mohawk` repository after pi-gremlins support ships.
 - Port relevant `pi-mohawk` Vitest coverage into Bun tests under `extensions/pi-gremlins`.
@@ -279,7 +279,7 @@ Verification:
 What:
 
 - Add command handler(s) in `extensions/pi-gremlins/index.ts` or extracted module:
-  - Compatibility: `/mohawk`, `/mohawk <name>`, `/mohawk none`.
+  - Command: `/gremlins:primary` (formerly `/mohawk`), `/gremlins:primary <name>`, `/gremlins:primary none`.
   - Optional branded alias if PRD chooses: `/gremlins:primary` or `/gremlins-primary`.
 - Keep shortcut `ctrl+shift+m` unless conflict exists in pi-gremlins runtime.
 - Set status label to `Primary: <name|None>`.
@@ -372,7 +372,7 @@ References:
 Acceptance criteria:
 
 - pi-gremlins README documents both `agent_type: sub-agent` and `agent_type: primary` roles without implying cross-use.
-- README documents `/mohawk` compatibility or replacement command exactly as implemented.
+- README documents `/gremlins:primary` (formerly `/mohawk`) as the canonical command.
 - README documents deprecation path from `pi-mohawk` to `pi-gremlins`.
 - CHANGELOG cites new PRD/ADR.
 - pi-mohawk repo explicitly points users to pi-gremlins after migration lands.
@@ -430,7 +430,7 @@ Verification:
 - **Dual-package conflict risk:** if both `pi-mohawk` and updated `pi-gremlins` are installed, both can register `/mohawk`, shortcut, status, and prompt injection. Deprecation docs should tell users to uninstall/disable `pi-mohawk` after migration.
 - **Session entry compatibility risk:** reading legacy `pi-mohawk-primary-agent` entries can smooth active-session migration, but writing only new entries avoids keeping old package identity alive.
 - **Symlink policy mismatch:** current pi-gremlins gremlin discovery accepts symlinked markdown; pi-mohawk primary discovery ignores symlinks. ADR should choose intentional behavior per role.
-- **Command naming risk:** keeping `/mohawk` maximizes user compatibility but preserves deprecated branding in UI. Add a pi-gremlins-branded alias if desired, but keep one canonical doc path.
+- **Command naming risk:** Resolved — `/gremlins:primary` is the canonical command (issue #45), replacing `/mohawk`.
 - **Primary vs sub-agent separation risk:** shared discovery must never let primary agents become gremlin tools or sub-agents become prompt-injected primary agents.
 - **Package deprecation sequencing risk:** deprecating pi-mohawk before pi-gremlins ships equivalent behavior strands existing users. Sequence docs accordingly.
 
