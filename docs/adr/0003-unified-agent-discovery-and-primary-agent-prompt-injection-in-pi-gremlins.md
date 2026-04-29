@@ -13,7 +13,7 @@ GitHub issue #39 proposes deprecating the separate `pi-mohawk` package by moving
 Current package boundary:
 
 - `pi-gremlins` owns gremlin sub-agent delegation through the `pi-gremlins` tool, in-process SDK child sessions, isolated child prompt construction, and inline progress rendering.
-- `pi-mohawk` owns primary-agent discovery, selected primary-agent session state, `/mohawk` controls, status labeling, shortcut cycling, and `before_agent_start` system-prompt injection.
+- `pi-mohawk` owned primary-agent discovery, selected primary-agent session state, `/mohawk` controls, status labeling, shortcut cycling, and `before_agent_start` system-prompt injection.
 
 Both packages inspect the same agent directories and parse similar markdown frontmatter, but they apply different role filters:
 
@@ -66,7 +66,7 @@ ADR-0002 remains in force: gremlin execution stays in-process through SDK child 
   - Gives users one surviving package and one extension entrypoint.
   - Shares agent markdown parsing, directory scanning, precedence, and cache invalidation.
   - Keeps strict role separation: `primary` agents cannot be summoned as gremlins, and `sub-agent` gremlins cannot be injected as primary agents.
-  - Allows legacy `/mohawk` and shortcut compatibility while writing new state under `pi-gremlins` identity.
+  - Allows `/gremlins:primary` (formerly `/mohawk`) command and shortcut compatibility while writing new state under `pi-gremlins` identity.
   - Keeps ADR-0002 gremlin runtime intact while adding only the needed parent prompt hook.
 - Cons:
   - Adds more responsibility to the `pi-gremlins` extension entrypoint and test matrix.
@@ -88,7 +88,7 @@ The implementation must follow these architectural constraints:
 - Persist new primary-agent selection entries as `pi-gremlins-primary-agent`.
 - During transition, read the latest valid current-branch selection from either `pi-gremlins-primary-agent` or legacy `pi-mohawk-primary-agent`, but write only `pi-gremlins-primary-agent` after any selection change.
 - Persist minimal selected identity only: selected name, source, and path. Do not persist raw markdown.
-- Keep `/mohawk`, `/mohawk <name>`, `/mohawk none`, and `ctrl+shift+m` as compatibility controls unless implementation discovers a hard Pi conflict.
+- Register `/gremlins:primary` (formerly `/mohawk`) as the canonical primary-agent command, along with `/gremlins:primary <name>`, `/gremlins:primary none`, and `ctrl+shift+m`.
 - Use a `pi-gremlins`-owned status key such as `pi-gremlins-primary`; keep the human-facing label `Primary: <name|None>`.
 - Delimit injected primary-agent markdown with `<!-- pi-gremlins primary agent:start -->` and `<!-- pi-gremlins primary agent:end -->`.
 - Strip any existing `pi-gremlins` primary-agent block before appending a new one to avoid duplicate injection. Also strip legacy `pi-mohawk` primary-agent blocks during migration to prevent double injection when old prompt content is present.
@@ -104,10 +104,10 @@ The implementation must follow these architectural constraints:
 - **Negative:**
   - `pi-gremlins` extension startup, session lifecycle, and tests become broader.
   - If users run both packages simultaneously, command, shortcut, status, and prompt-hook conflicts are possible until deprecation docs tell them to disable or uninstall `pi-mohawk` after migration.
-  - Compatibility aliases keep the `mohawk` name visible in controls during migration.
+  - The `/mohawk` command name was replaced by `/gremlins:primary` (issue #45); migration docs reference the old name for context.
 - **Follow-on constraints:**
   - Future changes to primary-agent persisted state or prompt-injection delimiters require ADR review because they affect session compatibility and runtime prompt composition.
-  - Any future removal of `/mohawk` compatibility controls must be treated as a user-facing product decision, not hidden cleanup.
+  - The `/mohawk` → `/gremlins:primary` rename (issue #45) was treated as a user-facing product decision with documentation updates.
   - Shared discovery must continue to enforce role separation and must not use primary-agent markdown as gremlin prompt material or gremlin markdown as primary-agent prompt material.
   - Primary-agent prompt injection is parent-session-only; gremlin child sessions must not receive injected primary-agent blocks or active primary-agent markdown.
 
@@ -129,14 +129,14 @@ The implementation must follow these architectural constraints:
   - Focused Bun tests for shared agent definition parsing and strict `agent_type` role filtering.
   - Focused Bun tests for primary-agent discovery precedence, symlink policy, exact/case-insensitive selection, ambiguous match rejection, and cache invalidation.
   - Focused Bun tests for session state reconstruction from `pi-gremlins-primary-agent` and legacy `pi-mohawk-primary-agent` entries, with writes only to `pi-gremlins-primary-agent`.
-  - Focused Bun tests for `/mohawk` command behavior, `ctrl+shift+m` cycling, no-UI fallback messaging, and `Primary: <name|None>` status updates.
+  - Focused Bun tests for `/gremlins:primary` (formerly `/mohawk`) command behavior, `ctrl+shift+m` cycling, no-UI fallback messaging, and `Primary: <name|None>` status updates.
   - Focused Bun tests for `before_agent_start` injection, duplicate block stripping, legacy block stripping, missing selected-agent reset, and no prompt mutation when selection is `None`.
   - Focused Bun tests proving gremlin child-session prompts exclude primary-agent markers and active primary-agent markdown even when parent-session injection is enabled.
   - Full repository verification after implementation: `npm run typecheck`, `npm test`, and `npm run check`.
 - **Manual:**
   - Install updated `pi-gremlins`, select a primary agent, send a prompt, and confirm selected primary markdown affects the parent agent.
   - Run one or more gremlins while a primary agent is selected and confirm existing `pi-gremlins` tool behavior remains unchanged.
-  - Confirm migration docs tell users when to disable or uninstall `pi-mohawk`.
+  - Confirm migration docs tell users when to disable or uninstall `pi-mohawk` and reference `/gremlins:primary` as the canonical command.
 
 ## Notes
 

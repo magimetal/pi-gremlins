@@ -33,7 +33,7 @@ import {
 	cyclePrimaryAgent,
 	notifyPrimaryAgent,
 	PRIMARY_SHORTCUT,
-	runMohawkCommand,
+	runPrimaryAgentCommand,
 	updatePrimaryAgentStatus,
 } from "./primary-agent-controls.js";
 import { applyPrimaryAgentPromptInjection } from "./primary-agent-prompt.js";
@@ -136,10 +136,10 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 			primaryAgentDiscovery.clear();
 		});
 
-		pi.registerCommand("mohawk", {
+		pi.registerCommand("gremlins:primary", {
 			description: "Select current-session primary agent",
 			handler: async (args, ctx) => {
-				primaryAgentState = await runMohawkCommand(
+				primaryAgentState = await runPrimaryAgentCommand(
 					pi,
 					ctx,
 					primaryAgentState,

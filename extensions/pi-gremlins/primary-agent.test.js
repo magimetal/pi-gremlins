@@ -159,7 +159,7 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		]);
 
 		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
-		await pi.commands.get("mohawk").handler("none", ctx);
+		await pi.commands.get("gremlins:primary").handler("none", ctx);
 
 		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: None" });
 		expect(pi.entries).toEqual([{ customType: "pi-gremlins-primary-agent", data: { selectedName: null } }]);
@@ -179,10 +179,10 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		const ctx = createMockContext(workspace);
 
 		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
-		await pi.commands.get("mohawk").handler("", ctx);
+		await pi.commands.get("gremlins:primary").handler("", ctx);
 		expect(pi.messages.at(-1).content).toBe("Primary agents: None, Alpha, Beta");
 
-		await pi.commands.get("mohawk").handler("beta", ctx);
+		await pi.commands.get("gremlins:primary").handler("beta", ctx);
 		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: Beta" });
 		const injected = await pi.handler("before_agent_start")({ type: "before_agent_start", systemPrompt: "system", prompt: "go", systemPromptOptions: {} }, ctx);
 		expect(injected.systemPrompt).toContain("<!-- pi-gremlins primary agent:start -->");
@@ -205,7 +205,7 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(firstPi);
 		const firstCtx = createMockContext(workspace);
 		await firstPi.handler("session_start")({ type: "session_start", reason: "startup" }, firstCtx);
-		await firstPi.commands.get("mohawk").handler("Alpha", firstCtx);
+		await firstPi.commands.get("gremlins:primary").handler("Alpha", firstCtx);
 
 		const settingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
 		const settingsContent = fs.readFileSync(settingsPath, "utf-8");
@@ -255,7 +255,7 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		const ctx = createMockContext(workspace);
 
 		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
-		await pi.commands.get("mohawk").handler("Alpha", ctx);
+		await pi.commands.get("gremlins:primary").handler("Alpha", ctx);
 
 		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
 		expect(settings["pi-gremlins"].primaryAgent).toMatchObject({ selectedName: "Alpha", source: "project" });
@@ -274,8 +274,8 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(firstPi);
 		const firstCtx = createMockContext(workspace);
 		await firstPi.handler("session_start")({ type: "session_start", reason: "startup" }, firstCtx);
-		await firstPi.commands.get("mohawk").handler("Alpha", firstCtx);
-		await firstPi.commands.get("mohawk").handler("none", firstCtx);
+		await firstPi.commands.get("gremlins:primary").handler("Alpha", firstCtx);
+		await firstPi.commands.get("gremlins:primary").handler("none", firstCtx);
 		expect(fs.readFileSync(settingsPath, "utf-8")).toContain('"selectedName": null');
 
 		const clearedPi = createMockPi();

@@ -111,7 +111,7 @@ export async function selectPrimaryAgentByName(
 	return state;
 }
 
-export async function runMohawkCommand(
+export async function runPrimaryAgentCommand(
 	pi: ExtensionAPI,
 	ctx: ExtensionCommandContext,
 	state: PrimaryAgentState,

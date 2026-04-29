@@ -29,7 +29,7 @@ Agent definitions load direct `.md` files from:
 Roles stay separated by frontmatter:
 
 - `agent_type: sub-agent` files are gremlins that the `pi-gremlins` tool can summon. They must have a frontmatter `name`; optional `description`, `model`, `thinking`, and `tools` fields can guide the child session. Symlinked markdown is included for gremlin discovery.
-- `agent_type: primary` files are parent-session primary agents selected through `/mohawk` or `Ctrl+Shift+M`. Their display names fall back from frontmatter `name`, to first H1, to filename stem. Symlinked markdown is ignored for primary-agent discovery.
+- `agent_type: primary` files are parent-session primary agents selected through `/gremlins:primary` or `Ctrl+Shift+M`. Their display names fall back from frontmatter `name`, to first H1, to filename stem. Symlinked markdown is ignored for primary-agent discovery.
 - untyped files and other agent types are ignored.
 
 Gremlin example:
@@ -157,10 +157,10 @@ Primary-agent support replaces the separate `pi-mohawk` extension inside `pi-gre
 
 Controls:
 
-- `/mohawk` opens a `Select primary agent` picker when UI exists.
-- `/mohawk` without UI writes `Primary agents: None, ...` into the transcript.
-- `/mohawk <name>` selects exact or single case-insensitive primary-agent match; ambiguous case-insensitive matches leave state unchanged and warn with exact-case options.
-- `/mohawk none` clears selection.
+- `/gremlins:primary` opens a `Select primary agent` picker when UI exists.
+- `/gremlins:primary` without UI writes `Primary agents: None, ...` into the transcript.
+- `/gremlins:primary <name>` selects exact or single case-insensitive primary-agent match; ambiguous case-insensitive matches leave state unchanged and warn with exact-case options.
+- `/gremlins:primary none` clears selection.
 - `Ctrl+Shift+M` cycles deterministically through `[None, ...sorted primary agents]`.
 - status key is `pi-gremlins-primary`; visible label is `Primary: <name|None>`.
 
@@ -168,7 +168,7 @@ Session behavior:
 
 - selection is restored from nearest project `.pi/settings.json` under `pi-gremlins.primaryAgent`; project-local storage avoids surprising cross-project primary-agent injection.
 - current-branch session entries still take precedence when present.
-- `/mohawk <name>`, picker selection, `Ctrl+Shift+M`, and `/mohawk none` persist selected name, source, and file path only.
+- `/gremlins:primary <name>`, picker selection, `Ctrl+Shift+M`, and `/gremlins:primary none` persist selected name, source, and file path only.
 - new session entries are also appended as `pi-gremlins-primary-agent` for branch history compatibility.
 - legacy `pi-mohawk-primary-agent` entries are read for migration; new writes use `pi-gremlins-primary-agent`.
 - raw primary-agent markdown is never stored in session entries or settings.
@@ -183,7 +183,7 @@ Prompt behavior:
 
 Migration from `pi-mohawk`:
 
-- install updated `pi-gremlins` and use existing `/mohawk` / `Ctrl+Shift+M` controls.
+- install updated `pi-gremlins` and use `/gremlins:primary` (formerly `/mohawk`) / `Ctrl+Shift+M` controls.
 - after confirming primary-agent behavior works in `pi-gremlins`, disable or uninstall `pi-mohawk` to avoid duplicate command, shortcut, status, or prompt-hook behavior.
 - keep agent markdown in the same user/project directories; no schema rename is needed for `agent_type: primary`.
 

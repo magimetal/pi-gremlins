@@ -24,7 +24,7 @@ Issue #39 asks to deprecate `pi-mohawk` by moving primary-agent functionality in
 ## User Stories
 
 - As an operator, I want to select a primary agent inside `pi-gremlins` so that the parent assistant follows a chosen role without installing `pi-mohawk`.
-- As an existing `pi-mohawk` user, I want familiar `/mohawk` and shortcut behavior to keep working during migration so that existing muscle memory is not broken immediately.
+- As an existing `pi-mohawk` user, I want familiar `/gremlins:primary` (formerly `/mohawk`) and shortcut behavior to keep working during migration so that existing muscle memory is not broken immediately.
 - As an operator, I want selected primary-agent state to survive current-session branch reconstruction so that prompt behavior remains predictable across session events.
 - As a cautious user, I want primary agents and gremlin sub-agents separated by `agent_type` so that prompt-injected roles cannot accidentally be summoned as delegated gremlins, and gremlins cannot become primary agents.
 - As a maintainer, I want shared discovery/parsing where practical so that user/project precedence, markdown parsing, and typed role filtering do not diverge across two implementations.
@@ -43,7 +43,7 @@ Issue #39 asks to deprecate `pi-mohawk` by moving primary-agent functionality in
 - Add session-scoped selected primary-agent state in `pi-gremlins`, persisted as minimal identity data rather than raw markdown.
 - Add `before_agent_start` prompt injection for the selected primary agent using a clear delimited block.
 - Add user controls for selecting, clearing, listing/picking, and cycling primary agents.
-- Preserve or intentionally alias familiar `pi-mohawk` UX where accepted by design: `/mohawk`, `/mohawk <name>`, `/mohawk none`, `ctrl+shift+m`, and `Primary: <name|None>` status semantics.
+- Preserve or intentionally alias familiar `pi-mohawk` UX where accepted by design: `/gremlins:primary` (formerly `/mohawk`), `/gremlins:primary <name>`, `/gremlins:primary none`, `ctrl+shift+m`, and `Primary: <name|None>` status semantics.
 - Update `pi-gremlins` README and changelog with primary-agent behavior, migration notes, and PRD/ADR references.
 - After equivalent `pi-gremlins` behavior lands, update `pi-mohawk` documentation to mark that package deprecated and point users to `pi-gremlins`.
 - Port relevant `pi-mohawk` coverage into Bun tests under `extensions/pi-gremlins`.
@@ -84,7 +84,7 @@ Issue #39 asks to deprecate `pi-mohawk` by moving primary-agent functionality in
 - [x] Repeated prompt injection does not duplicate the primary-agent block.
 - [x] Prompt injection never injects sub-agent markdown.
 - [x] README documents both roles: `agent_type: primary` for parent-session prompt control and `agent_type: sub-agent` for gremlin delegation.
-- [x] README documents implemented command names, shortcut behavior, status behavior, session scope, and `pi-mohawk` migration guidance.
+- [x] README documents implemented command names (`/gremlins:primary`, formerly `/mohawk`), shortcut behavior, status behavior, session scope, and `pi-mohawk` migration guidance.
 - [x] CHANGELOG references PRD-0003 and the related ADR for this scope.
 - [x] `pi-mohawk` deprecation documentation is updated only after equivalent `pi-gremlins` primary-agent behavior ships.
 - [x] Automated Bun coverage exists for primary-agent definition loading, discovery precedence, selection resolution, session state, command/shortcut/status behavior, prompt injection, and no role crossover.
@@ -119,7 +119,7 @@ Issue #39 asks to deprecate `pi-mohawk` by moving primary-agent functionality in
 
 ## Open Questions
 
-- Should `pi-gremlins` support a new branded primary-agent command alias in addition to `/mohawk`, and if so what exact name should be documented as canonical?
+- ~~Should `pi-gremlins` support a new branded primary-agent command alias in addition to `/mohawk`, and if so what exact name should be documented as canonical?~~ Resolved: `/gremlins:primary` is the canonical command (issue #45).
 - Should legacy `pi-mohawk-primary-agent` session entries be read during migration, or should migration start clean with only new `pi-gremlins` session entries?
 - Should the implementation strip old `pi-mohawk` prompt delimiters to prevent double injection when both packages are installed during transition?
 - Should primary-agent discovery keep `pi-mohawk` symlink-ignoring behavior while gremlin discovery preserves existing `pi-gremlins` behavior, or should both roles share one symlink policy?
@@ -127,7 +127,7 @@ Issue #39 asks to deprecate `pi-mohawk` by moving primary-agent functionality in
 
 ## Completion Summary
 
-Implemented primary-agent support in `pi-gremlins` for GitHub issue #39. Delivered role-aware agent definition loading and discovery, strict `agent_type: primary` / `agent_type: sub-agent` separation, primary-agent selection through `/mohawk` compatibility controls, shortcut cycling, status updates, current-branch session reconstruction, legacy `pi-mohawk-primary-agent` read compatibility, new `pi-gremlins-primary-agent` writes, and `before_agent_start` prompt injection with duplicate/legacy block stripping.
+Implemented primary-agent support in `pi-gremlins` for GitHub issue #39. Delivered role-aware agent definition loading and discovery, strict `agent_type: primary` / `agent_type: sub-agent` separation, primary-agent selection through `/gremlins:primary` (formerly `/mohawk`) controls, shortcut cycling, status updates, current-branch session reconstruction, legacy `pi-mohawk-primary-agent` read compatibility, new `pi-gremlins-primary-agent` writes, and `before_agent_start` prompt injection with duplicate/legacy block stripping.
 
 Docs now describe both agent roles, migration behavior, command/status semantics, session scope, prompt block behavior, and PRD/ADR references. Verification required for completion passed before this status change: `npm run typecheck`, `npm test`, and `npm run check`.
 
