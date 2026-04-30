@@ -3,31 +3,29 @@ import "./v1-contract-harness.js";
 
 function createFakePi() {
 	const commands = new Map();
-	const messages = [];
-	const renderers = new Map();
+	const entries = [];
+	const handlers = new Map();
 	return {
 		commands,
-		messages,
-		renderers,
+		entries,
+		handlers,
 		registerCommand(name, options) {
 			commands.set(name, options);
 		},
-		registerMessageRenderer(customType, renderer) {
-			renderers.set(customType, renderer);
+		on(name, handler) {
+			handlers.set(name, handler);
 		},
-		sendMessage(message) {
-			messages.push(message);
+		appendEntry(customType, data) {
+			entries.push({ customType, data });
 		},
+		registerShortcut() {},
 	};
 }
 
-function createFakeCtx({
-	branchEntries = [],
-	hasUI = true,
-	signal,
-	model,
-} = {}) {
+function createFakeCtx({ branchEntries = [], hasUI = true, model } = {}) {
 	const notifications = [];
+	const customCalls = [];
+	let customComponent;
 	return {
 		cwd: "/tmp",
 		hasUI,
@@ -35,8 +33,30 @@ function createFakeCtx({
 			notify(message, type = "info") {
 				notifications.push({ message, type });
 			},
+			custom(factory, _options) {
+				customCalls.push(_options);
+				customComponent = factory(
+					{ requestRender() {} },
+					{},
+					{},
+					() => {},
+				);
+				_options?.onHandle?.({
+					hide() {},
+					setHidden() {},
+					isHidden: () => false,
+					focus() {},
+					unfocus() {},
+					isFocused: () => true,
+				});
+				return Promise.resolve();
+			},
 		},
 		notifications,
+		customCalls,
+		get customComponent() {
+			return customComponent;
+		},
 		sessionManager: {
 			getBranch() {
 				return branchEntries;
@@ -44,304 +64,110 @@ function createFakeCtx({
 		},
 		modelRegistry: undefined,
 		model,
-		signal,
+		signal: undefined,
 	};
 }
 
-function createFakeSessionFactory({ events = [], onPrompt } = {}) {
+function createFakeSessionFactory({ events = [] } = {}) {
 	const calls = [];
-	const created = {
-		session: {
-			subscribe(listener) {
-				const handle = setTimeout(() => {
-					for (const event of events) listener(event);
-				}, 0);
-				return () => clearTimeout(handle);
+	const sessions = [];
+	const impl = async (options) => {
+		calls.push(options);
+		let listener;
+		const session = {
+			subscribe(l) {
+				listener = l;
+				return () => {};
 			},
-			async prompt(text) {
-				if (onPrompt) await onPrompt(text);
-				// emit events synchronously for deterministic ordering
-				// (subscribe also schedules them, but the listener fires both)
+			async prompt() {
+				for (const event of events) listener?.(event);
 			},
 			async abort() {},
 			dispose() {},
-		},
-		extensionsResult: {},
+		};
+		sessions.push(session);
+		return { session, extensionsResult: {} };
 	};
-	return {
-		calls,
-		impl: async (options) => {
-			calls.push(options);
-			return created;
-		},
-	};
+	return { calls, sessions, impl };
 }
 
 async function loadCommandModule() {
 	return await import("./side-chat-command.ts");
 }
 
-describe("side-chat command v1 contract", () => {
+describe("side-chat overlay command contract", () => {
 	let pi;
 	beforeEach(() => {
 		pi = createFakePi();
 	});
 
-	test("T1 empty arg prints chat usage via ctx.ui.notify and does not start session", async () => {
+	test("registers four command surface", async () => {
 		const { registerSideChatCommands } = await loadCommandModule();
-		const factory = createFakeSessionFactory();
-		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
-		const handler = pi.commands.get("gremlins:chat").handler;
-		const ctx = createFakeCtx();
-		await handler("", ctx);
-		expect(ctx.notifications.length).toBe(1);
-		expect(ctx.notifications[0].message).toMatch(/Usage: \/gremlins:chat/);
-		expect(factory.calls.length).toBe(0);
-	});
-
-	test("T2 empty arg prints tangent usage and does not start session", async () => {
-		const { registerSideChatCommands } = await loadCommandModule();
-		const factory = createFakeSessionFactory();
-		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
-		const handler = pi.commands.get("gremlins:tangent").handler;
-		const ctx = createFakeCtx();
-		await handler("", ctx);
-		expect(ctx.notifications.length).toBe(1);
-		expect(ctx.notifications[0].message).toMatch(/Usage: \/gremlins:tangent/);
-		expect(factory.calls.length).toBe(0);
-	});
-
-	test("T3 whitespace-only arg is treated as empty", async () => {
-		const { registerSideChatCommands } = await loadCommandModule();
-		const factory = createFakeSessionFactory();
-		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
-		const handler = pi.commands.get("gremlins:chat").handler;
-		const ctx = createFakeCtx();
-		await handler("   \t  ", ctx);
-		expect(ctx.notifications.length).toBe(1);
-		expect(factory.calls.length).toBe(0);
-	});
-
-	test("T4 chat handler captures parent transcript snapshot and forwards it", async () => {
-		const { registerSideChatCommands } = await loadCommandModule();
-		const factory = createFakeSessionFactory();
-		registerSideChatCommands(pi, {
-			createSideChatSession: factory.impl,
-			capturedAtFactory: () => "CAPTURED_AT_T4",
-		});
-		const handler = pi.commands.get("gremlins:chat").handler;
-		const ctx = createFakeCtx({
-			branchEntries: [
-				{
-					type: "message",
-					message: { role: "user", content: [{ type: "text", text: "U1" }] },
-				},
-				{
-					type: "message",
-					message: {
-						role: "assistant",
-						content: [{ type: "text", text: "A1" }],
-					},
-				},
-				// non-message entries must be ignored
-				{ type: "modelChange", model: "openai/gpt-5" },
-			],
-		});
-		await handler("summarize", ctx);
-		expect(factory.calls.length).toBe(1);
-		const call = factory.calls[0];
-		expect(call.mode).toBe("chat");
-		expect(call.userPrompt).toBe("summarize");
-		expect(call.parentSnapshot).toBeDefined();
-		expect(call.parentSnapshot.capturedAt).toBe("CAPTURED_AT_T4");
-		expect(call.parentSnapshot.entries).toEqual([
-			{ role: "user", text: "U1" },
-			{ role: "assistant", text: "A1" },
+		registerSideChatCommands(pi, { createSideChatSession: createFakeSessionFactory().impl });
+		expect([...pi.commands.keys()].sort()).toEqual([
+			"gremlins:chat",
+			"gremlins:chat:new",
+			"gremlins:tangent",
+			"gremlins:tangent:new",
 		]);
 	});
 
-	test("T5 tangent handler does NOT capture parent transcript", async () => {
+	test("argument-less chat opens overlay and captures parent snapshot at thread origin", async () => {
 		const { registerSideChatCommands } = await loadCommandModule();
 		const factory = createFakeSessionFactory();
-		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
-		const handler = pi.commands.get("gremlins:tangent").handler;
-		const ctx = createFakeCtx({
-			branchEntries: [
-				{
-					type: "message",
-					message: {
-						role: "user",
-						content: [{ type: "text", text: "PARENT_USER" }],
-					},
-				},
-			],
-		});
-		await handler("explore", ctx);
-		expect(factory.calls.length).toBe(1);
-		expect(factory.calls[0].mode).toBe("tangent");
-		expect(factory.calls[0].parentSnapshot).toBeUndefined();
-	});
-
-	test("T6 consecutive chat invocations are independent (fresh transcript each time)", async () => {
-		const { registerSideChatCommands } = await loadCommandModule();
-		const factory = createFakeSessionFactory();
-		let branch = [
-			{
-				type: "message",
-				message: { role: "user", content: [{ type: "text", text: "FIRST" }] },
-			},
-		];
 		registerSideChatCommands(pi, {
 			createSideChatSession: factory.impl,
-			capturedAtFactory: () => `t-${factory.calls.length}`,
+			capturedAtFactory: () => "CAPTURED_AT",
 		});
-		const handler = pi.commands.get("gremlins:chat").handler;
-		const ctx = {
-			...createFakeCtx(),
-			sessionManager: { getBranch: () => branch },
-		};
-		await handler("first prompt", ctx);
-		// mutate parent transcript between invocations
-		branch = [
-			{
-				type: "message",
-				message: { role: "user", content: [{ type: "text", text: "SECOND" }] },
-			},
-		];
-		await handler("second prompt", ctx);
-		expect(factory.calls.length).toBe(2);
-		expect(factory.calls[0].userPrompt).toBe("first prompt");
-		expect(factory.calls[1].userPrompt).toBe("second prompt");
-		expect(factory.calls[0].parentSnapshot.entries[0].text).toBe("FIRST");
-		expect(factory.calls[1].parentSnapshot.entries[0].text).toBe("SECOND");
-	});
-
-	test("T7 tangent invocation does not see chat-mode transcript sentinel", async () => {
-		const { registerSideChatCommands } = await loadCommandModule();
-		const factory = createFakeSessionFactory();
-		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
-		const chatHandler = pi.commands.get("gremlins:chat").handler;
-		const tangentHandler = pi.commands.get("gremlins:tangent").handler;
 		const ctx = createFakeCtx({
 			branchEntries: [
-				{
-					type: "message",
-					message: {
-						role: "user",
-						content: [{ type: "text", text: "CHAT_SENTINEL_X" }],
-					},
-				},
+				{ type: "message", message: { role: "user", content: [{ type: "text", text: "U1" }] } },
 			],
 		});
-		await chatHandler("c-prompt", ctx);
-		await tangentHandler("t-prompt", ctx);
-		expect(factory.calls.length).toBe(2);
-		expect(factory.calls[1].mode).toBe("tangent");
-		expect(factory.calls[1].parentSnapshot).toBeUndefined();
-		// And user prompts must not bleed across:
-		expect(factory.calls[0].userPrompt).toBe("c-prompt");
-		expect(factory.calls[1].userPrompt).toBe("t-prompt");
+		await pi.commands.get("gremlins:chat").handler("", ctx);
+		expect(ctx.customCalls.length).toBe(1);
+		expect(factory.calls.length).toBe(0);
 	});
 
-	test("T8 abort signal triggers session.abort during prompt", async () => {
+	test("inline argument auto-submits into overlay for backward convenience", async () => {
 		const { registerSideChatCommands } = await loadCommandModule();
-		let aborted = false;
-		let promptResolve;
-		const factory = {
-			calls: [],
-			impl: async (options) => {
-				factory.calls.push(options);
-				return {
-					session: {
-						subscribe: () => () => {},
-						prompt: () =>
-							new Promise((resolve) => {
-								promptResolve = resolve;
-							}),
-						abort: async () => {
-							aborted = true;
-							promptResolve?.();
-						},
-						dispose() {},
-					},
-					extensionsResult: {},
-				};
-			},
-		};
+		const factory = createFakeSessionFactory({
+			events: [
+				{ type: "message_start", message: { role: "assistant" } },
+				{ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "answer" } },
+				{ type: "turn_end", turnIndex: 1 },
+			],
+		});
 		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
-		const handler = pi.commands.get("gremlins:tangent").handler;
-		const controller = new AbortController();
-		const ctx = createFakeCtx({ signal: controller.signal });
-		const handlerPromise = handler("explore", ctx);
-		// Schedule abort on next tick
-		await new Promise((r) => setTimeout(r, 5));
-		controller.abort();
-		await handlerPromise;
-		expect(aborted).toBe(true);
-	});
-
-	test("T9 inline rendering: pi.sendMessage called with SIDE_CHAT_MESSAGE_TYPE and assistant text", async () => {
-		const {
-			registerSideChatCommands,
-			SIDE_CHAT_MESSAGE_TYPE,
-		} = await loadCommandModule();
-		const factory = {
-			calls: [],
-			impl: async (options) => {
-				factory.calls.push(options);
-				let listener;
-				return {
-					session: {
-						subscribe(l) {
-							listener = l;
-							return () => {};
-						},
-						prompt: async () => {
-							listener?.({
-								type: "message_end",
-								message: {
-									role: "assistant",
-									content: [
-										{
-											type: "text",
-											text: "side-chat answer payload",
-										},
-									],
-								},
-							});
-						},
-						abort: async () => {},
-						dispose() {},
-					},
-					extensionsResult: {},
-				};
-			},
-		};
-		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
-		const handler = pi.commands.get("gremlins:tangent").handler;
 		const ctx = createFakeCtx();
-		await handler("ping", ctx);
-		expect(pi.messages.length).toBeGreaterThanOrEqual(1);
-		const last = pi.messages[pi.messages.length - 1];
-		expect(last.customType).toBe(SIDE_CHAT_MESSAGE_TYPE);
-		expect(last.display).toBe(true);
-		expect(typeof last.content).toBe("string");
-		expect(last.content).toContain("side-chat answer payload");
-		expect(last.details.mode).toBe("tangent");
+		await pi.commands.get("gremlins:tangent").handler("explore", ctx);
+		expect(factory.calls.length).toBe(1);
+		expect(factory.calls[0].mode).toBe("tangent");
+		expect(factory.calls[0].sessionConfig.tools).toEqual([]);
+		expect(pi.entries.some((entry) => entry.customType === "pi-gremlins:side-chat-thread")).toBe(true);
 	});
 
-	test("T10 visual delimiter labels exported and distinct", async () => {
-		const {
-			SIDE_CHAT_CHAT_LABEL,
-			SIDE_CHAT_TANGENT_LABEL,
-			SIDE_CHAT_FOOTER,
-		} = await loadCommandModule();
-		expect(typeof SIDE_CHAT_CHAT_LABEL).toBe("string");
-		expect(SIDE_CHAT_CHAT_LABEL.length).toBeGreaterThan(0);
-		expect(typeof SIDE_CHAT_TANGENT_LABEL).toBe("string");
-		expect(SIDE_CHAT_TANGENT_LABEL.length).toBeGreaterThan(0);
-		expect(SIDE_CHAT_CHAT_LABEL).not.toBe(SIDE_CHAT_TANGENT_LABEL);
-		expect(typeof SIDE_CHAT_FOOTER).toBe("string");
-		expect(SIDE_CHAT_FOOTER.length).toBeGreaterThan(0);
+	test(":new appends reset and only resets requested mode", async () => {
+		const { registerSideChatCommands } = await loadCommandModule();
+		registerSideChatCommands(pi, { createSideChatSession: createFakeSessionFactory().impl });
+		const ctx = createFakeCtx();
+		await pi.commands.get("gremlins:chat:new").handler("", ctx);
+		expect(pi.entries).toContainEqual({
+			customType: "pi-gremlins:side-chat-reset",
+			data: expect.objectContaining({ mode: "chat" }),
+		});
+	});
+
+	test("context handler filters side-chat custom messages defensively", async () => {
+		const { registerSideChatCommands } = await loadCommandModule();
+		registerSideChatCommands(pi, { createSideChatSession: createFakeSessionFactory().impl });
+		const result = pi.handlers.get("context")({
+			type: "context",
+			messages: [
+				{ role: "user", content: "keep" },
+				{ role: "user", content: "drop", customType: "pi-gremlins:side-chat-thread" },
+			],
+		});
+		expect(result.messages).toEqual([{ role: "user", content: "keep" }]);
 	});
 });

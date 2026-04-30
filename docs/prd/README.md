@@ -87,3 +87,4 @@ Maintain in `docs/prd/README.md`:
 | 0002 | Pi Gremlins V1 SDK Rewrite                                | Draft | 2026-04-22 |
 | 0003 | Primary Agent Selection and pi-mohawk Deprecation         | Completed | 2026-04-25 |
 | 0004 | Pi Gremlins Side-Chat Absorption and pi-gizmo Deprecation | Completed | 2026-04-29 |
+| 0005 | Persistent Overlay Side-Chat                            | Completed | 2026-04-30 |

@@ -69,3 +69,4 @@ Reference ADR IDs in changelog entries for significant changes:
 | 0002 | In-Process SDK-Based Gremlin Runtime                             | Accepted | 2026-04-22 |
 | 0003 | Unified Agent Discovery and Primary-Agent Prompt Injection in pi-gremlins | Accepted | 2026-04-25 |
 | 0004 | Side-Chat Absorption from pi-gizmo into pi-gremlins              | Accepted | 2026-04-29 |
+| 0005 | Persistent Overlay Side-Chat                                    | Accepted | 2026-04-30 |
