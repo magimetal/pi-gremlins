@@ -1,6 +1,6 @@
 # ADR-0004: Side-Chat Absorption from pi-gizmo into pi-gremlins
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-04-29
 - **Decision Maker:** magimetal
 - **Related:**
@@ -246,3 +246,4 @@ future ADR, triggered only by concrete demand evidence:
 
 - 2026-04-29: Proposed
 - 2026-04-29: Updated PRD cross-link.
+- 2026-04-29: Accepted; implementation matches D1-D8 (PR #48, commit ab2c856).

@@ -1,6 +1,6 @@
 # PRD-0004: Pi Gremlins Side-Chat Absorption and pi-gizmo Deprecation
 
-- **Status:** Active
+- **Status:** Completed
 - **Date:** 2026-04-29
 - **Author:** Magi Metal
 - **Related:** `extensions/pi-gremlins`, `extensions/pi-gizmo`, `README.md`, `CHANGELOG.md`, GitHub issue [#47](https://github.com/magimetal/pi-gremlins/issues/47), [ADR-0002](../adr/0002-in-process-sdk-based-gremlin-runtime.md), [ADR-0003](../adr/0003-unified-agent-discovery-and-primary-agent-prompt-injection-in-pi-gremlins.md)
@@ -141,3 +141,4 @@ These answers are normative for v1 and drive the acceptance criteria below.
 
 - 2026-04-29: Draft created for GitHub issue #47 product scope.
 - 2026-04-29: Promoted Draft → Active. PLAN_REVIEW PASS; commit-to-build per orchestrator Step 5.
+- 2026-04-29: Completed via PR #48 (commit ab2c856). All Q1-Q5 decisions and acceptance criteria delivered. Post-merge cross-package pi-gizmo deprecation items (5) tracked in plan; not blocking PR merge.
