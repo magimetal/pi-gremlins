@@ -106,6 +106,27 @@ function createInvalidParametersResult(): PiGremlinsToolResult {
 	};
 }
 
+function buildModelVisibleContent(
+	summary: string,
+	results: GremlinRunResult[],
+): PiGremlinsToolResult["content"] {
+	const content: PiGremlinsToolResult["content"] = [{ type: "text", text: summary }];
+	for (const result of results) {
+		const terminalText =
+			result.status === "completed"
+				? result.latestText
+				: result.status === "failed" || result.status === "canceled"
+					? result.errorMessage
+					: undefined;
+		if (!terminalText?.trim()) continue;
+		content.push({
+			type: "text",
+			text: `=== ${result.gremlinId ?? "g?"} · ${result.agent} ===\n${terminalText}`,
+		});
+	}
+	return content;
+}
+
 export async function executePiGremlinsTool({
 	params,
 	signal,
@@ -185,19 +206,15 @@ export async function executePiGremlinsTool({
 			.length,
 		gremlins: batch.results,
 	});
+	const content = buildModelVisibleContent(batch.summary, batch.results);
 	const partial: AgentToolResult<GremlinInvocationDetails> = {
-		content: [{ type: "text", text: batch.summary }],
+		content,
 		details,
 	};
 	onUpdate?.(partial);
 
 	return {
-		content: [
-			{
-				type: "text",
-				text: batch.summary,
-			},
-		],
+		content,
 		details,
 		...(batch.anyError ? { isError: true } : {}),
 	};
