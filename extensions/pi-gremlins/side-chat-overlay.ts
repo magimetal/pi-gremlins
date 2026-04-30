@@ -10,7 +10,7 @@ import {
 } from "@mariozechner/pi-tui";
 
 const CURSOR_MARKER = "\u001b_pi:c\u0007";
-import { getMarkdownTheme, type Theme } from "@mariozechner/pi-coding-agent";
+import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import type { SideChatMode } from "./side-chat-session-factory.js";
 import type {
 	SideChatTranscriptRow,
@@ -41,7 +41,6 @@ export class SideChatOverlayComponent implements Component {
 
 	constructor(
 		private readonly tui: TUI | undefined,
-		private readonly theme: Theme | undefined,
 		private readonly controller: SideChatOverlayController,
 		private readonly done: () => void,
 	) {}

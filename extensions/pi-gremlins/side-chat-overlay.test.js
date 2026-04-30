@@ -11,7 +11,6 @@ describe("side-chat overlay component", () => {
 		let done = false;
 		const component = new SideChatOverlayComponent(
 			{ requestRender() {} },
-			{},
 			{
 				getMode: () => "chat",
 				getTranscriptState: () => createInitialSideChatTranscriptState(),

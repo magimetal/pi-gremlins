@@ -250,8 +250,8 @@ export function registerSideChatCommands(
 			},
 		};
 		runtime.overlayPromise = ctx.ui.custom<void>(
-			(tui, theme, _keybindings, done) =>
-				new SideChatOverlayComponent(tui, theme, controller, done),
+			(tui, _theme, _keybindings, done) =>
+				new SideChatOverlayComponent(tui, controller, done),
 			{
 				overlay: true,
 				overlayOptions: SIDE_CHAT_OVERLAY_OPTIONS,
