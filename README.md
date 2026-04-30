@@ -151,6 +151,67 @@ Runtime behavior:
 - collapsed tool row shows source, status, intent/task preview, latest activity, usage, and errors
 - expanded tool row shows intent, task, cwd, model, thinking, latest text/tool data, usage, and errors
 
+## Side-chat: `/gremlins:chat` and `/gremlins:tangent`
+
+Side-chat support is absorbed from the standalone `pi-gizmo` package (PRD-0004,
+ADR-0004, issue #47). It exposes two slash commands inside `pi-gremlins`,
+built on the same in-process Pi SDK runtime as gremlin delegation, with zero
+tools and inline rendering.
+
+### Commands
+
+- `/gremlins:chat <prompt>` — opens a fresh side-thread seeded with a
+  snapshot of the parent transcript captured at invocation time. Output is
+  rendered inline.
+- `/gremlins:tangent <prompt>` — opens a clean child session with no parent
+  transcript and no project context. Output is rendered inline.
+- Empty or whitespace-only argument prints a usage hint and does not start
+  a session.
+
+### v1 guarantees
+
+- Fresh side-thread per invocation; no thread persistence across invocations.
+- Inline rendering only — no overlay or popup viewer (ADR-0004 D1).
+- Zero tools — pure conversation surface; cannot read or modify the workspace
+  (ADR-0004 D4).
+- Built on `gremlin-session-factory` primitives; same isolation as gremlin
+  delegation (ADR-0003, ADR-0004 D3, D5): no parent extensions, skills,
+  prompts, themes, AGENTS files, or primary-agent markdown leak into the
+  side-thread.
+- Copy/paste is the supported handoff mechanism in v1; there is no
+  `inject` command.
+
+### Visual delimiter
+
+Side-chat turns are rendered with a fixed header and footer so they are
+unambiguous next to gremlin tool rows and parent assistant turns:
+
+- Chat header: `💬 side-chat (chat)`
+- Tangent header: `🧭 side-chat (tangent)`
+- Common footer: `└─ side-chat ended ─`
+
+### Migration from `pi-gizmo`
+
+| Retired pi-gizmo command | pi-gremlins replacement | Notes |
+| --- | --- | --- |
+| `gizmo` (chat send) | `/gremlins:chat <prompt>` | Parent-context attached, fresh per invocation. |
+| `gizmo:tangent` | `/gremlins:tangent <prompt>` | Clean child session. |
+| `gizmo:new` | (none — structurally unnecessary) | Fresh-per-invocation makes explicit "new" redundant. |
+| `gizmo:recap` | (deferred) | No v1 replacement; revisit via future PRD. |
+| `gizmo:clear` | (none — structurally unnecessary) | Fresh-per-invocation makes "clear" redundant. |
+| `gizmo:inject` | (deferred) | Use copy/paste in v1; revisit via future PRD. |
+| `gizmo:summarize` | (deferred) | No v1 replacement. |
+| `gizmo:model` | (deferred) | No per-side-chat model override in v1. |
+| `gizmo:thinking` | (deferred) | No per-side-chat thinking override in v1. |
+
+See [PRD-0004](docs/prd/0004-pi-gremlins-side-chat-absorption-and-pi-gizmo-deprecation.md)
+and [ADR-0004](docs/adr/0004-side-chat-absorption-from-pi-gizmo.md).
+
+Note: do not run `pi-gizmo` and `pi-gremlins` side-chat commands
+concurrently if both are installed in the same Pi profile; migrate to
+`pi-gremlins` and disable / uninstall `pi-gizmo` to avoid duplicate command
+registration.
+
 ## Primary agents
 
 Primary-agent support replaces the separate `pi-mohawk` extension inside `pi-gremlins`.

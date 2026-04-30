@@ -38,6 +38,11 @@ import {
 } from "./primary-agent-controls.js";
 import { applyPrimaryAgentPromptInjection } from "./primary-agent-prompt.js";
 import {
+	registerSideChatCommands,
+	sideChatMessageRenderer,
+	SIDE_CHAT_MESSAGE_TYPE,
+} from "./side-chat-command.js";
+import {
 	clearPersistedPrimaryAgentSelection,
 	readPersistedPrimaryAgentSelectionWithDiagnostics,
 } from "./primary-agent-persistence.js";
@@ -160,6 +165,14 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 				);
 			},
 		});
+
+		registerSideChatCommands(pi);
+		// Defensive: some legacy in-repo test harnesses provide a fake pi without
+		// `registerMessageRenderer`. The real pi runtime always supplies it
+		// (see types.d.ts:815). Guard so registration is a no-op in those mocks.
+		if (typeof pi.registerMessageRenderer === "function") {
+			pi.registerMessageRenderer(SIDE_CHAT_MESSAGE_TYPE, sideChatMessageRenderer);
+		}
 
 		pi.on("before_agent_start", async (event, ctx) => {
 			const injection = await applyPrimaryAgentPromptInjection({

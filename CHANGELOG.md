@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repaired reliability audit findings for renderer cache uniqueness, same-size agent discovery changes, corrupt primary-agent settings recovery, effective request-cwd discovery, and ambiguous gremlin model reporting.
 
 ### Added
+- **Side-chat absorbed from pi-gizmo** (PRD-0004, ADR-0004, issue #47): pi-gremlins now ships `/gremlins:chat` (parent-transcript snapshot) and `/gremlins:tangent` (clean child session), rebuilt on the existing in-process SDK runtime with zero tools and inline rendering. See README "Side-chat" section for the pi-gizmo migration table.
 - Generated agent guidance now covers root, docs, and extension scopes so contributors get current PRD/ADR, primary-agent, and runtime boundaries before editing.
 - Shared role-aware agent parsing/discovery modules now load `agent_type: sub-agent` gremlins and `agent_type: primary` primary agents from user/project agent directories while preserving strict role separation and project-over-user precedence.
 - Primary-agent state and prompt helpers persist new selections as `pi-gremlins-primary-agent`, read legacy `pi-mohawk-primary-agent` entries for migration, and strip legacy prompt blocks before appending the selected primary markdown.

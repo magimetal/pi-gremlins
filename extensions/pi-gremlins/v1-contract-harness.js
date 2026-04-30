@@ -105,6 +105,7 @@ export function createExtensionHarness() {
 	const handlers = new Map();
 	const entries = [];
 	const messages = [];
+	const messageRenderers = new Map();
 	registerPiGremlins({
 		on: (event, handler) => {
 			handlers.set(event, handler);
@@ -118,6 +119,9 @@ export function createExtensionHarness() {
 		registerTool: (tool) => {
 			registeredTool = tool;
 		},
+		registerMessageRenderer: (customType, renderer) => {
+			messageRenderers.set(customType, renderer);
+		},
 		appendEntry: (customType, data) => {
 			entries.push({ customType, data });
 		},
@@ -125,7 +129,7 @@ export function createExtensionHarness() {
 			messages.push(message);
 		},
 	});
-	return { tool: registeredTool, commands, shortcuts, handlers, entries, messages };
+	return { tool: registeredTool, commands, shortcuts, handlers, entries, messages, messageRenderers };
 }
 
 export function createRegisteredTool() {
