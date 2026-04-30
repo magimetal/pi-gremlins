@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pi-gremlins` maintainability improved by extracting shared cache helpers, tool execution flow, and gremlin runner event projection into smaller focused modules/functions without changing the public tool contract.
 
 ### Fixed
+- **Full Gremlin final messages in tool results** (issue #50): parent agents now receive each terminal gremlin's full final output or error text in model-visible tool result content while preserving collapsed inline summary previews.
 - **Primary-agent selection persistence** (PRD-0003, ADR-0003, issue #42): `/mohawk` selections, shortcut cycling, and cleared primary-agent state now persist in project-local `.pi/settings.json`, restore in fresh Pi sessions, and reset with a warning if the saved primary agent disappears.
 - **Gremlin child prompt isolation** (PRD-0002, ADR-0002, ADR-0003, issue #41): child sessions now use selected sub-agent markdown as their system prompt and no longer receive parent prompt snapshots, primary-agent prompt blocks, active primary-agent markdown, or orchestration rules.
 - Hardened gremlin runtime reliability around child-session cleanup, abort handling, discovery file failures, request validation, CRLF gremlin frontmatter parsing, unresolved model selection, and parent-abort progress updates.

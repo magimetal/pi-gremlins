@@ -141,6 +141,86 @@ describe("pi-gremlins index execute v1", () => {
 		expect(result.content[0].text).toContain("[Completed] · g1 researcher [user]");
 	});
 
+	test("returns full terminal gremlin output in model-visible content without changing collapsed summary previews", async () => {
+		const workspace = createWorkspace();
+		setMockAgentDir(workspace.userRoot);
+		const { tool } = createExtensionHarness();
+		writeGremlinFile(workspace.userAgentsDir, "researcher.md", "researcher", "model: openai/gpt-5-mini\n");
+		writeGremlinFile(workspace.userAgentsDir, "reviewer.md", "reviewer", "model: openai/gpt-5-mini\n");
+		writeGremlinFile(workspace.userAgentsDir, "blanker.md", "blanker", "model: openai/gpt-5-mini\n");
+
+		const longResearcherText = `researcher-full-start ${"r".repeat(650)} researcher-full-end`;
+		const longReviewerText = `reviewer-full-start ${"v".repeat(130)} reviewer-full-end`;
+		const fullMissingError = "Unknown gremlin: missing";
+		const sessionEvents = [
+			[
+				{
+					type: "message_end",
+					message: {
+						content: [{ type: "text", text: longResearcherText }],
+						usage: { input: 1, output: 1 },
+					},
+				},
+			],
+			[
+				{
+					type: "message_end",
+					message: {
+						content: [{ type: "text", text: longReviewerText }],
+						usage: { input: 1, output: 1 },
+					},
+				},
+			],
+			[
+				{
+					type: "message_end",
+					message: {
+						content: [{ type: "text", text: "   \n\t  " }],
+						usage: { input: 1, output: 0 },
+					},
+				},
+			],
+		];
+		setCreateAgentSessionImpl(async () => ({
+			session: createMockSession(sessionEvents.shift() ?? []),
+			extensionsResult: {},
+		}));
+
+		const ctx = createExecutionContext(workspace.repoRoot);
+		const result = await tool.execute(
+			"full-terminal-output",
+			{
+				gremlins: [
+					{ intent: "Return long research", agent: "researcher", context: "Do work" },
+					{ intent: "Return long review", agent: "reviewer", context: "Do work" },
+					{ intent: "Fail before session", agent: "missing", context: "Do work" },
+					{ intent: "Return no final text", agent: "blanker", context: "Do work" },
+				],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		expect(result.isError).toBe(true);
+		expect(result.content[0].text).toContain("[Completed] · g1 researcher [user]");
+		expect(result.content[0].text).toContain("[Failed] · g3 missing [unknown]");
+		expect(result.content[0].text).not.toContain("researcher-full-end");
+		const modelVisibleText = result.content.map((part) => part.text).join("\n");
+		expect(modelVisibleText).toContain(longResearcherText);
+		expect(modelVisibleText).toContain(longReviewerText);
+		expect(modelVisibleText).toContain(fullMissingError);
+		expect(modelVisibleText).toContain("=== g1 · researcher ===");
+		expect(modelVisibleText).toContain("=== g2 · reviewer ===");
+		expect(modelVisibleText).toContain("=== g3 · missing ===");
+		expect(modelVisibleText).not.toContain("=== g4 · blanker ===");
+		expect(result.content.slice(1).map((part) => part.text)).toEqual([
+			`=== g1 · researcher ===\n${longResearcherText}`,
+			`=== g2 · reviewer ===\n${longReviewerText}`,
+			`=== g3 · missing ===\n${fullMissingError}`,
+		]);
+	});
+
 	test("streaming update text switches to live tool activity after early assistant text", async () => {
 		const workspace = createWorkspace();
 		setMockAgentDir(workspace.userRoot);
