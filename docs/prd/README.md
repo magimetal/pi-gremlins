@@ -86,3 +86,4 @@ Maintain in `docs/prd/README.md`:
 | 0001 | Pi Gremlins Immersive Theming and Viewer UX Overhaul      | Completed | 2026-04-21 |
 | 0002 | Pi Gremlins V1 SDK Rewrite                                | Draft | 2026-04-22 |
 | 0003 | Primary Agent Selection and pi-mohawk Deprecation         | Completed | 2026-04-25 |
+| 0004 | Pi Gremlins Side-Chat Absorption and pi-gizmo Deprecation | Completed | 2026-04-29 |

@@ -39,7 +39,10 @@ describe("pi-gremlins index execute v1", () => {
 		const { tool, commands, shortcuts } = createExtensionHarness();
 
 		expect(tool.name).toBe("pi-gremlins");
-		expect(Array.from(commands.keys())).toEqual(["gremlins:primary"]);
+		expect(commands.size).toBe(3);
+		expect(commands.has("gremlins:primary")).toBe(true);
+		expect(commands.has("gremlins:chat")).toBe(true);
+		expect(commands.has("gremlins:tangent")).toBe(true);
 		expect(commands.has("gremlins:view")).toBe(false);
 		expect(commands.has("gremlins:steer")).toBe(false);
 		expect(Array.from(shortcuts.keys())).toEqual(["ctrl+shift+m"]);
