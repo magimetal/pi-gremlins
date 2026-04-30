@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Persistent overlay side-chat** (PRD-0005, ADR-0005, issue #49): `/gremlins:chat` and `/gremlins:tangent` now open persistent multi-turn overlays instead of inline one-shot responses; `:new` variants reset only the selected mode while preserving zero-tool isolation.
 - **`/mohawk` renamed to `/gremlins:primary`** (issue #45): the `/mohawk` slash command is replaced by `/gremlins:primary`, consolidating primary-agent selection under the `pi-gremlins` tool namespace; all underlying behavior, shortcut cycling, and session state are preserved.
 - README documentation now reflects the current `pi-gremlins` contract, discovery precedence, runtime behavior, primary-agent controls, and test command details.
 - Generated `AGENTS.md` guidance for the root, docs, and extension scopes now reflects the current primary-agent, runtime, and governance boundaries.

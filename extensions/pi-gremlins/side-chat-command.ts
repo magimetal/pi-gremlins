@@ -1,47 +1,11 @@
-/**
- * Side-chat command surface (PRD-0004 / ADR-0004).
- *
- * Registers `/gremlins:chat` and `/gremlins:tangent`. Chat captures a
- * snapshot of the parent transcript at invocation time via
- * `ctx.sessionManager.getBranch()` and feeds it to the side-chat session as
- * conversational input only (never as system prompt, tool, or extension).
- * Tangent gets a clean child session.
- *
- * Confirmed surfaces (Observed):
- * - `pi.registerCommand(name, { description?, handler: (args, ctx) => Promise<void> })`
- *   — extensions/types.d.ts:758, 800.
- * - `pi.registerMessageRenderer<T>(customType, renderer)` — types.d.ts:815.
- * - `pi.sendMessage({ customType, content, display, details })` is
- *   fire-and-forget — types.d.ts:817.
- * - `ctx.ui.notify(text, "info" | "warning" | "error")` — types.d.ts:74.
- * - `ctx.sessionManager.getBranch()` returns `SessionEntry[]`; project
- *   only `SessionMessageEntry` (entry.type === "message") with role
- *   user|assistant — session-manager.d.ts:23–25, 244.
- *
- * Guardrails (ADR-0004):
- * - No overlay/popup viewer (D1).
- * - No `pi.appendEntry` for side-chat messages (D2).
- * - Tangent never captures parent transcript (D3).
- * - Zero tools on session (D4).
- * - No primary-agent injection (PRD-0003 isolation).
- * - No nested CLI / temp prompt files / subprocess (ADR-0002).
- */
-
 import type { TextContent } from "@mariozechner/pi-ai";
-import {
-	getMarkdownTheme,
-	type CreateAgentSessionResult,
-	type ExtensionAPI,
-	type ExtensionCommandContext,
-	type MessageRenderer,
+import type {
+	CreateAgentSessionResult,
+	ExtensionAPI,
+	ExtensionCommandContext,
+	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
-import {
-	Container,
-	Markdown,
-	type MarkdownTheme,
-	Spacer,
-	Text,
-} from "@mariozechner/pi-tui";
+import type { OverlayHandle } from "@mariozechner/pi-tui";
 import {
 	buildSideChatSessionConfig,
 	createSideChatSession as defaultCreateSideChatSession,
@@ -49,74 +13,98 @@ import {
 	type ParentTranscriptSnapshot,
 	type SideChatMode,
 } from "./side-chat-session-factory.js";
+import {
+	SIDE_CHAT_OVERLAY_OPTIONS,
+	SideChatOverlayComponent,
+	type SideChatOverlayController,
+} from "./side-chat-overlay.js";
+import {
+	buildThreadHistoryPrompt,
+	createEmptySideChatThreads,
+	filterSideChatMessagesFromContext,
+	restoreSideChatThreadsFromBranch,
+	SIDE_CHAT_RESET_ENTRY_TYPE,
+	SIDE_CHAT_THREAD_ENTRY_TYPE,
+	type RestoredSideChatThreads,
+	type SideChatThreadEntryData,
+} from "./side-chat-persistence.js";
+import {
+	appendSideChatError,
+	appendSideChatUserMessage,
+	createInitialSideChatTranscriptState,
+	reduceSideChatTranscriptEvent,
+	sideChatRowsFromThread,
+	type SideChatTranscriptEvent,
+	type SideChatTranscriptState,
+} from "./side-chat-transcript-state.js";
 
 export const SIDE_CHAT_CHAT_COMMAND = "gremlins:chat";
+export const SIDE_CHAT_CHAT_NEW_COMMAND = "gremlins:chat:new";
 export const SIDE_CHAT_TANGENT_COMMAND = "gremlins:tangent";
-export const SIDE_CHAT_MESSAGE_TYPE = "pi-gremlins:side-chat";
+export const SIDE_CHAT_TANGENT_NEW_COMMAND = "gremlins:tangent:new";
 
 export const SIDE_CHAT_CHAT_LABEL = "💬 side-chat (chat)";
 export const SIDE_CHAT_TANGENT_LABEL = "🧭 side-chat (tangent)";
-export const SIDE_CHAT_FOOTER = "└─ side-chat ended ─";
+export const SIDE_CHAT_FOOTER = "└─ side-chat persists in overlay ─";
 
 const CHAT_DESCRIPTION =
-	"Side-chat with parent-transcript context (zero tools, fresh per invocation).";
+	"Open the persistent Gremlins side-chat overlay; resumes the chat thread.";
+const CHAT_NEW_DESCRIPTION =
+	"Open the Gremlins side-chat overlay with a fresh chat thread.";
 const TANGENT_DESCRIPTION =
-	"Side-chat in a clean child session, no parent context (zero tools, fresh per invocation).";
-
-const CHAT_USAGE = `Usage: /gremlins:chat <prompt>\n${CHAT_DESCRIPTION}`;
-const TANGENT_USAGE = `Usage: /gremlins:tangent <prompt>\n${TANGENT_DESCRIPTION}`;
+	"Open the persistent Gremlins tangent overlay; resumes the tangent thread.";
+const TANGENT_NEW_DESCRIPTION =
+	"Open the Gremlins tangent overlay with a fresh tangent thread.";
 
 export interface SideChatCommandDeps {
 	createSideChatSession?: typeof defaultCreateSideChatSession;
 	capturedAtFactory?: () => string;
 }
 
-export interface SideChatMessageDetails {
-	mode: SideChatMode;
-	capturedAt?: string;
-	label: string;
-	footer: string;
-}
-
-interface SideChatEvent {
-	type?: string;
-	assistantMessageEvent?: { type?: string; delta?: unknown };
-	message?: {
-		role?: unknown;
-		content?: unknown;
-	};
-}
-
 type SideChatSession = CreateAgentSessionResult["session"] & {
-	subscribe?: (listener: (event: SideChatEvent) => void) => () => void;
+	subscribe?: (listener: (event: SideChatTranscriptEvent) => void) => () => void;
 	prompt: (text: string) => Promise<void>;
 	abort?: () => Promise<void>;
 	dispose: () => void;
 };
 
-function extractTextFromContent(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.flatMap((item) => {
-			if (!item || typeof item !== "object") return [];
-			if ((item as { type?: string }).type !== "text") return [];
-			const text = (item as TextContent).text;
-			return typeof text === "string" ? [text] : [];
-		})
-		.join("");
+interface SideChatRuntime {
+	threads: RestoredSideChatThreads;
+	activeMode: SideChatMode;
+	activeSession: SideChatSession | null;
+	activeSessionMode: SideChatMode | null;
+	overlayHandle: OverlayHandle | null;
+	overlayPromise: Promise<void> | null;
+	overlayDraft: string;
+	transcriptState: SideChatTranscriptState;
+	subscriptions: Set<() => void>;
+	lastSubmittedQuestion: string | null;
+}
+
+function createRuntime(): SideChatRuntime {
+	return {
+		threads: createEmptySideChatThreads(),
+		activeMode: "chat",
+		activeSession: null,
+		activeSessionMode: null,
+		overlayHandle: null,
+		overlayPromise: null,
+		overlayDraft: "",
+		transcriptState: createInitialSideChatTranscriptState(),
+		subscriptions: new Set(),
+		lastSubmittedQuestion: null,
+	};
 }
 
 export function parseSideChatArgs(
 	args: string,
-): { ok: true; userPrompt: string } | { ok: false } {
+): { ok: true; userPrompt?: string } {
 	const trimmed = (args ?? "").trim();
-	if (!trimmed) return { ok: false };
-	return { ok: true, userPrompt: trimmed };
+	return trimmed ? { ok: true, userPrompt: trimmed } : { ok: true };
 }
 
 export function captureParentTranscriptSnapshot(
-	ctx: ExtensionCommandContext,
+	ctx: ExtensionCommandContext | ExtensionContext,
 	capturedAtFactory: () => string = () => new Date().toISOString(),
 ): ParentTranscriptSnapshot | undefined {
 	try {
@@ -141,207 +129,259 @@ export function captureParentTranscriptSnapshot(
 	}
 }
 
-function emitUsage(ctx: ExtensionCommandContext, usageText: string): void {
-	if (ctx.hasUI && ctx.ui?.notify) {
-		ctx.ui.notify(usageText, "info");
-		return;
-	}
-	// Fallback: emit a non-LLM-bound notification via console for non-UI modes.
-	// eslint-disable-next-line no-console
-	console.log(usageText);
-}
-
-async function driveSideChatSession(
-	pi: ExtensionAPI,
-	ctx: ExtensionCommandContext,
-	created: CreateAgentSessionResult,
-	prompt: string,
-	details: SideChatMessageDetails,
-): Promise<void> {
-	const session = created.session as SideChatSession;
-	let aggregatedDeltaText = "";
-	let lastAssistantMessageText = "";
-	const unsubscribe = session.subscribe?.((event) => {
-		if (!event || typeof event !== "object") return;
-		if (
-			event.type === "message_update" &&
-			event.assistantMessageEvent?.type === "text_delta"
-		) {
-			const delta = event.assistantMessageEvent.delta;
-			if (typeof delta === "string") aggregatedDeltaText += delta;
-			return;
-		}
-		if (event.type === "message_end") {
-			const message = event.message;
-			if (!message) return;
-			if (message.role === "assistant") {
-				const text = extractTextFromContent(message.content).trim();
-				if (text) lastAssistantMessageText = text;
-			}
-		}
-	});
-
-	const abortListener = () => {
-		void session.abort?.();
-	};
-	const signal = ctx.signal;
-	if (signal) {
-		if (signal.aborted) {
-			abortListener();
-		} else {
-			signal.addEventListener("abort", abortListener, { once: true });
-		}
-	}
-
-	let errorMessage: string | undefined;
-	try {
-		await session.prompt(prompt);
-	} catch (error) {
-		errorMessage = error instanceof Error ? error.message : String(error);
-	} finally {
-		signal?.removeEventListener("abort", abortListener);
-		unsubscribe?.();
-		try {
-			session.dispose();
-		} catch {
-			// dispose may throw on already-disposed sessions; ignore.
-		}
-	}
-
-	const aborted = Boolean(signal?.aborted);
-	const finalText =
-		(lastAssistantMessageText || aggregatedDeltaText.trim()) || "";
-
-	let content = finalText;
-	if (aborted && !content) content = "(side-chat aborted)";
-	if (errorMessage && !content) content = `(side-chat error: ${errorMessage})`;
-	if (!content) content = "(side-chat produced no response)";
-
-	pi.sendMessage<SideChatMessageDetails>({
-		customType: SIDE_CHAT_MESSAGE_TYPE,
-		content,
-		display: true,
-		details: { ...details },
-	});
-}
-
-function makeHandler(
-	pi: ExtensionAPI,
-	mode: SideChatMode,
-	deps: SideChatCommandDeps,
-): (args: string, ctx: ExtensionCommandContext) => Promise<void> {
-	const createSession =
-		deps.createSideChatSession ?? defaultCreateSideChatSession;
-	const capturedAtFactory =
-		deps.capturedAtFactory ?? (() => new Date().toISOString());
-	const usageText = mode === "chat" ? CHAT_USAGE : TANGENT_USAGE;
-	const label = mode === "chat" ? SIDE_CHAT_CHAT_LABEL : SIDE_CHAT_TANGENT_LABEL;
-
-	return async function sideChatHandler(args, ctx) {
-		const parsed = parseSideChatArgs(args);
-		if (!parsed.ok) {
-			emitUsage(ctx, usageText);
-			return;
-		}
-
-		const parentSnapshot =
-			mode === "chat"
-				? captureParentTranscriptSnapshot(ctx, capturedAtFactory)
-				: undefined;
-
-		let created: CreateAgentSessionResult;
-		try {
-			created = await createSession({
-				mode,
-				userPrompt: parsed.userPrompt,
-				parentSnapshot,
-				parentModel: ctx.model,
-				parentThinking: undefined,
-				cwd: ctx.cwd,
-				modelRegistry: ctx.modelRegistry,
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			pi.sendMessage<SideChatMessageDetails>({
-				customType: SIDE_CHAT_MESSAGE_TYPE,
-				content: `(side-chat failed to start: ${message})`,
-				display: true,
-				details: {
-					mode,
-					capturedAt: parentSnapshot?.capturedAt,
-					label,
-					footer: SIDE_CHAT_FOOTER,
-				},
-			});
-			return;
-		}
-
-		// Build the session plan to get plan.prompt for `session.prompt(...)`.
-		// createSideChatSession may have built its own plan internally; that
-		// duplication is cheap (pure data construction) and lets the test stub
-		// receive flat options without coordinating session config exchange.
-		const plan = buildSideChatSessionConfig({
-			mode,
-			userPrompt: parsed.userPrompt,
-			parentSnapshot,
-			parentModel: ctx.model,
-			cwd: ctx.cwd,
-			modelRegistry: ctx.modelRegistry,
-		});
-
-		await driveSideChatSession(pi, ctx, created, plan.prompt, {
-			mode,
-			capturedAt: parentSnapshot?.capturedAt,
-			label,
-			footer: SIDE_CHAT_FOOTER,
-		});
-	};
-}
-
 export function registerSideChatCommands(
 	pi: ExtensionAPI,
 	deps: SideChatCommandDeps = {},
 ): void {
+	let runtime = createRuntime();
+	const createSession = deps.createSideChatSession ?? defaultCreateSideChatSession;
+	const capturedAtFactory = deps.capturedAtFactory ?? (() => new Date().toISOString());
+
+	function restore(ctx: ExtensionContext): void {
+		runtime.threads = restoreSideChatThreadsFromBranch(
+			ctx.sessionManager?.getBranch?.(),
+		);
+		resetActiveSession(runtime);
+		runtime.transcriptState = createInitialSideChatTranscriptState(
+			sideChatRowsFromThread(runtime.threads[runtime.activeMode].exchanges),
+		);
+	}
+
+	pi.on("session_start", (_event, ctx) => {
+		runtime = createRuntime();
+		restore(ctx);
+	});
+	pi.on("session_tree", (_event, ctx) => {
+		restore(ctx);
+	});
+	pi.on("session_shutdown", () => {
+		resetActiveSession(runtime);
+		for (const unsubscribe of runtime.subscriptions) unsubscribe();
+		runtime.subscriptions.clear();
+		runtime.overlayHandle?.hide();
+		runtime.overlayHandle = null;
+		runtime.overlayPromise = null;
+	});
+	pi.on("context", (event) => {
+		return { messages: filterSideChatMessagesFromContext(event.messages) };
+	});
+
 	pi.registerCommand(SIDE_CHAT_CHAT_COMMAND, {
 		description: CHAT_DESCRIPTION,
-		handler: makeHandler(pi, "chat", deps),
+		handler: makeHandler("chat", false),
+	});
+	pi.registerCommand(SIDE_CHAT_CHAT_NEW_COMMAND, {
+		description: CHAT_NEW_DESCRIPTION,
+		handler: makeHandler("chat", true),
 	});
 	pi.registerCommand(SIDE_CHAT_TANGENT_COMMAND, {
 		description: TANGENT_DESCRIPTION,
-		handler: makeHandler(pi, "tangent", deps),
+		handler: makeHandler("tangent", false),
 	});
+	pi.registerCommand(SIDE_CHAT_TANGENT_NEW_COMMAND, {
+		description: TANGENT_NEW_DESCRIPTION,
+		handler: makeHandler("tangent", true),
+	});
+	pi.registerShortcut("alt+/", {
+		description: "Toggle focus for the Gremlins side-chat overlay",
+		handler: (ctx) => {
+			if (!runtime.overlayHandle) {
+				ctx.ui?.notify?.("Open /gremlins:chat or /gremlins:tangent first.", "info");
+				return;
+			}
+			if (runtime.overlayHandle.isFocused()) runtime.overlayHandle.unfocus();
+			else runtime.overlayHandle.focus();
+		},
+	});
+
+	function makeHandler(mode: SideChatMode, forceNew: boolean) {
+		return async (args: string, ctx: ExtensionCommandContext) => {
+			const parsed = parseSideChatArgs(args);
+			runtime.activeMode = mode;
+			if (forceNew) {
+				pi.appendEntry(SIDE_CHAT_RESET_ENTRY_TYPE, {
+					mode,
+					timestamp: Date.now(),
+				});
+				runtime.threads[mode] = { mode, exchanges: [] };
+				if (runtime.activeSessionMode === mode) resetActiveSession(runtime);
+			}
+			if (mode === "chat" && runtime.threads.chat.exchanges.length === 0) {
+				const parentSnapshot = captureParentTranscriptSnapshot(
+					ctx,
+					capturedAtFactory,
+				);
+				runtime.threads.chat.parentSnapshot = parentSnapshot;
+				runtime.threads.chat.originCapturedAt = parentSnapshot?.capturedAt;
+			}
+			runtime.transcriptState = createInitialSideChatTranscriptState(
+				sideChatRowsFromThread(runtime.threads[mode].exchanges),
+			);
+			ensureOverlay(ctx);
+			if (parsed.userPrompt) {
+				await submitSideChatPrompt(ctx, parsed.userPrompt);
+			}
+		};
+	}
+
+	function ensureOverlay(ctx: ExtensionCommandContext): void {
+		if (!ctx.hasUI || !ctx.ui?.custom) {
+			ctx.ui?.notify?.("Side-chat overlay requires interactive UI.", "warning");
+			return;
+		}
+		if (runtime.overlayHandle) {
+			runtime.overlayHandle.setHidden(false);
+			runtime.overlayHandle.focus();
+			return;
+		}
+		const controller: SideChatOverlayController = {
+			getMode: () => runtime.activeMode,
+			getTranscriptState: () => runtime.transcriptState,
+			getDraft: () => runtime.overlayDraft,
+			setDraft: (value) => {
+				runtime.overlayDraft = value;
+			},
+			submitDraft: (value) => {
+				runtime.overlayDraft = "";
+				void submitSideChatPrompt(ctx, value);
+			},
+			close: () => {
+				runtime.overlayHandle?.setHidden(true);
+			},
+		};
+		runtime.overlayPromise = ctx.ui.custom<void>(
+			(tui, _theme, _keybindings, done) =>
+				new SideChatOverlayComponent(tui, controller, done),
+			{
+				overlay: true,
+				overlayOptions: SIDE_CHAT_OVERLAY_OPTIONS,
+				onHandle: (handle) => {
+					runtime.overlayHandle = handle;
+					handle.focus();
+				},
+			},
+		);
+		runtime.overlayPromise.finally(() => {
+			runtime.overlayHandle = null;
+			runtime.overlayPromise = null;
+		});
+	}
+
+	async function submitSideChatPrompt(
+		ctx: ExtensionCommandContext,
+		userPrompt: string,
+	): Promise<void> {
+		const mode = runtime.activeMode;
+		const thread = runtime.threads[mode];
+		runtime.lastSubmittedQuestion = userPrompt;
+		runtime.transcriptState = appendSideChatUserMessage(
+			runtime.transcriptState,
+			userPrompt,
+		);
+		let session = runtime.activeSession;
+		if (!session || runtime.activeSessionMode !== mode) {
+			resetActiveSession(runtime);
+			try {
+				const config = buildSideChatSessionConfig({
+					mode,
+					userPrompt: buildThreadHistoryPrompt(thread, userPrompt),
+					parentSnapshot: mode === "chat" ? thread.parentSnapshot : undefined,
+					parentModel: ctx.model,
+					parentThinking: undefined,
+					cwd: ctx.cwd,
+					modelRegistry: ctx.modelRegistry,
+				});
+				const created = await createSession({
+					mode,
+					userPrompt,
+					parentSnapshot: mode === "chat" ? thread.parentSnapshot : undefined,
+					parentModel: ctx.model,
+					parentThinking: undefined,
+					cwd: ctx.cwd,
+					modelRegistry: ctx.modelRegistry,
+					sessionConfig: config,
+				});
+				session = created.session as SideChatSession;
+				runtime.activeSession = session;
+				runtime.activeSessionMode = mode;
+				const unsubscribe = session.subscribe?.((event) => {
+					runtime.transcriptState = reduceSideChatTranscriptEvent(
+						runtime.transcriptState,
+						event,
+					);
+					if (event.type === "turn_end") finalizeExchange(pi, runtime, mode);
+				});
+				if (unsubscribe) runtime.subscriptions.add(unsubscribe);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				runtime.transcriptState = appendSideChatError(runtime.transcriptState, message);
+				ctx.ui?.notify?.(`Side-chat failed to start: ${message}`, "error");
+				return;
+			}
+		}
+
+		const prompt = buildSideChatSessionConfig({
+			mode,
+			userPrompt: buildThreadHistoryPrompt(thread, userPrompt),
+			parentSnapshot: mode === "chat" ? thread.parentSnapshot : undefined,
+			parentModel: ctx.model,
+			parentThinking: undefined,
+			cwd: ctx.cwd,
+			modelRegistry: ctx.modelRegistry,
+		}).prompt;
+		try {
+			await session.prompt(prompt);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			runtime.transcriptState = appendSideChatError(runtime.transcriptState, message);
+			ctx.ui?.notify?.(`Side-chat prompt failed: ${message}`, "error");
+		}
+	}
 }
 
-/**
- * Inline message renderer for `pi-gremlins:side-chat` custom messages.
- * Returns a Container with a label header, the assistant markdown body,
- * and a fixed footer line. ADR-0004 D1: inline only.
- */
-export const sideChatMessageRenderer: MessageRenderer<SideChatMessageDetails> =
-	(message, _options, _theme) => {
-		const details = message.details ?? {
-			mode: "chat",
-			label: SIDE_CHAT_CHAT_LABEL,
-			footer: SIDE_CHAT_FOOTER,
-		};
-		const container = new Container();
-		container.addChild(new Text(details.label));
-		container.addChild(new Spacer(1));
-		const body =
-			typeof message.content === "string"
-				? message.content
-				: extractTextFromContent(message.content);
-		container.addChild(new Markdown(body, 0, 0, getMarkdownThemeSafely()));
-		/* prettier-ignore */
-		container.addChild(new Spacer(1));
-		container.addChild(new Text(details.footer));
-		return container;
+function finalizeExchange(
+	pi: ExtensionAPI,
+	runtime: SideChatRuntime,
+	mode: SideChatMode,
+): void {
+	const question = runtime.lastSubmittedQuestion;
+	if (!question) return;
+	const answer = runtime.transcriptState.lastAssistantText.trim();
+	const thread = runtime.threads[mode];
+	const data: SideChatThreadEntryData = {
+		mode,
+		question,
+		answer,
+		capturedAt: thread.originCapturedAt,
+		parentSnapshot: mode === "chat" ? thread.parentSnapshot : undefined,
+		timestamp: Date.now(),
 	};
+	thread.exchanges.push(data);
+	pi.appendEntry(SIDE_CHAT_THREAD_ENTRY_TYPE, data);
+	runtime.lastSubmittedQuestion = null;
+}
 
-function getMarkdownThemeSafely(): MarkdownTheme {
+function resetActiveSession(runtime: SideChatRuntime): void {
+	for (const unsubscribe of runtime.subscriptions) unsubscribe();
+	runtime.subscriptions.clear();
 	try {
-		return (getMarkdownTheme?.() ?? ({} as MarkdownTheme)) as MarkdownTheme;
+		runtime.activeSession?.dispose();
 	} catch {
-		return {} as MarkdownTheme;
+		// Ignore already-disposed child sessions.
 	}
+	runtime.activeSession = null;
+	runtime.activeSessionMode = null;
+}
+
+function extractTextFromContent(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.flatMap((item) => {
+			if (!item || typeof item !== "object") return [];
+			if ((item as { type?: string }).type !== "text") return [];
+			const text = (item as TextContent).text;
+			return typeof text === "string" ? [text] : [];
+		})
+		.join("");
 }

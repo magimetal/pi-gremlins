@@ -39,13 +39,15 @@ describe("pi-gremlins index execute v1", () => {
 		const { tool, commands, shortcuts } = createExtensionHarness();
 
 		expect(tool.name).toBe("pi-gremlins");
-		expect(commands.size).toBe(3);
+		expect(commands.size).toBe(5);
 		expect(commands.has("gremlins:primary")).toBe(true);
 		expect(commands.has("gremlins:chat")).toBe(true);
+		expect(commands.has("gremlins:chat:new")).toBe(true);
 		expect(commands.has("gremlins:tangent")).toBe(true);
+		expect(commands.has("gremlins:tangent:new")).toBe(true);
 		expect(commands.has("gremlins:view")).toBe(false);
 		expect(commands.has("gremlins:steer")).toBe(false);
-		expect(Array.from(shortcuts.keys())).toEqual(["ctrl+shift+m"]);
+		expect(Array.from(shortcuts.keys()).sort()).toEqual(["alt+/", "ctrl+shift+m"]);
 	});
 
 	test("rejects legacy parameter shapes at execute boundary", async () => {

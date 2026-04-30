@@ -151,66 +151,59 @@ Runtime behavior:
 - collapsed tool row shows source, status, intent/task preview, latest activity, usage, and errors
 - expanded tool row shows intent, task, cwd, model, thinking, latest text/tool data, usage, and errors
 
-## Side-chat: `/gremlins:chat` and `/gremlins:tangent`
+## Side-chat overlay: `/gremlins:chat` and `/gremlins:tangent`
 
-Side-chat support is absorbed from the standalone `pi-gizmo` package (PRD-0004,
-ADR-0004, issue #47). It exposes two slash commands inside `pi-gremlins`,
-built on the same in-process Pi SDK runtime as gremlin delegation, with zero
-tools and inline rendering.
+Side-chat support now uses persistent Pi overlays (PRD-0005, ADR-0005,
+issue #49). The older PRD-0004/ADR-0004 inline one-shot behavior has been
+superseded for side-chat UX, while its isolation rules remain: zero tools,
+no tangent parent transcript, and no per-side-chat model/thinking override.
 
 ### Commands
 
-- `/gremlins:chat <prompt>` — opens a fresh side-thread seeded with a
-  snapshot of the parent transcript captured at invocation time. Output is
-  rendered inline.
-- `/gremlins:tangent <prompt>` — opens a clean child session with no parent
-  transcript and no project context. Output is rendered inline.
-- Empty or whitespace-only argument prints a usage hint and does not start
-  a session.
+| Command | Behavior |
+| --- | --- |
+| `/gremlins:chat` | Open the side-chat overlay; resume the existing chat thread if one exists, otherwise start a new one. |
+| `/gremlins:chat:new` | Open the overlay with a fresh chat thread and discard prior chat history for chat only. |
+| `/gremlins:tangent` | Open the side-chat overlay; resume the existing tangent thread if one exists, otherwise start a new one. |
+| `/gremlins:tangent:new` | Open the overlay with a fresh tangent thread and discard prior tangent history only. |
 
-### v1 guarantees
+Optional inline prompt compatibility is retained: `/gremlins:chat <prompt>` and
+`/gremlins:tangent <prompt>` open the overlay and submit the prompt into the
+current thread.
 
-- Fresh side-thread per invocation; no thread persistence across invocations.
-- Inline rendering only — no overlay or popup viewer (ADR-0004 D1).
-- Zero tools — pure conversation surface; cannot read or modify the workspace
-  (ADR-0004 D4).
-- Built on `gremlin-session-factory` primitives; same isolation as gremlin
-  delegation (ADR-0003, ADR-0004 D3, D5): no parent extensions, skills,
-  prompts, themes, AGENTS files, or primary-agent markdown leak into the
-  side-thread.
-- Copy/paste is the supported handoff mechanism in v1; there is no
-  `inject` command.
+### Overlay behavior
 
-### Visual delimiter
+- Overlay is top-center, non-capturing, approximately 78% terminal width and
+  max height, with margin from terminal edges.
+- Header shows the active mode (`💬 chat` or `🧭 tangent`) and status.
+- Draft input is edited in the overlay; `Enter` submits and `Escape` closes
+  the overlay without losing completed thread history.
+- Transcript rows stream assistant text and support basic scroll keys
+  (`Up`, `Down`, `PageUp`, `PageDown`, `Home`, `End`).
 
-Side-chat turns are rendered with a fixed header and footer so they are
-unambiguous next to gremlin tool rows and parent assistant turns:
+### Persistence and isolation guarantees
 
-- Chat header: `💬 side-chat (chat)`
-- Tangent header: `🧭 side-chat (tangent)`
-- Common footer: `└─ side-chat ended ─`
+- Chat and tangent are independent threads.
+- Completed exchanges persist as Pi custom entries and restore on reload and
+  `/tree` navigation for the active branch.
+- `:new` writes a reset marker and discards only that mode's prior restored
+  thread.
+- Side-chat custom entries are filtered from parent LLM context as
+  defense-in-depth.
+- Chat captures the parent transcript snapshot once at thread origin; resumed
+  chat does not recapture later parent turns.
+- Tangent never captures parent transcript or project context.
+- Side-chat child sessions run with `tools: []`; they cannot read or modify
+  the workspace.
+- Side-chat child sessions do not load parent extensions, skills, prompts,
+  themes, AGENTS files, or primary-agent markdown.
 
-### Migration from `pi-gizmo`
+See [PRD-0005](docs/prd/0005-persistent-overlay-side-chat.md) and
+[ADR-0005](docs/adr/0005-persistent-overlay-side-chat.md).
 
-| Retired pi-gizmo command | pi-gremlins replacement | Notes |
-| --- | --- | --- |
-| `gizmo` (chat send) | `/gremlins:chat <prompt>` | Parent-context attached, fresh per invocation. |
-| `gizmo:tangent` | `/gremlins:tangent <prompt>` | Clean child session. |
-| `gizmo:new` | (none — structurally unnecessary) | Fresh-per-invocation makes explicit "new" redundant. |
-| `gizmo:recap` | (deferred) | No v1 replacement; revisit via future PRD. |
-| `gizmo:clear` | (none — structurally unnecessary) | Fresh-per-invocation makes "clear" redundant. |
-| `gizmo:inject` | (deferred) | Use copy/paste in v1; revisit via future PRD. |
-| `gizmo:summarize` | (deferred) | No v1 replacement. |
-| `gizmo:model` | (deferred) | No per-side-chat model override in v1. |
-| `gizmo:thinking` | (deferred) | No per-side-chat thinking override in v1. |
-
-See [PRD-0004](docs/prd/0004-pi-gremlins-side-chat-absorption-and-pi-gizmo-deprecation.md)
-and [ADR-0004](docs/adr/0004-side-chat-absorption-from-pi-gizmo.md).
-
-Note: do not run `pi-gizmo` and `pi-gremlins` side-chat commands
-concurrently if both are installed in the same Pi profile; migrate to
-`pi-gremlins` and disable / uninstall `pi-gizmo` to avoid duplicate command
-registration.
+Note: do not run `pi-gizmo` and `pi-gremlins` side-chat commands concurrently
+if both are installed in the same Pi profile; migrate to `pi-gremlins` and
+disable / uninstall `pi-gizmo` to avoid duplicate command registration.
 
 ## Primary agents
 
