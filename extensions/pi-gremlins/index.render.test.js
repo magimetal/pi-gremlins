@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { INLINE_RESULT_PREVIEW_LINES } from "./gremlin-rendering.ts";
 import { createExtensionHarness, resetV1ContractHarness } from "./v1-contract-harness.js";
 
 describe("pi-gremlins index render v1", () => {
@@ -28,6 +29,40 @@ describe("pi-gremlins index render v1", () => {
 		);
 
 		expect(rendered.text).toBe("Gremlin failed before details existed");
+	});
+
+	test("clamps collapsed inline render output to the preview visual line limit", () => {
+		const { tool } = createExtensionHarness();
+		const longToken = "burst-output-".repeat(12);
+		const result = {
+			content: [{ type: "text", text: "model-visible content remains untouched" }],
+			details: {
+				requestedCount: 10,
+				activeCount: 10,
+				completedCount: 0,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: Array.from({ length: 10 }, (_, index) => ({
+					gremlinId: `g${index + 1}`,
+					agent: `burster-${index + 1}`,
+					intent: `Emit dense output burst ${index + 1}`,
+					source: "project",
+					status: "active",
+					context: `line one for ${index + 1}\nline two for ${index + 1}\nline three for ${index + 1}`,
+					currentPhase: "streaming",
+					latestText: index === 0 ? longToken : `short burst update ${index + 1}`,
+					revision: index + 1,
+				})),
+				revision: 99,
+			},
+		};
+
+		const collapsed = tool.renderResult(result, { expanded: false, isPartial: true });
+		const lines = collapsed.render(32);
+
+		expect(lines.length).toBeLessThanOrEqual(INLINE_RESULT_PREVIEW_LINES);
+		expect(lines.join("\n")).toContain("Ctrl+O");
+		expect(result.content[0].text).toBe("model-visible content remains untouched");
 	});
 
 	test("renders collapsed and expanded inline detail through entry point with no popup language", () => {

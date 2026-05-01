@@ -130,8 +130,32 @@ function loadSkills({ cwd, agentDir, skillPaths = [], includeDefaults = false })
 	return { skills, diagnostics };
 }
 
+function truncateToVisualLines(text, maxVisualLines, width, paddingX = 0) {
+	if (!text) return { visualLines: [], skippedCount: 0 };
+	const contentWidth = Math.max(1, width - paddingX * 2);
+	const visualLines = [];
+	for (const logicalLine of String(text).split("\n")) {
+		if (logicalLine.length === 0) {
+			visualLines.push(" ".repeat(paddingX * 2));
+			continue;
+		}
+		for (let offset = 0; offset < logicalLine.length; offset += contentWidth) {
+			const chunk = logicalLine.slice(offset, offset + contentWidth);
+			visualLines.push(`${" ".repeat(paddingX)}${chunk}${" ".repeat(paddingX)}`);
+		}
+	}
+	if (visualLines.length <= maxVisualLines) {
+		return { visualLines, skippedCount: 0 };
+	}
+	return {
+		visualLines: visualLines.slice(-maxVisualLines),
+		skippedCount: visualLines.length - maxVisualLines,
+	};
+}
+
 mock.module("@mariozechner/pi-coding-agent", () => ({
 	DefaultResourceLoader,
+	truncateToVisualLines,
 	AuthStorage: {
 		inMemory: () => ({}),
 	},

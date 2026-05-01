@@ -1,3 +1,5 @@
+import { truncateToVisualLines } from "@mariozechner/pi-coding-agent";
+import { Text, type Component } from "@mariozechner/pi-tui";
 import { pushLimitedCache } from "./gremlin-cache-utils.js";
 import type { GremlinInvocationDetails } from "./gremlin-schema.js";
 import {
@@ -16,6 +18,13 @@ export interface RenderGremlinInvocationOptions {
 	expanded?: boolean;
 	width?: number;
 }
+
+// Pi's built-in BashExecutionComponent uses a private PREVIEW_LINES = 20 for
+// collapsed tool output and exports only truncateToVisualLines. Mirror that
+// private collapsed preview limit here until Pi exposes a shared constant.
+export const INLINE_RESULT_PREVIEW_LINES = 20;
+const INLINE_RESULT_PADDING_X = 1;
+const COLLAPSED_TRUNCATION_HINT_PREFIX = "…";
 
 const RENDER_CACHE_LIMIT = 128;
 const RENDER_SEGMENT_CACHE_LIMIT = 256;
@@ -159,6 +168,7 @@ function styleLine(
 	if (!line) return line;
 	if (line.startsWith("Gremlins🧌")) return theme.fg("accent", theme.bold(line));
 	if (line === "Ctrl+O expands inline detail.") return theme.fg("dim", line);
+	if (line.startsWith(COLLAPSED_TRUNCATION_HINT_PREFIX)) return theme.fg("dim", line);
 	if (line === "No gremlins requested.") return theme.fg("muted", line);
 	if (line.startsWith("intent · ")) return theme.fg("muted", line);
 	if (line.startsWith("task · ")) return theme.fg("text", line);
@@ -205,4 +215,66 @@ export function renderGremlinInvocationText(
 		? buildExpandedText(details, options.width)
 		: buildCollapsedText(details, options.width);
 	return pushRenderCache(cacheKey, text);
+}
+
+function createCollapsedTruncationHint(skippedCount: number): string {
+	return `${COLLAPSED_TRUNCATION_HINT_PREFIX} ${skippedCount} more lines. Ctrl+O expands.`;
+}
+
+export class GremlinInlineResultComponent implements Component {
+	readonly text: string;
+	private cachedWidth?: number;
+	private cachedLines?: string[];
+
+	constructor(
+		text: string,
+		private readonly expanded: boolean,
+	) {
+		this.text = text;
+	}
+
+	render(width: number): string[] {
+		if (this.cachedLines && this.cachedWidth === width) return this.cachedLines;
+
+		if (this.expanded) {
+			this.cachedLines = new Text(this.text).render(width);
+			this.cachedWidth = width;
+			return this.cachedLines;
+		}
+
+		const fullResult = truncateToVisualLines(
+			this.text,
+			INLINE_RESULT_PREVIEW_LINES,
+			width,
+			INLINE_RESULT_PADDING_X,
+		);
+		if (fullResult.skippedCount === 0) {
+			this.cachedLines = fullResult.visualLines;
+			this.cachedWidth = width;
+			return this.cachedLines;
+		}
+
+		const bodyResult = truncateToVisualLines(
+			this.text,
+			INLINE_RESULT_PREVIEW_LINES - 1,
+			width,
+			INLINE_RESULT_PADDING_X,
+		);
+		const hint = truncateToVisualLines(
+			createCollapsedTruncationHint(bodyResult.skippedCount + 1),
+			1,
+			width,
+			INLINE_RESULT_PADDING_X,
+		).visualLines;
+		this.cachedLines = [...bodyResult.visualLines, ...hint].slice(
+			-INLINE_RESULT_PREVIEW_LINES,
+		);
+		this.cachedWidth = width;
+		return this.cachedLines;
+	}
+
+	invalidate(): void {
+		this.cachedWidth = undefined;
+		this.cachedLines = undefined;
+	}
 }

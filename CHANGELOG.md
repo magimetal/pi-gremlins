@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pi-gremlins` maintainability improved by extracting shared cache helpers, tool execution flow, and gremlin runner event projection into smaller focused modules/functions without changing the public tool contract.
 
 ### Fixed
+- **Inline gremlin render line clamp** (issue #61): collapsed inline sub-agent results now enforce the preview visual-line limit during high-volume output bursts, including narrow-width wrapped lines.
 - **Side-chat overlay UX and realtime rendering** (PRD-0005, ADR-0005, issue #54): overlay now has explicit border/gutters, 80% viewport-height sizing with internal transcript scrolling, reliable Escape close handling, and render invalidation for incoming child-session updates without keyboard input.
 - **Full Gremlin final messages in tool results** (issue #50): parent agents now receive each terminal gremlin's full final output or error text in model-visible tool result content while preserving collapsed inline summary previews.
 - **Primary-agent selection persistence** (PRD-0003, ADR-0003, issue #42): `/mohawk` selections, shortcut cycling, and cleared primary-agent state now persist in project-local `.pi/settings.json`, restore in fresh Pi sessions, and reset with a warning if the saved primary agent disappears.
