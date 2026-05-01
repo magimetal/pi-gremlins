@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-04-30
 - **Decision Maker:** magimetal
-- **Related:** PRD-0005, PRD-0004, ADR-0004, ADR-0003, GitHub issue #49
+- **Related:** PRD-0005, PRD-0007, PRD-0004, ADR-0004, ADR-0003, GitHub issue #49, GitHub issue #57
 - **Supersedes:** ADR-0004 decisions D1 (inline-only/no overlay) and D2 (no `pi.appendEntry` side-chat persistence).
 
 ## Context

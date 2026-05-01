@@ -174,10 +174,13 @@ See [PRD-0006](docs/prd/0006-active-gremlin-session-steering.md) and [ADR-0006](
 
 ## Side-chat overlay: `/gremlins:chat` and `/gremlins:tangent`
 
-Side-chat support now uses persistent Pi overlays (PRD-0005, ADR-0005,
-issues #49 and #54). The older PRD-0004/ADR-0004 inline one-shot behavior has been
-superseded for side-chat UX, while its isolation rules remain: zero tools,
-no tangent parent transcript, and no per-side-chat model/thinking override.
+Side-chat support uses persistent Pi overlays (PRD-0005, ADR-0005,
+issues #49 and #54) with SDK default tools plus enabled extension custom tools
+(PRD-0008, ADR-0008, issue #57). Side-chat child sessions omit explicit
+`tools`, so Pi SDK default built-ins apply; current expected built-ins include
+`read`, `bash`, `edit`, and `write`. Enabled extension custom tools may be
+available through a fresh child extension loader. Tangent still receives no
+parent transcript, and side-chat has no per-chat model/thinking override.
 
 ### Commands
 
@@ -202,6 +205,20 @@ current thread.
 - Transcript rows stream assistant text and support basic scroll keys
   (`Up`, `Down`, `PageUp`, `PageDown`, `Home`, `End`).
 
+### Tool and extension behavior
+
+- Side-chat does not read or require side-chat-specific `.pi/settings.json`
+  capability configuration.
+- Side-chat omits explicit `tools` during child session creation. Pi SDK owns
+  the default built-in tool set; current expected defaults include `read`,
+  `bash`, `edit`, and `write`.
+- Enabled extension custom tools may be available through a fresh child
+  `DefaultResourceLoader`; existing active side-chat sessions reuse their child
+  resources rather than reloading extensions on every prompt.
+- Non-tool extension surfaces are stripped where feasible: side-chat does not
+  inherit parent prompts, themes, skills, AGENTS/context files, append-system
+  prompt material, primary-agent markdown, or hidden parent context.
+
 ### Persistence and isolation guarantees
 
 - Chat and tangent are independent threads.
@@ -214,13 +231,16 @@ current thread.
 - Chat captures the parent transcript snapshot once at thread origin; resumed
   chat does not recapture later parent turns.
 - Tangent never captures parent transcript or project context.
-- Side-chat child sessions run with `tools: []`; they cannot read or modify
-  the workspace.
-- Side-chat child sessions do not load parent extensions, skills, prompts,
-  themes, AGENTS files, or primary-agent markdown.
+- Side-chat child sessions omit explicit tools so SDK defaults apply and enabled
+  extension custom tools can be discovered by the fresh child loader.
+- Side-chat child sessions do not load parent prompts, themes, skills,
+  AGENTS files, primary-agent markdown, parent transcript history, or hidden
+  parent context outside the ADR-0005 chat origin snapshot.
 
-See [PRD-0005](docs/prd/0005-persistent-overlay-side-chat.md) and
-[ADR-0005](docs/adr/0005-persistent-overlay-side-chat.md).
+See [PRD-0005](docs/prd/0005-persistent-overlay-side-chat.md),
+[ADR-0005](docs/adr/0005-persistent-overlay-side-chat.md),
+[PRD-0008](docs/prd/0008-side-chat-sessions-use-sdk-default-tools-and-extension-custom-tools.md),
+and [ADR-0008](docs/adr/0008-sdk-default-side-chat-tool-capabilities.md).
 
 Note: do not run `pi-gizmo` and `pi-gremlins` side-chat commands concurrently
 if both are installed in the same Pi profile; migrate to `pi-gremlins` and

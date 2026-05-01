@@ -1,5 +1,9 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { beforeEach, describe, expect, test } from "bun:test";
 import "./v1-contract-harness.js";
+import { getResourceLoaderInstances, resetV1ContractHarness } from "./v1-contract-harness.js";
+import { createWorkspace } from "./test-helpers.js";
 
 function createFakePi() {
 	const commands = new Map();
@@ -22,13 +26,13 @@ function createFakePi() {
 	};
 }
 
-function createFakeCtx({ branchEntries = [], hasUI = true, model } = {}) {
+function createFakeCtx({ branchEntries = [], hasUI = true, model, cwd = "/tmp" } = {}) {
 	const notifications = [];
 	const customCalls = [];
 	let customComponent;
 	let renderRequests = 0;
 	return {
-		cwd: "/tmp",
+		cwd,
 		hasUI,
 		ui: {
 			notify(message, type = "info") {
@@ -150,7 +154,8 @@ describe("side-chat overlay command contract", () => {
 		await pi.commands.get("gremlins:tangent").handler("explore", ctx);
 		expect(factory.calls.length).toBe(1);
 		expect(factory.calls[0].mode).toBe("tangent");
-		expect(factory.calls[0].sessionConfig.tools).toEqual([]);
+		expect(factory.calls[0].sessionConfig.tools).toBeUndefined();
+		expect(Object.hasOwn(factory.calls[0].sessionConfig, "tools")).toBe(false);
 		expect(pi.entries.some((entry) => entry.customType === "pi-gremlins:side-chat-thread")).toBe(true);
 	});
 
@@ -191,5 +196,61 @@ describe("side-chat overlay command contract", () => {
 			],
 		});
 		expect(result.messages).toEqual([{ role: "user", content: "keep" }]);
+	});
+
+	test("old side-chat settings are ignored and cannot change session tools", async () => {
+		const { registerSideChatCommands } = await loadCommandModule();
+		const { repoRoot } = createWorkspace();
+		const piDir = path.join(repoRoot, ".pi");
+		fs.mkdirSync(piDir, { recursive: true });
+		fs.writeFileSync(path.join(piDir, "settings.json"), JSON.stringify({
+			"pi-gremlins": { sideChat: { chat: { tools: ["unknown"], skillPaths: ["bad"] } } },
+		}));
+		const factory = createFakeSessionFactory();
+		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
+		await pi.commands.get("gremlins:chat").handler("inspect", createFakeCtx({ cwd: repoRoot }));
+		expect(factory.calls[0].mode).toBe("chat");
+		expect(factory.calls[0].sessionConfig.tools).toBeUndefined();
+		await pi.commands.get("gremlins:tangent:new").handler("explore", createFakeCtx({ cwd: repoRoot }));
+		expect(factory.calls[1].mode).toBe("tangent");
+		expect(factory.calls[1].sessionConfig.tools).toBeUndefined();
+		expect(factory.calls[1].sessionConfig.prompt).not.toContain("parent-transcript-snapshot");
+	});
+
+	test("active side-chat session reuse does not construct another resource loader", async () => {
+		resetV1ContractHarness();
+		const { registerSideChatCommands } = await loadCommandModule();
+		const factory = createFakeSessionFactory();
+		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
+		const ctx = createFakeCtx();
+		await pi.commands.get("gremlins:chat").handler("first", ctx);
+		await pi.commands.get("gremlins:chat").handler("second", ctx);
+		expect(factory.calls.length).toBe(1);
+		expect(factory.sessions[0]).toBeDefined();
+		expect(getResourceLoaderInstances().length).toBe(1);
+	});
+
+	test("tool-like assistant events still persist a completed side-chat exchange", async () => {
+		const { registerSideChatCommands } = await loadCommandModule();
+		const factory = createFakeSessionFactory({
+			events: [
+				{ type: "tool_call", toolCall: { name: "read" } },
+				{ type: "tool_result", toolResult: { content: "result" } },
+				{ type: "message_start", message: { role: "assistant" } },
+				{ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "answer" } },
+				{ type: "turn_end", turnIndex: 1 },
+			],
+		});
+		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
+		await pi.commands.get("gremlins:tangent").handler("explore", createFakeCtx());
+		const threadEntries = pi.entries.filter(
+			(entry) => entry.customType === "pi-gremlins:side-chat-thread",
+		);
+		expect(threadEntries.length).toBe(1);
+		expect(threadEntries[0].data).toEqual(expect.objectContaining({
+			mode: "tangent",
+			question: "explore",
+			answer: "answer",
+		}));
 	});
 });

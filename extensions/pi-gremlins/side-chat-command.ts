@@ -7,6 +7,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import type { OverlayHandle } from "@mariozechner/pi-tui";
 import {
+	buildSideChatPrompt,
 	buildSideChatSessionConfig,
 	createSideChatSession as defaultCreateSideChatSession,
 	type ParentTranscriptEntry,
@@ -331,15 +332,11 @@ export function registerSideChatCommands(
 			}
 		}
 
-		const prompt = buildSideChatSessionConfig({
+		const prompt = buildSideChatPrompt({
 			mode,
 			userPrompt: buildThreadHistoryPrompt(thread, userPrompt),
 			parentSnapshot: mode === "chat" ? thread.parentSnapshot : undefined,
-			parentModel: ctx.model,
-			parentThinking: undefined,
-			cwd: ctx.cwd,
-			modelRegistry: ctx.modelRegistry,
-		}).prompt;
+		});
 		try {
 			await session.prompt(prompt);
 		} catch (error) {

@@ -89,3 +89,5 @@ Maintain in `docs/prd/README.md`:
 | 0004 | Pi Gremlins Side-Chat Absorption and pi-gizmo Deprecation | Completed | 2026-04-29 |
 | 0005 | Persistent Overlay Side-Chat                            | Completed | 2026-04-30 |
 | 0006 | Active Gremlin Session Steering                         | Completed | 2026-04-30 |
+| 0007 | Allow Side-Chat Sessions to Use Approved Skills and Tools | Superseded by PRD-0008 | 2026-05-01 |
+| 0008 | Side-Chat Sessions Use SDK Default Tools and Extension Custom Tools | Completed | 2026-05-01 |
