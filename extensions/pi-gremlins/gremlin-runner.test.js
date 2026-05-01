@@ -447,4 +447,59 @@ describe("gremlin runner v1 contract", () => {
 		expect(fake.getDisposedCount()).toBe(1);
 		expect(events).toEqual(["abort", "dispose"]);
 	});
+
+	test("registers session before prompt and unregisters exact handle before dispose after prompt rejection", async () => {
+		const { runSingleGremlin } = await import("./gremlin-runner.ts");
+		const events = [];
+		const fake = createFakeSession({
+			onPrompt: async () => {
+				events.push("prompt");
+				throw new Error("prompt rejected");
+			},
+		});
+		const originalDispose = fake.session.dispose;
+		fake.session.dispose = () => {
+			events.push("dispose");
+			originalDispose();
+		};
+		const handle = Symbol("active");
+		const registry = {
+			registerActiveGremlinSession(entry) {
+				events.push(`register:${entry.gremlinId}:${entry.toolCallId}:${entry.agent}:${entry.session === fake.session}`);
+				return handle;
+			},
+			unregisterActiveGremlinSession(receivedHandle) {
+				events.push(`unregister:${receivedHandle === handle}`);
+				return true;
+			},
+			resolveActiveGremlinSession() {
+				return { status: "missing" };
+			},
+			clearActiveGremlinSessions() {},
+		};
+
+		const result = await runSingleGremlin({
+			gremlinId: "g1",
+			toolCallId: "tool-123",
+			activeSessionRegistry: registry,
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
+			definition: {
+				name: "researcher",
+				source: "project",
+				filePath: "/tmp/researcher.md",
+				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
+				frontmatter: {},
+			},
+			createSession: async () => fake,
+		});
+
+		expect(result.status).toBe("failed");
+		expect(result.errorMessage).toBe("prompt rejected");
+		expect(events).toEqual([
+			"register:g1:tool-123:researcher:true",
+			"prompt",
+			"unregister:true",
+			"dispose",
+		]);
+	});
 });

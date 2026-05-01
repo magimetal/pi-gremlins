@@ -22,7 +22,7 @@ Both packages inspect the same agent directories and parse similar markdown fron
 
 Keeping these behaviors split forces users to install and reason about two packages for one agent-orchestration workflow. Merging primary-agent behavior into `pi-gremlins` changes the extension/package boundary and adds a parent-session prompt mutation path beside existing gremlin child-session delegation, so the architecture decision needs to be explicit before implementation.
 
-ADR-0002 remains in force: gremlin execution stays in-process through SDK child sessions and must not reintroduce nested Pi CLI subprocess runtime, popup viewer surfaces, chain mode, targeted steering, package gremlin discovery, or scope toggles.
+ADR-0002 remains in force: gremlin execution stays in-process through SDK child sessions and must not reintroduce nested Pi CLI subprocess runtime, popup viewer surfaces, chain mode, legacy targeted steering, package gremlin discovery, or scope toggles. Official active child-session steering is governed separately by ADR-0006.
 
 ## Decision Drivers
 
@@ -142,9 +142,10 @@ The implementation must follow these architectural constraints:
 
 This ADR does not add external dependencies. It records package and runtime boundary choices for issue #39 before implementation.
 
-ADR-0002 still governs gremlin execution architecture. If implementation pressure suggests restoring nested Pi subprocess execution, popup viewers, chain mode, targeted steering, package gremlin discovery, or scope toggles, stop and write a new ADR instead of folding those changes into issue #39.
+ADR-0002 still governs gremlin execution architecture. If implementation pressure suggests restoring nested Pi subprocess execution, popup viewers, chain mode, legacy targeted steering, package gremlin discovery, or scope toggles, stop and write a new ADR instead of folding those changes into issue #39. ADR-0006 separately permits official child `AgentSession.steer(message)` support for active gremlin sessions only.
 
 ## Status History
 
 - 2026-04-25: Accepted; records issue #39 package-boundary decision to merge primary-agent selection and prompt injection into `pi-gremlins` while deprecating separate `pi-mohawk` package after equivalent behavior ships
 - 2026-04-25: Clarified issue #41 isolation constraint that primary-agent prompt injection stays parent-only and is excluded from gremlin child sessions
+- 2026-04-30: Clarified issue #53 partial supersession by ADR-0006: official active child-session steering is allowed; legacy targeted steering remains prohibited

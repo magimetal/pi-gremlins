@@ -17,6 +17,7 @@ import type {
 	GremlinRunResult,
 } from "./gremlin-schema.js";
 import { runGremlinBatch } from "./gremlin-scheduler.js";
+import type { ActiveGremlinSessionRegistry } from "./gremlin-session-registry.js";
 import { buildGremlinProgressSummary } from "./gremlin-summary.js";
 
 export type PiGremlinsArgs = { gremlins: GremlinRequest[] };
@@ -25,11 +26,13 @@ type PiGremlinsToolResult = AgentToolResult<GremlinInvocationDetails> & {
 };
 
 export interface ExecutePiGremlinsToolOptions {
+	toolCallId: string;
 	params: PiGremlinsArgs;
 	signal?: AbortSignal;
 	onUpdate?: AgentToolUpdateCallback<GremlinInvocationDetails>;
 	ctx: ExtensionContext;
 	discovery: GremlinDiscoveryCache;
+	activeSessionRegistry?: ActiveGremlinSessionRegistry;
 	notifyDiagnostics: (diagnostics: AgentDiscoveryDiagnostic[]) => void;
 }
 
@@ -128,11 +131,13 @@ function buildModelVisibleContent(
 }
 
 export async function executePiGremlinsTool({
+	toolCallId,
 	params,
 	signal,
 	onUpdate,
 	ctx,
 	discovery,
+	activeSessionRegistry,
 	notifyDiagnostics,
 }: ExecutePiGremlinsToolOptions): Promise<PiGremlinsToolResult> {
 	if (!Array.isArray(params.gremlins) || params.gremlins.length === 0) {
@@ -180,11 +185,13 @@ export async function executePiGremlinsTool({
 
 			return runSingleGremlin({
 				gremlinId,
+				toolCallId,
 				request,
 				definition: gremlin,
 				parentModel: ctx.model,
 				modelRegistry: ctx.modelRegistry,
 				signal: childSignal,
+				activeSessionRegistry,
 				onUpdate: ({ patch }) => publishUpdate?.(patch),
 			});
 		},

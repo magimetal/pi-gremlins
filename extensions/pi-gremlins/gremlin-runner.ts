@@ -15,6 +15,10 @@ import type {
 	GremlinRunResult,
 	GremlinUsage,
 } from "./gremlin-schema.js";
+import type {
+	ActiveGremlinSessionHandle,
+	ActiveGremlinSessionRegistry,
+} from "./gremlin-session-registry.js";
 
 export interface GremlinRunnerUpdate {
 	gremlinId: string;
@@ -48,6 +52,7 @@ interface GremlinEvent {
 type GremlinSession = CreateAgentSessionResult["session"] & {
 	subscribe?: (listener: (event: GremlinEvent) => void) => () => void;
 	prompt: (text: string) => Promise<void>;
+	steer: (message: string) => Promise<unknown> | unknown;
 	abort?: () => Promise<void>;
 	dispose: () => void;
 	getContextUsage?: () => { tokens: number | null } | undefined;
@@ -65,6 +70,7 @@ interface TextDeltaPublisher {
 
 export interface RunSingleGremlinOptions {
 	gremlinId: string;
+	toolCallId?: string;
 	request: GremlinRequest;
 	definition: GremlinDefinition;
 	parentModel?: string | Model<any>;
@@ -72,6 +78,7 @@ export interface RunSingleGremlinOptions {
 	modelRegistry?: ModelRegistry;
 	signal?: AbortSignal;
 	onUpdate?: (update: GremlinRunnerUpdate) => void;
+	activeSessionRegistry?: ActiveGremlinSessionRegistry;
 	createSession?: (
 		options: Parameters<typeof createGremlinSession>[0],
 	) => Promise<CreateAgentSessionResult>;
@@ -349,10 +356,12 @@ export async function runSingleGremlin({
 	request,
 	definition,
 	parentModel,
+	toolCallId = "unknown-tool-call",
 	parentThinking,
 	modelRegistry,
 	signal,
 	onUpdate,
+	activeSessionRegistry,
 	createSession = createGremlinSession,
 }: RunSingleGremlinOptions): Promise<GremlinRunResult> {
 	const state = buildBaseResult(gremlinId, request, definition);
@@ -404,6 +413,7 @@ export async function runSingleGremlin({
 	}
 
 	let session: GremlinSession | undefined;
+	let activeSessionHandle: ActiveGremlinSessionHandle | undefined;
 	let unsubscribe: (() => void) | undefined;
 	let abortPromise: Promise<void> | undefined;
 	let abortError: unknown;
@@ -440,6 +450,12 @@ export async function runSingleGremlin({
 			modelRegistry,
 		});
 		session = created.session as GremlinSession;
+		activeSessionHandle = activeSessionRegistry?.registerActiveGremlinSession({
+			gremlinId,
+			toolCallId,
+			agent: request.agent,
+			session,
+		});
 		unsubscribe = session.subscribe?.((event: GremlinEvent) => {
 			projectGremlinEvent(event, state, session, publish, textDeltaPublisher);
 		});
@@ -469,6 +485,10 @@ export async function runSingleGremlin({
 	} finally {
 		signal?.removeEventListener("abort", abortListener);
 		unsubscribe?.();
+		if (activeSessionHandle) {
+			activeSessionRegistry?.unregisterActiveGremlinSession(activeSessionHandle);
+			activeSessionHandle = undefined;
+		}
 		await abortPromise;
 		if (abortError && !state.errorMessage) {
 			publish({

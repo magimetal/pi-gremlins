@@ -151,6 +151,27 @@ Runtime behavior:
 - collapsed tool row shows source, status, intent/task preview, latest activity, usage, and errors
 - expanded tool row shows intent, task, cwd, model, thinking, latest text/tool data, usage, and errors
 
+## Active gremlin steering: `/gremlins:steer`
+
+Use `/gremlins:steer <G-id> <message>` to steer an active gremlin child session through the official Pi SDK `AgentSession.steer(message)` API.
+
+Example:
+
+```text
+/gremlins:steer G1 keep investigating the auth flow before summarizing
+```
+
+Behavior:
+
+- `G-id` is the displayed gremlin id such as `g1`; matching is case-insensitive, so `G1` and `g1` target the same active id when unambiguous.
+- The id is parsed from the first non-empty token. The message is the remaining text after the id with separator whitespace normalized; internal multi-word spacing and punctuation are preserved and sent to `AgentSession.steer(message)`.
+- Only currently active gremlin sessions can be steered. Unknown, completed, canceled, failed, setup-failed, stale, or disposed ids are rejected.
+- Concurrent batches can each have a `g1`. If more than one active session shares an id, steering that id fails as ambiguous instead of guessing.
+- Pi SDK queues steering for the target child session after its current child tool calls finish and before its next child LLM call; it does not interrupt a running tool call immediately.
+- This is official child-session steering. It does not restore legacy subprocess/RPC steering, parent-message injection, prompt-history injection, popup UI, or `/gremlins:view` viewer controls.
+
+See [PRD-0006](docs/prd/0006-active-gremlin-session-steering.md) and [ADR-0006](docs/adr/0006-official-sdk-steering-for-active-gremlin-sessions.md).
+
 ## Side-chat overlay: `/gremlins:chat` and `/gremlins:tangent`
 
 Side-chat support now uses persistent Pi overlays (PRD-0005, ADR-0005,

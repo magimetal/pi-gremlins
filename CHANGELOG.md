@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repaired reliability audit findings for renderer cache uniqueness, same-size agent discovery changes, corrupt primary-agent settings recovery, effective request-cwd discovery, and ambiguous gremlin model reporting.
 
 ### Added
+- **Active gremlin session steering** (PRD-0006, ADR-0006, issue #53): `/gremlins:steer <G-id> <message>` now queues steering directly through the active child `AgentSession.steer(message)` API, with lifecycle-scoped registry cleanup, case-insensitive ids, duplicate-id ambiguity rejection, and fail-closed handling for stale or terminal sessions.
 - **Side-chat absorbed from pi-gizmo** (PRD-0004, ADR-0004, issue #47): pi-gremlins now ships `/gremlins:chat` (parent-transcript snapshot) and `/gremlins:tangent` (clean child session), rebuilt on the existing in-process SDK runtime with zero tools and inline rendering. See README "Side-chat" section for the pi-gizmo migration table.
 - Generated agent guidance now covers root, docs, and extension scopes so contributors get current PRD/ADR, primary-agent, and runtime boundaries before editing.
 - Shared role-aware agent parsing/discovery modules now load `agent_type: sub-agent` gremlins and `agent_type: primary` primary agents from user/project agent directories while preserving strict role separation and project-over-user precedence.

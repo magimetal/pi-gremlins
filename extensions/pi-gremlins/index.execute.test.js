@@ -35,18 +35,18 @@ describe("pi-gremlins index execute v1", () => {
 		resetV1ContractHarness();
 	});
 
-	test("registers tool plus primary-agent compatibility command with no legacy viewer or steering commands", () => {
+	test("registers tool plus primary-agent compatibility commands with official steering but no legacy viewer", () => {
 		const { tool, commands, shortcuts } = createExtensionHarness();
 
 		expect(tool.name).toBe("pi-gremlins");
-		expect(commands.size).toBe(5);
+		expect(commands.size).toBe(6);
 		expect(commands.has("gremlins:primary")).toBe(true);
+		expect(commands.has("gremlins:steer")).toBe(true);
 		expect(commands.has("gremlins:chat")).toBe(true);
 		expect(commands.has("gremlins:chat:new")).toBe(true);
 		expect(commands.has("gremlins:tangent")).toBe(true);
 		expect(commands.has("gremlins:tangent:new")).toBe(true);
 		expect(commands.has("gremlins:view")).toBe(false);
-		expect(commands.has("gremlins:steer")).toBe(false);
 		expect(Array.from(shortcuts.keys()).sort()).toEqual(["alt+/", "ctrl+shift+m"]);
 	});
 
@@ -447,5 +447,62 @@ describe("pi-gremlins index execute v1", () => {
 			model: "openai/missing",
 			errorMessage: "Unknown gremlin model: openai/missing",
 		});
+	});
+
+	test("steers only the active child session during its run and rejects stale ids after cleanup", async () => {
+		const workspace = createWorkspace();
+		setMockAgentDir(workspace.userRoot);
+		const { tool, commands, handlers } = createExtensionHarness();
+		writeGremlinFile(workspace.userAgentsDir, "researcher.md", "researcher", "model: openai/gpt-5-mini\n");
+
+		let finishPrompt;
+		const steerMessages = [];
+		setCreateAgentSessionImpl(async () => ({
+			session: {
+				subscribe: () => () => {},
+				async prompt() {
+					await new Promise((resolve) => {
+						finishPrompt = resolve;
+					});
+				},
+				async steer(message) {
+					steerMessages.push(message);
+				},
+				async abort() {},
+				dispose() {},
+			},
+			extensionsResult: {},
+		}));
+
+		const notifications = [];
+		const ctx = createExecutionContext(workspace.repoRoot);
+		ctx.ui.notify = (message, type = "info") => notifications.push({ message, type });
+		const executePromise = tool.execute(
+			"active-steer-run",
+			{ gremlins: [{ intent: "Map auth behavior", agent: "researcher", context: "Find auth flow" }] },
+			undefined,
+			undefined,
+			ctx,
+		);
+		for (let attempts = 0; !finishPrompt && attempts < 50; attempts += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+		expect(finishPrompt).toBeFunction();
+
+		await commands.get("gremlins:steer").handler("G1 keep investigating auth flow", ctx);
+		expect(steerMessages).toEqual(["keep investigating auth flow"]);
+		expect(notifications).toContainEqual({ message: "Steering queued for g1 (researcher).", type: "info" });
+
+		handlers.get("session_shutdown")();
+		await commands.get("gremlins:steer").handler("G1 after shutdown", ctx);
+		expect(steerMessages).toEqual(["keep investigating auth flow"]);
+		expect(notifications.at(-1)).toMatchObject({ type: "warning" });
+
+		finishPrompt();
+		await executePromise;
+		await commands.get("gremlins:steer").handler("g1 stale message", ctx);
+		expect(steerMessages).toEqual(["keep investigating auth flow"]);
+		expect(notifications.at(-1)).toMatchObject({ type: "warning" });
+		expect(notifications.at(-1).message).toContain("No active gremlin found for g1");
 	});
 });
