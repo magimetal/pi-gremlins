@@ -3,13 +3,16 @@
  *
  * Produces isolated `/gremlins:chat` and `/gremlins:tangent` SDK child
  * sessions that omit explicit `tools` so Pi SDK default built-ins apply, while
- * using a fresh child DefaultResourceLoader for enabled extension custom tools.
+ * using a fresh child DefaultResourceLoader for enabled extension custom tools
+ * and child-session skill guidance.
  *
  * Guardrails:
  * - Does NOT import `gremlin-prompt.ts` / `buildGremlinPrompt`.
  * - Does NOT read side-chat-specific `.pi/settings.json` capability config.
- * - Does NOT pass parent resources, prompts, themes, skills, AGENTS files, or
+ * - Does NOT pass parent resources, prompts, themes, AGENTS files, or
  *   primary-agent material into the child loader.
+ * - Does NOT inherit parent-loaded skills; fresh child-session skills may load
+ *   through the child resource-loader boundary.
  */
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
@@ -93,8 +96,9 @@ function buildSideChatSystemPrompt(mode: SideChatMode): string {
 		modeLine,
 		"Pi SDK default built-in tools may be available because this child session does not set an explicit tool allowlist; current SDK defaults may include read, bash/shell, edit, and write capabilities.",
 		"Enabled extension custom tools may also be available through the child session's fresh extension loader.",
+		"Fresh child-session skills and skill guidance may also be available through the child session's fresh resource loader; parent-loaded skills are not inherited.",
 		contextLine,
-		"Do not assume parent prompts, themes, skills, AGENTS files, primary-agent material, or hidden parent context are inherited.",
+		"Do not assume parent prompts, themes, AGENTS files, primary-agent material, or hidden parent context are inherited.",
 		"Be terse by default. Answer directly. Ask one focused question if input is ambiguous.",
 	].join("\n");
 }
@@ -150,16 +154,14 @@ function createSideChatResourceLoader(options: {
 		agentDir: options.agentDir,
 		settingsManager: options.settingsManager,
 		extensionFactories: options.extensionFactories,
-		noSkills: true,
 		noPromptTemplates: true,
 		noThemes: true,
 		noContextFiles: true,
 		systemPrompt: options.systemPrompt,
 		appendSystemPrompt: [],
 		// Preserve extension records/runtime so registered custom tools survive.
-		// Strip non-tool surfaces via the resource getters below instead of
-		// replacing `extensions` with [] — ExtensionRunner needs those records.
-		skillsOverride: () => ({ skills: [], diagnostics: [] }),
+		// Strip non-tool/non-skill surfaces via the resource getters below instead
+		// of replacing `extensions` with [] — ExtensionRunner needs those records.
 		promptsOverride: () => ({ prompts: [], diagnostics: [] }),
 		themesOverride: () => ({ themes: [], diagnostics: [] }),
 		agentsFilesOverride: () => ({ agentsFiles: [] }),
