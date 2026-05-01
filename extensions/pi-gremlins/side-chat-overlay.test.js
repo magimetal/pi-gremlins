@@ -9,8 +9,12 @@ describe("side-chat overlay component", () => {
 		let submitted = "";
 		let closed = false;
 		let done = false;
+		let renderRequests = 0;
 		const component = new SideChatOverlayComponent(
-			{ requestRender() {} },
+			{
+				requestRender() { renderRequests += 1; },
+				terminal: { rows: 30 },
+			},
 			{
 				getMode: () => "chat",
 				getTranscriptState: () => createInitialSideChatTranscriptState(),
@@ -29,5 +33,26 @@ describe("side-chat overlay component", () => {
 		component.handleInput("\u001b");
 		expect(closed).toBe(true);
 		expect(done).toBe(true);
+		expect(renderRequests).toBeGreaterThan(0);
+	});
+
+	test("renders bordered 80vh-height overlay with internal transcript space", () => {
+		const component = new SideChatOverlayComponent(
+			{ requestRender() {}, terminal: { rows: 30 } },
+			{
+				getMode: () => "chat",
+				getTranscriptState: () => createInitialSideChatTranscriptState(),
+				getDraft: () => "",
+				setDraft: () => {},
+				submitDraft: () => {},
+				close: () => {},
+			},
+			() => {},
+		);
+		const lines = component.render(72);
+		expect(lines.length).toBe(24);
+		expect(lines[0]).toStartWith("┌");
+		expect(lines.at(-1)).toStartWith("└");
+		expect(lines.join("\n")).toContain("No side-chat messages yet.");
 	});
 });
