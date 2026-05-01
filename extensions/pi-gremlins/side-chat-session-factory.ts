@@ -1,7 +1,7 @@
 /**
  * Side-chat session factory (PRD-0004 / ADR-0004).
  *
- * Produces an isolated, zero-tool, fresh-per-invocation SDK session for a
+ * Produces an isolated, capability-profile-aware SDK session for a
  * single `/gremlins:chat` or `/gremlins:tangent` invocation. Composes the
  * gremlin-session-factory primitives to inherit ADR-0003 isolation
  * (no parent extensions / skills / prompts / themes / AGENTS / primary-agent
@@ -22,7 +22,7 @@
  * Guardrails:
  * - Does NOT import `gremlin-prompt.ts` / `buildGremlinPrompt`.
  * - Does NOT mutate or re-export `gremlin-session-factory.ts` shapes.
- * - Does NOT register any tools, even default ones.
+ * - Does NOT register any tools except explicitly approved side-chat tools.
  * - Does NOT expose per-side-chat model/thinking overrides (D8).
  */
 
@@ -33,6 +33,10 @@ import type {
 	ModelRegistry,
 	ResourceLoader,
 } from "@mariozechner/pi-coding-agent";
+import {
+	readSideChatCapabilities,
+	type ResolvedSideChatCapabilities,
+} from "./side-chat-capabilities.js";
 import {
 	createEmptyGremlinResources,
 	createGremlinSession,
@@ -61,6 +65,7 @@ export interface BuildSideChatSessionConfigOptions {
 	parentThinking?: ThinkingLevel;
 	cwd?: string;
 	modelRegistry?: ModelRegistry;
+	capabilities?: ResolvedSideChatCapabilities;
 }
 
 export interface SideChatSessionConfig {
@@ -70,7 +75,7 @@ export interface SideChatSessionConfig {
 	resolvedModel?: Model<any>;
 	modelResolutionError?: string;
 	thinking?: ThinkingLevel;
-	tools: [];
+	tools: string[];
 	cwd?: string;
 	usesSubprocess: false;
 	writesTempPromptFile: false;
@@ -83,21 +88,48 @@ export interface CreateSideChatSessionOptions
 	sessionConfig?: SideChatSessionConfig;
 }
 
-export const SIDE_CHAT_SYSTEM_PROMPT_CHAT = [
-	"You are a side-chat conversational assistant for the Gremlins🧌 host session.",
-	"You have NO tools, no workspace access, and cannot read or modify files.",
-	"You receive a snapshot of the parent transcript only as conversational context.",
-	"Do not pretend to run commands, edit files, or call tools — you cannot.",
-	"Be terse by default. Answer directly. Ask one focused question if input is ambiguous.",
-].join("\n");
+export const SIDE_CHAT_SYSTEM_PROMPT_CHAT = buildSideChatSystemPrompt({
+	mode: "chat",
+	tools: [],
+});
 
-export const SIDE_CHAT_SYSTEM_PROMPT_TANGENT = [
-	"You are a side-chat tangent assistant for the Gremlins🧌 host session.",
-	"You have NO tools, no workspace access, and cannot read or modify files.",
-	"You start with a clean slate: no parent transcript, no project context.",
-	"Do not pretend to run commands, edit files, or call tools — you cannot.",
-	"Be terse by default. Answer directly. Ask one focused question if input is ambiguous.",
-].join("\n");
+export const SIDE_CHAT_SYSTEM_PROMPT_TANGENT = buildSideChatSystemPrompt({
+	mode: "tangent",
+	tools: [],
+});
+
+function buildSideChatSystemPrompt(options: {
+	mode: SideChatMode;
+	tools: string[];
+}): string {
+	const modeLine =
+		options.mode === "chat"
+			? "You are a side-chat conversational assistant for the Gremlins🧌 host session."
+			: "You are a side-chat tangent assistant for the Gremlins🧌 host session.";
+	const contextLine =
+		options.mode === "chat"
+			? "You receive a snapshot of the parent transcript only as conversational context."
+			: "You start with a clean slate: no parent transcript, no project context.";
+	const capabilityLine =
+		options.tools.length === 0
+			? "You have NO tools, no workspace access, and cannot read or modify files."
+			: [
+					`You may use only these approved read-only workspace tools: ${options.tools.join(", ")}.`,
+					"Workspace inspection may include reading files, searching text, finding files, and listing directories according to the approved tools.",
+					"You have no mutation, shell, write, edit, or unlisted tools; do not claim to modify files or run shell commands.",
+				].join(" ");
+	const toolInstruction =
+		options.tools.length === 0
+			? "Do not pretend to run commands, edit files, or call tools — you cannot."
+			: "Use approved tools only when needed; otherwise answer conversationally and keep tool use minimal.";
+	return [
+		modeLine,
+		capabilityLine,
+		contextLine,
+		toolInstruction,
+		"Be terse by default. Answer directly. Ask one focused question if input is ambiguous.",
+	].join("\n");
+}
 
 function formatTranscriptEntries(entries: ParentTranscriptEntry[]): string {
 	return entries
@@ -128,13 +160,26 @@ function buildTangentPrompt(userPrompt: string): string {
 	return `<side-chat-question>\n${trimmedUserPrompt}\n</side-chat-question>`;
 }
 
+function createSideChatResourceLoader(
+	systemPrompt: string,
+	capabilities: ResolvedSideChatCapabilities,
+): ResourceLoader {
+	const base = createIsolatedGremlinResourceLoader(systemPrompt);
+	return {
+		...base,
+		getSkills: () => ({ skills: capabilities.skills, diagnostics: [] }),
+	};
+}
+
 export function buildSideChatSessionConfig(
 	options: BuildSideChatSessionConfigOptions,
 ): SideChatSessionConfig {
-	const systemPrompt =
-		options.mode === "chat"
-			? SIDE_CHAT_SYSTEM_PROMPT_CHAT
-			: SIDE_CHAT_SYSTEM_PROMPT_TANGENT;
+	const capabilities =
+		options.capabilities ?? readSideChatCapabilities(options.cwd, options.mode);
+	const systemPrompt = buildSideChatSystemPrompt({
+		mode: options.mode,
+		tools: capabilities.tools,
+	});
 
 	// D8: no per-side-chat model/thinking overrides; reuse parent fallback only.
 	const resolvedModel = resolveGremlinModel(
@@ -156,12 +201,12 @@ export function buildSideChatSessionConfig(
 		resolvedModel: resolvedModel.model,
 		modelResolutionError: resolvedModel.error,
 		thinking,
-		tools: [],
+		tools: [...capabilities.tools],
 		cwd: options.cwd,
 		usesSubprocess: false,
 		writesTempPromptFile: false,
 		resources: createEmptyGremlinResources(),
-		resourceLoader: createIsolatedGremlinResourceLoader(systemPrompt),
+		resourceLoader: createSideChatResourceLoader(systemPrompt, capabilities),
 	};
 }
 

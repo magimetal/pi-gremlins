@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { mock } from "bun:test";
 
 import { MockContainer, MockMarkdown, MockSpacer, MockText, parseFrontmatter } from "./test-helpers.js";
@@ -28,6 +30,43 @@ function resetState() {
 	});
 }
 
+function loadSkills({ skillPaths }) {
+	const skills = [];
+	const diagnostics = [];
+	const byName = new Map();
+	for (const filePath of skillPaths) {
+		try {
+			const content = fs.readFileSync(filePath, "utf-8");
+			const { frontmatter } = parseFrontmatter(content);
+			const baseDir = path.dirname(filePath);
+			const name = frontmatter.name || path.basename(baseDir);
+			const description = frontmatter.description;
+			if (!description) diagnostics.push({ type: "warning", message: "description is required", path: filePath });
+			if (name !== path.basename(baseDir)) {
+				diagnostics.push({ type: "warning", message: `name "${name}" does not match parent directory`, path: filePath });
+			}
+			if (!description) continue;
+			const skill = { name, description, filePath, baseDir, sourceInfo: { path: filePath }, disableModelInvocation: false };
+			const existing = byName.get(name);
+			if (existing) {
+				diagnostics.push({
+					type: "collision",
+					message: `name "${name}" collision`,
+					path: filePath,
+					collision: { resourceType: "skill", name, winnerPath: existing.filePath, loserPath: filePath },
+				});
+			} else {
+				byName.set(name, skill);
+				skills.push(skill);
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "failed to load skill";
+			diagnostics.push({ type: "warning", message, path: filePath });
+		}
+	}
+	return { skills, diagnostics };
+}
+
 mock.module("@mariozechner/pi-coding-agent", () => ({
 	AuthStorage: {
 		inMemory: () => ({}),
@@ -46,6 +85,7 @@ mock.module("@mariozechner/pi-coding-agent", () => ({
 	},
 	getAgentDir: () => state.mockAgentDir,
 	getMarkdownTheme: () => ({}),
+	loadSkills,
 	parseFrontmatter,
 	withFileMutationQueue: async (_filePath, operation) => await operation(),
 }));

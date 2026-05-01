@@ -1,10 +1,33 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { describe, expect, test } from "bun:test";
 import "./v1-contract-harness.js";
+import { createWorkspace } from "./test-helpers.js";
 
 const PARENT_PRIMARY_BLOCK_START = "<!-- pi-gremlins primary agent:start -->";
 
 function makeSnapshot(entries, capturedAt = "2026-04-29T00:00:00.000Z") {
 	return { entries, capturedAt };
+}
+
+function writeSettings(repoRoot, sideChat) {
+	const piDir = path.join(repoRoot, ".pi");
+	fs.mkdirSync(piDir, { recursive: true });
+	fs.writeFileSync(
+		path.join(piDir, "settings.json"),
+		`${JSON.stringify({ "pi-gremlins": { sideChat } }, null, 2)}\n`,
+		"utf-8",
+	);
+}
+
+function writeSkill(repoRoot, skillName = "factory-skill") {
+	const skillDir = path.join(repoRoot, ".pi", "skills", skillName);
+	fs.mkdirSync(skillDir, { recursive: true });
+	fs.writeFileSync(
+		path.join(skillDir, "SKILL.md"),
+		`---\nname: ${skillName}\ndescription: Factory skill\n---\nUse it.\n`,
+		"utf-8",
+	);
 }
 
 describe("side-chat session factory v1 contract", () => {
@@ -158,5 +181,66 @@ describe("side-chat session factory v1 contract", () => {
 		});
 		expect(config.model).toBe("openai/gpt-5");
 		expect(config.thinking).toBe("medium");
+	});
+
+	test("T10 approved read-only tools are passed explicitly and prompt reflects inspection only", async () => {
+		const { buildSideChatSessionConfig } = await import(
+			"./side-chat-session-factory.ts"
+		);
+		const { repoRoot } = createWorkspace();
+		writeSettings(repoRoot, {
+			chat: { tools: ["read", "grep", "find", "ls"] },
+		});
+		const config = buildSideChatSessionConfig({
+			mode: "chat",
+			userPrompt: "inspect",
+			cwd: repoRoot,
+		});
+		expect(config.tools).toEqual(["read", "grep", "find", "ls"]);
+		expect(config.systemPrompt).toContain("approved read-only workspace tools: read, grep, find, ls");
+		expect(config.systemPrompt).toContain("no mutation, shell, write, edit, or unlisted tools");
+	});
+
+	test("T11 approved skills are exposed only through side-chat skill loader", async () => {
+		const { buildSideChatSessionConfig } = await import(
+			"./side-chat-session-factory.ts"
+		);
+		const { repoRoot } = createWorkspace();
+		writeSkill(repoRoot);
+		writeSettings(repoRoot, {
+			chat: { tools: ["read"], skillPaths: [".pi/skills/factory-skill/SKILL.md"] },
+		});
+		const config = buildSideChatSessionConfig({
+			mode: "chat",
+			userPrompt: "use skill",
+			cwd: repoRoot,
+		});
+		const skillResult = config.resourceLoader.getSkills();
+		expect(skillResult.diagnostics).toEqual([]);
+		expect(skillResult.skills.map((skill) => skill.name)).toEqual(["factory-skill"]);
+		expect(config.resourceLoader.getExtensions().extensions).toEqual([]);
+		expect(config.resourceLoader.getPrompts().prompts).toEqual([]);
+		expect(config.resourceLoader.getThemes().themes).toEqual([]);
+		expect(config.resourceLoader.getAgentsFiles().agentsFiles).toEqual([]);
+		expect(config.resourceLoader.getAppendSystemPrompt()).toEqual([]);
+	});
+
+	test("T12 invalid tools and skill gating fail closed before config is produced", async () => {
+		const { buildSideChatSessionConfig } = await import(
+			"./side-chat-session-factory.ts"
+		);
+		const { SideChatCapabilityError } = await import("./side-chat-capabilities.ts");
+		const { repoRoot } = createWorkspace();
+		writeSkill(repoRoot);
+		writeSettings(repoRoot, { chat: { tools: ["bash"] } });
+		expect(() =>
+			buildSideChatSessionConfig({ mode: "chat", userPrompt: "x", cwd: repoRoot }),
+		).toThrow(SideChatCapabilityError);
+		writeSettings(repoRoot, {
+			chat: { tools: ["grep"], skillPaths: [".pi/skills/factory-skill/SKILL.md"] },
+		});
+		expect(() =>
+			buildSideChatSessionConfig({ mode: "chat", userPrompt: "x", cwd: repoRoot }),
+		).toThrow(SideChatCapabilityError);
 	});
 });

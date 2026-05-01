@@ -7,6 +7,10 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import type { OverlayHandle } from "@mariozechner/pi-tui";
 import {
+	readSideChatCapabilities,
+	type ResolvedSideChatCapabilities,
+} from "./side-chat-capabilities.js";
+import {
 	buildSideChatSessionConfig,
 	createSideChatSession as defaultCreateSideChatSession,
 	type ParentTranscriptEntry,
@@ -73,6 +77,7 @@ interface SideChatRuntime {
 	activeMode: SideChatMode;
 	activeSession: SideChatSession | null;
 	activeSessionMode: SideChatMode | null;
+	activeCapabilities: ResolvedSideChatCapabilities | null;
 	overlayHandle: OverlayHandle | null;
 	overlayPromise: Promise<void> | null;
 	overlayDraft: string;
@@ -88,6 +93,7 @@ function createRuntime(): SideChatRuntime {
 		activeMode: "chat",
 		activeSession: null,
 		activeSessionMode: null,
+		activeCapabilities: null,
 		overlayHandle: null,
 		overlayPromise: null,
 		overlayDraft: "",
@@ -288,9 +294,11 @@ export function registerSideChatCommands(
 		);
 		requestOverlayRender(runtime);
 		let session = runtime.activeSession;
-		if (!session || runtime.activeSessionMode !== mode) {
+		let capabilities = runtime.activeCapabilities;
+		if (!session || runtime.activeSessionMode !== mode || !capabilities) {
 			resetActiveSession(runtime);
 			try {
+				capabilities = readSideChatCapabilities(ctx.cwd, mode);
 				const config = buildSideChatSessionConfig({
 					mode,
 					userPrompt: buildThreadHistoryPrompt(thread, userPrompt),
@@ -299,6 +307,7 @@ export function registerSideChatCommands(
 					parentThinking: undefined,
 					cwd: ctx.cwd,
 					modelRegistry: ctx.modelRegistry,
+					capabilities,
 				});
 				const created = await createSession({
 					mode,
@@ -308,11 +317,13 @@ export function registerSideChatCommands(
 					parentThinking: undefined,
 					cwd: ctx.cwd,
 					modelRegistry: ctx.modelRegistry,
+					capabilities,
 					sessionConfig: config,
 				});
 				session = created.session as SideChatSession;
 				runtime.activeSession = session;
 				runtime.activeSessionMode = mode;
+				runtime.activeCapabilities = capabilities;
 				const unsubscribe = session.subscribe?.((event) => {
 					runtime.transcriptState = reduceSideChatTranscriptEvent(
 						runtime.transcriptState,
@@ -339,6 +350,7 @@ export function registerSideChatCommands(
 			parentThinking: undefined,
 			cwd: ctx.cwd,
 			modelRegistry: ctx.modelRegistry,
+			capabilities,
 		}).prompt;
 		try {
 			await session.prompt(prompt);
@@ -387,6 +399,7 @@ function resetActiveSession(runtime: SideChatRuntime): void {
 	}
 	runtime.activeSession = null;
 	runtime.activeSessionMode = null;
+	runtime.activeCapabilities = null;
 }
 
 function extractTextFromContent(content: unknown): string {

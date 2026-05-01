@@ -1,5 +1,8 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { beforeEach, describe, expect, test } from "bun:test";
 import "./v1-contract-harness.js";
+import { createWorkspace } from "./test-helpers.js";
 
 function createFakePi() {
 	const commands = new Map();
@@ -22,13 +25,13 @@ function createFakePi() {
 	};
 }
 
-function createFakeCtx({ branchEntries = [], hasUI = true, model } = {}) {
+function createFakeCtx({ branchEntries = [], hasUI = true, model, cwd = "/tmp" } = {}) {
 	const notifications = [];
 	const customCalls = [];
 	let customComponent;
 	let renderRequests = 0;
 	return {
-		cwd: "/tmp",
+		cwd,
 		hasUI,
 		ui: {
 			notify(message, type = "info") {
@@ -73,6 +76,16 @@ function createFakeCtx({ branchEntries = [], hasUI = true, model } = {}) {
 		model,
 		signal: undefined,
 	};
+}
+
+function writeSettings(repoRoot, sideChat) {
+	const piDir = path.join(repoRoot, ".pi");
+	fs.mkdirSync(piDir, { recursive: true });
+	fs.writeFileSync(
+		path.join(piDir, "settings.json"),
+		`${JSON.stringify({ "pi-gremlins": { sideChat } }, null, 2)}\n`,
+		"utf-8",
+	);
 }
 
 function createFakeSessionFactory({ events = [] } = {}) {
@@ -191,5 +204,59 @@ describe("side-chat overlay command contract", () => {
 			],
 		});
 		expect(result.messages).toEqual([{ role: "user", content: "keep" }]);
+	});
+
+	test("chat and tangent resolve independent capability profiles", async () => {
+		const { registerSideChatCommands } = await loadCommandModule();
+		const { repoRoot } = createWorkspace();
+		writeSettings(repoRoot, { chat: { tools: ["read"] } });
+		const factory = createFakeSessionFactory();
+		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
+		await pi.commands.get("gremlins:chat").handler("inspect", createFakeCtx({ cwd: repoRoot }));
+		expect(factory.calls[0].mode).toBe("chat");
+		expect(factory.calls[0].sessionConfig.tools).toEqual(["read"]);
+		await pi.commands.get("gremlins:tangent:new").handler("explore", createFakeCtx({ cwd: repoRoot }));
+		expect(factory.calls[1].mode).toBe("tangent");
+		expect(factory.calls[1].sessionConfig.tools).toEqual([]);
+		expect(factory.calls[1].sessionConfig.prompt).not.toContain("parent-transcript-snapshot");
+	});
+
+	test("invalid capability profile reports startup failure and appends no thread entry", async () => {
+		const { registerSideChatCommands } = await loadCommandModule();
+		const { repoRoot } = createWorkspace();
+		writeSettings(repoRoot, { chat: { tools: ["bash"] } });
+		const factory = createFakeSessionFactory();
+		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
+		const ctx = createFakeCtx({ cwd: repoRoot });
+		await pi.commands.get("gremlins:chat").handler("inspect", ctx);
+		expect(factory.calls.length).toBe(0);
+		expect(ctx.notifications).toContainEqual(
+			expect.objectContaining({ type: "error" }),
+		);
+		expect(pi.entries.some((entry) => entry.customType === "pi-gremlins:side-chat-thread")).toBe(false);
+	});
+
+	test("tool-like assistant events still persist a completed side-chat exchange", async () => {
+		const { registerSideChatCommands } = await loadCommandModule();
+		const factory = createFakeSessionFactory({
+			events: [
+				{ type: "tool_call", toolCall: { name: "read" } },
+				{ type: "tool_result", toolResult: { content: "result" } },
+				{ type: "message_start", message: { role: "assistant" } },
+				{ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "answer" } },
+				{ type: "turn_end", turnIndex: 1 },
+			],
+		});
+		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
+		await pi.commands.get("gremlins:tangent").handler("explore", createFakeCtx());
+		const threadEntries = pi.entries.filter(
+			(entry) => entry.customType === "pi-gremlins:side-chat-thread",
+		);
+		expect(threadEntries.length).toBe(1);
+		expect(threadEntries[0].data).toEqual(expect.objectContaining({
+			mode: "tangent",
+			question: "explore",
+			answer: "answer",
+		}));
 	});
 });

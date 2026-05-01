@@ -174,10 +174,13 @@ See [PRD-0006](docs/prd/0006-active-gremlin-session-steering.md) and [ADR-0006](
 
 ## Side-chat overlay: `/gremlins:chat` and `/gremlins:tangent`
 
-Side-chat support now uses persistent Pi overlays (PRD-0005, ADR-0005,
-issues #49 and #54). The older PRD-0004/ADR-0004 inline one-shot behavior has been
-superseded for side-chat UX, while its isolation rules remain: zero tools,
-no tangent parent transcript, and no per-side-chat model/thinking override.
+Side-chat support uses persistent Pi overlays (PRD-0005, ADR-0005,
+issues #49 and #54) with guarded optional capabilities (PRD-0007, ADR-0007,
+issue #57). By default both modes are conversational-only with explicit
+`tools: []`. Project settings may opt a mode into approved read-only workspace
+inspection tools and explicitly approved project-local skills. Tangent still
+receives no parent transcript, and side-chat has no per-chat model/thinking
+override.
 
 ### Commands
 
@@ -202,6 +205,47 @@ current thread.
 - Transcript rows stream assistant text and support basic scroll keys
   (`Up`, `Down`, `PageUp`, `PageDown`, `Home`, `End`).
 
+### Optional approved capabilities
+
+Default behavior remains zero-tool conversation. To enable approved read-only
+inspection for one mode, add a nearest project `.pi/settings.json` profile under
+`pi-gremlins.sideChat`:
+
+```json
+{
+  "pi-gremlins": {
+    "sideChat": {
+      "chat": {
+        "tools": ["read", "grep", "find", "ls"],
+        "skillPaths": [".pi/skills/example-skill/SKILL.md"]
+      },
+      "tangent": {
+        "tools": [],
+        "skillPaths": []
+      }
+    }
+  }
+}
+```
+
+Rules:
+
+- `chat` and `tangent` profiles are independent; configuring one does not
+  affect the other.
+- Allowed tool names are only `read`, `grep`, `find`, and `ls`.
+- Mutation/shell tools such as `bash`, `edit`, and `write` are rejected, as are
+  unknown tools and malformed profile values.
+- `skillPaths` must be project-relative Markdown files under `.pi/skills/`.
+  Absolute paths, parent traversal, missing files, non-Markdown files, and
+  symlink escapes fail closed.
+- Non-empty `skillPaths` require the `read` tool because Pi surfaces skills to
+  the child session through readable skill files.
+- Skill loading uses only configured side-chat paths with defaults disabled;
+  any skill-loader diagnostic for those paths fails startup before the child
+  session is created.
+- Parent extensions, prompts, themes, AGENTS files, primary-agent markdown,
+  transcript history, and default/user skills are not inherited by side-chat.
+
 ### Persistence and isolation guarantees
 
 - Chat and tangent are independent threads.
@@ -214,13 +258,17 @@ current thread.
 - Chat captures the parent transcript snapshot once at thread origin; resumed
   chat does not recapture later parent turns.
 - Tangent never captures parent transcript or project context.
-- Side-chat child sessions run with `tools: []`; they cannot read or modify
-  the workspace.
-- Side-chat child sessions do not load parent extensions, skills, prompts,
-  themes, AGENTS files, or primary-agent markdown.
+- Side-chat child sessions always pass an explicit tools array to the Pi SDK:
+  `[]` by default, or only the approved read-only tools from that mode's
+  profile.
+- Side-chat child sessions do not load parent extensions, prompts, themes,
+  AGENTS files, primary-agent markdown, parent transcript history, or skills
+  outside the approved side-chat `skillPaths`.
 
-See [PRD-0005](docs/prd/0005-persistent-overlay-side-chat.md) and
-[ADR-0005](docs/adr/0005-persistent-overlay-side-chat.md).
+See [PRD-0005](docs/prd/0005-persistent-overlay-side-chat.md),
+[ADR-0005](docs/adr/0005-persistent-overlay-side-chat.md),
+[PRD-0007](docs/prd/0007-allow-side-chat-sessions-to-use-approved-skills-and-tools.md),
+and [ADR-0007](docs/adr/0007-guarded-side-chat-tool-capabilities.md).
 
 Note: do not run `pi-gizmo` and `pi-gremlins` side-chat commands concurrently
 if both are installed in the same Pi profile; migrate to `pi-gremlins` and
