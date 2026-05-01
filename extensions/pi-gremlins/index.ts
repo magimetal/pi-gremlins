@@ -17,6 +17,7 @@ import {
 	type PrimaryAgentDiscoveryCache,
 } from "./gremlin-discovery.js";
 import {
+	GremlinInlineResultComponent,
 	renderGremlinInvocationText,
 	styleGremlinInvocationText,
 } from "./gremlin-rendering.js";
@@ -211,10 +212,14 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 						firstContent && "text" in firstContent ? firstContent.text : "";
 					return new Text(fallbackText);
 				}
+				const expanded = Boolean(options.expanded);
 				const text = renderGremlinInvocationText(getInvocationDetails(result), {
-					expanded: options.expanded,
+					expanded,
 				});
-				return new Text(styleGremlinInvocationText(text, theme, options));
+				return new GremlinInlineResultComponent(
+					styleGremlinInvocationText(text, theme, options),
+					expanded,
+				);
 			},
 
 			async execute(

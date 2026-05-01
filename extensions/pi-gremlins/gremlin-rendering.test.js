@@ -389,6 +389,69 @@ describe("gremlin rendering v1 contract", () => {
 		expect(renderA).toBe(renderB);
 	});
 
+	test("bounds collapsed component visual lines for aggregate burst output and a wrapping line", async () => {
+		const {
+			GremlinInlineResultComponent,
+			INLINE_RESULT_PREVIEW_LINES,
+			renderGremlinInvocationText,
+		} = await import("./gremlin-rendering.ts");
+		const details = {
+			requestedCount: 10,
+			activeCount: 10,
+			completedCount: 0,
+			failedCount: 0,
+			canceledCount: 0,
+			gremlins: Array.from({ length: 10 }, (_, index) => ({
+				gremlinId: `g${index + 1}`,
+				agent: `burster-${index + 1}`,
+				source: "project",
+				status: "active",
+				intent: `Inspect burst ${index + 1}`,
+				context: `context line one ${index + 1}\ncontext line two ${index + 1}\ncontext line three ${index + 1}`,
+				currentPhase: "streaming",
+				latestText: index === 0 ? "unbroken-output-token-".repeat(16) : `burst update ${index + 1}`,
+				revision: index + 1,
+			})),
+			revision: 40,
+		};
+		const text = renderGremlinInvocationText(details, { expanded: false });
+		const component = new GremlinInlineResultComponent(text, false);
+		const lines = component.render(28);
+
+		expect(lines.length).toBeLessThanOrEqual(INLINE_RESULT_PREVIEW_LINES);
+		expect(lines.join("\n")).toContain("Ctrl+O");
+		expect(text.split("\n").length).toBeGreaterThan(INLINE_RESULT_PREVIEW_LINES);
+	});
+
+	test("keeps expanded component intentionally uncapped", async () => {
+		const {
+			GremlinInlineResultComponent,
+			INLINE_RESULT_PREVIEW_LINES,
+			renderGremlinInvocationText,
+		} = await import("./gremlin-rendering.ts");
+		const details = {
+			requestedCount: 1,
+			activeCount: 0,
+			completedCount: 1,
+			failedCount: 0,
+			canceledCount: 0,
+			gremlins: [{
+				gremlinId: "g1",
+				agent: "researcher",
+				source: "project",
+				status: "completed",
+				context: Array.from({ length: 30 }, (_, index) => `expanded line ${index + 1}`).join("\n"),
+				latestText: "done",
+				revision: 1,
+			}],
+			revision: 1,
+		};
+		const text = renderGremlinInvocationText(details, { expanded: true });
+		const component = new GremlinInlineResultComponent(text, true);
+
+		expect(component.render(80).length).toBeGreaterThan(INLINE_RESULT_PREVIEW_LINES);
+	});
+
 	test("updates changed entry output while preserving unchanged entry text across revisions", async () => {
 		const { renderGremlinInvocationText } = await import(
 			"./gremlin-rendering.ts"
