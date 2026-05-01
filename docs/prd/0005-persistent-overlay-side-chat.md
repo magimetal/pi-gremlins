@@ -3,7 +3,7 @@
 - **Status:** Completed
 - **Date:** 2026-04-30
 - **Author:** Magi Metal
-- **Related:** GitHub issue [#49](https://github.com/magimetal/pi-gremlins/issues/49), [PRD-0004](0004-pi-gremlins-side-chat-absorption-and-pi-gizmo-deprecation.md), [ADR-0005](../adr/0005-persistent-overlay-side-chat.md), [ADR-0004](../adr/0004-side-chat-absorption-from-pi-gizmo.md), [ADR-0003](../adr/0003-unified-agent-discovery-and-primary-agent-prompt-injection-in-pi-gremlins.md)
+- **Related:** GitHub issues [#49](https://github.com/magimetal/pi-gremlins/issues/49), [#54](https://github.com/magimetal/pi-gremlins/issues/54), [PRD-0004](0004-pi-gremlins-side-chat-absorption-and-pi-gizmo-deprecation.md), [ADR-0005](../adr/0005-persistent-overlay-side-chat.md), [ADR-0004](../adr/0004-side-chat-absorption-from-pi-gizmo.md), [ADR-0003](../adr/0003-unified-agent-discovery-and-primary-agent-prompt-injection-in-pi-gremlins.md)
 - **Supersedes:** PRD-0004 side-chat UX decisions for fresh-per-invocation inline side-chat.
 
 ## Problem Statement
@@ -60,7 +60,7 @@ Issue #49 requests the inverse UX: persistent multi-turn side-chat threads, surf
 - [x] `/gremlins:chat:new` appends a chat reset marker, clears only chat state, and opens overlay.
 - [x] `/gremlins:tangent` opens overlay and resumes tangent thread or creates a new thread.
 - [x] `/gremlins:tangent:new` appends a tangent reset marker, clears only tangent state, and opens overlay.
-- [x] Overlay uses Pi `ctx.ui.custom(..., { overlay: true })` with top-center, 78% width/max-height, margin, and non-capturing options.
+- [x] Overlay uses Pi `ctx.ui.custom(..., { overlay: true })` with a visible border, viewport gutters, 78% width, about 80% viewport height, and non-capturing options.
 - [x] Overlay renders mode label, transcript rows, status, draft input, submit/close controls, and scroll keys.
 - [x] Completed exchanges persist through `pi.appendEntry("pi-gremlins:side-chat-thread", ...)`.
 - [x] `:new` writes `pi-gremlins:side-chat-reset` and restore ignores older entries for that mode only.
@@ -82,3 +82,4 @@ Issue #49 requests the inverse UX: persistent multi-turn side-chat threads, surf
 ## Revision History
 
 - 2026-04-30 — Created and completed with issue #49 implementation.
+- 2026-04-30 — Amended overlay UX acceptance for issue #54: border/gutters, 80% viewport height, Escape close, and realtime render invalidation.

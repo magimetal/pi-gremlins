@@ -53,6 +53,12 @@ export class MockContainer {
 	addChild(child) {
 		this.children.push(child);
 	}
+
+	render(width) {
+		return this.children.flatMap((child) => child.render?.(width) ?? []);
+	}
+
+	invalidate() {}
 }
 
 export class MockText {
@@ -63,17 +69,35 @@ export class MockText {
 	setText(text) {
 		this.text = text;
 	}
+
+	render() {
+		return String(this.text).split("\n");
+	}
+
+	invalidate() {}
 }
 
 export class MockSpacer {
 	constructor(lines = 1) {
 		this.lines = lines;
 	}
+
+	render() {
+		return Array.from({ length: this.lines }, () => "");
+	}
+
+	invalidate() {}
 }
 
 export class MockMarkdown {
 	constructor(text) {
 		this.text = text;
 	}
+
+	render() {
+		return String(this.text).split("\n");
+	}
+
+	invalidate() {}
 }
 

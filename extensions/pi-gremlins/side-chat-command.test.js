@@ -26,6 +26,7 @@ function createFakeCtx({ branchEntries = [], hasUI = true, model } = {}) {
 	const notifications = [];
 	const customCalls = [];
 	let customComponent;
+	let renderRequests = 0;
 	return {
 		cwd: "/tmp",
 		hasUI,
@@ -36,7 +37,10 @@ function createFakeCtx({ branchEntries = [], hasUI = true, model } = {}) {
 			custom(factory, _options) {
 				customCalls.push(_options);
 				customComponent = factory(
-					{ requestRender() {} },
+					{
+						requestRender() { renderRequests += 1; },
+						terminal: { rows: 24 },
+					},
 					{},
 					{},
 					() => {},
@@ -56,6 +60,9 @@ function createFakeCtx({ branchEntries = [], hasUI = true, model } = {}) {
 		customCalls,
 		get customComponent() {
 			return customComponent;
+		},
+		get renderRequests() {
+			return renderRequests;
 		},
 		sessionManager: {
 			getBranch() {
@@ -145,6 +152,21 @@ describe("side-chat overlay command contract", () => {
 		expect(factory.calls[0].mode).toBe("tangent");
 		expect(factory.calls[0].sessionConfig.tools).toEqual([]);
 		expect(pi.entries.some((entry) => entry.customType === "pi-gremlins:side-chat-thread")).toBe(true);
+	});
+
+	test("realtime transcript events request overlay render without keyboard input", async () => {
+		const { registerSideChatCommands } = await loadCommandModule();
+		const factory = createFakeSessionFactory({
+			events: [
+				{ type: "message_start", message: { role: "assistant" } },
+				{ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "live answer" } },
+			],
+		});
+		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
+		const ctx = createFakeCtx();
+		await pi.commands.get("gremlins:chat").handler("question", ctx);
+		expect(ctx.renderRequests).toBeGreaterThan(0);
+		expect(ctx.customComponent.render(72).join("\n")).toContain("live answer");
 	});
 
 	test(":new appends reset and only resets requested mode", async () => {

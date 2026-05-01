@@ -76,6 +76,7 @@ interface SideChatRuntime {
 	overlayHandle: OverlayHandle | null;
 	overlayPromise: Promise<void> | null;
 	overlayDraft: string;
+	requestOverlayRender: (() => void) | null;
 	transcriptState: SideChatTranscriptState;
 	subscriptions: Set<() => void>;
 	lastSubmittedQuestion: string | null;
@@ -90,6 +91,7 @@ function createRuntime(): SideChatRuntime {
 		overlayHandle: null,
 		overlayPromise: null,
 		overlayDraft: "",
+		requestOverlayRender: null,
 		transcriptState: createInitialSideChatTranscriptState(),
 		subscriptions: new Set(),
 		lastSubmittedQuestion: null,
@@ -145,6 +147,7 @@ export function registerSideChatCommands(
 		runtime.transcriptState = createInitialSideChatTranscriptState(
 			sideChatRowsFromThread(runtime.threads[runtime.activeMode].exchanges),
 		);
+		requestOverlayRender(runtime);
 	}
 
 	pi.on("session_start", (_event, ctx) => {
@@ -161,6 +164,7 @@ export function registerSideChatCommands(
 		runtime.overlayHandle?.hide();
 		runtime.overlayHandle = null;
 		runtime.overlayPromise = null;
+		runtime.requestOverlayRender = null;
 	});
 	pi.on("context", (event) => {
 		return { messages: filterSideChatMessagesFromContext(event.messages) };
@@ -218,6 +222,7 @@ export function registerSideChatCommands(
 				sideChatRowsFromThread(runtime.threads[mode].exchanges),
 			);
 			ensureOverlay(ctx);
+			requestOverlayRender(runtime);
 			if (parsed.userPrompt) {
 				await submitSideChatPrompt(ctx, parsed.userPrompt);
 			}
@@ -250,8 +255,10 @@ export function registerSideChatCommands(
 			},
 		};
 		runtime.overlayPromise = ctx.ui.custom<void>(
-			(tui, _theme, _keybindings, done) =>
-				new SideChatOverlayComponent(tui, controller, done),
+			(tui, _theme, _keybindings, done) => {
+				runtime.requestOverlayRender = () => tui.requestRender();
+				return new SideChatOverlayComponent(tui, controller, done);
+			},
 			{
 				overlay: true,
 				overlayOptions: SIDE_CHAT_OVERLAY_OPTIONS,
@@ -264,6 +271,7 @@ export function registerSideChatCommands(
 		runtime.overlayPromise.finally(() => {
 			runtime.overlayHandle = null;
 			runtime.overlayPromise = null;
+			runtime.requestOverlayRender = null;
 		});
 	}
 
@@ -278,6 +286,7 @@ export function registerSideChatCommands(
 			runtime.transcriptState,
 			userPrompt,
 		);
+		requestOverlayRender(runtime);
 		let session = runtime.activeSession;
 		if (!session || runtime.activeSessionMode !== mode) {
 			resetActiveSession(runtime);
@@ -310,11 +319,13 @@ export function registerSideChatCommands(
 						event,
 					);
 					if (event.type === "turn_end") finalizeExchange(pi, runtime, mode);
+					requestOverlayRender(runtime);
 				});
 				if (unsubscribe) runtime.subscriptions.add(unsubscribe);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				runtime.transcriptState = appendSideChatError(runtime.transcriptState, message);
+				requestOverlayRender(runtime);
 				ctx.ui?.notify?.(`Side-chat failed to start: ${message}`, "error");
 				return;
 			}
@@ -334,9 +345,14 @@ export function registerSideChatCommands(
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			runtime.transcriptState = appendSideChatError(runtime.transcriptState, message);
+			requestOverlayRender(runtime);
 			ctx.ui?.notify?.(`Side-chat prompt failed: ${message}`, "error");
 		}
 	}
+}
+
+function requestOverlayRender(runtime: SideChatRuntime): void {
+	runtime.requestOverlayRender?.();
 }
 
 function finalizeExchange(

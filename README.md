@@ -175,7 +175,7 @@ See [PRD-0006](docs/prd/0006-active-gremlin-session-steering.md) and [ADR-0006](
 ## Side-chat overlay: `/gremlins:chat` and `/gremlins:tangent`
 
 Side-chat support now uses persistent Pi overlays (PRD-0005, ADR-0005,
-issue #49). The older PRD-0004/ADR-0004 inline one-shot behavior has been
+issues #49 and #54). The older PRD-0004/ADR-0004 inline one-shot behavior has been
 superseded for side-chat UX, while its isolation rules remain: zero tools,
 no tangent parent transcript, and no per-side-chat model/thinking override.
 
