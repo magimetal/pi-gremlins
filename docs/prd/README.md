@@ -88,4 +88,4 @@ Maintain in `docs/prd/README.md`:
 | 0003 | Primary Agent Selection and pi-mohawk Deprecation         | Completed | 2026-04-25 |
 | 0004 | Pi Gremlins Side-Chat Absorption and pi-gizmo Deprecation | Completed | 2026-04-29 |
 | 0005 | Persistent Overlay Side-Chat                            | Completed | 2026-04-30 |
-| 0006 | Active Gremlin Session Steering                         | Active | 2026-04-30 |
+| 0006 | Active Gremlin Session Steering                         | Completed | 2026-04-30 |

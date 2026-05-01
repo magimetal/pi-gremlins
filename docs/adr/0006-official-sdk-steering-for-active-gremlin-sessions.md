@@ -125,3 +125,4 @@ This ADR supersedes only the targeted-steering prohibition in ADR-0002 and ADR-0
 ## Status History
 
 - 2026-04-30: Accepted for issue #53; permits official child `AgentSession.steer(message)` for active gremlin sessions while preserving legacy steering prohibitions.
+- 2026-04-30: Verified against implementation commit `f1e77d6b5eb1e82372c916cebb92a21e9dfd5b18` and PR [#55](https://github.com/magimetal/pi-gremlins/pull/55); decision remains aligned and status remains Accepted.

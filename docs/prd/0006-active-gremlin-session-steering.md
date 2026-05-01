@@ -1,6 +1,6 @@
 # PRD-0006: Active Gremlin Session Steering
 
-- **Status:** Active
+- **Status:** Completed
 - **Date:** 2026-04-30
 - **Author:** magimetal
 - **Related:** GitHub issue [#53](https://github.com/magimetal/pi-gremlins/issues/53), [ADR-0006](../adr/0006-official-sdk-steering-for-active-gremlin-sessions.md), [PRD-0002](0002-pi-gremlins-v1-sdk-rewrite.md), [PRD-0003](0003-primary-agent-selection-and-pi-mohawk-deprecation.md)
@@ -48,21 +48,21 @@ Current governance intentionally removed targeted steering during the v1 SDK rew
 
 ## Acceptance Criteria
 
-- [ ] `/gremlins:steer <G-id> <message>` is registered through `pi.registerCommand("gremlins:steer", ...)`.
-- [ ] The command parser treats the first argument as the gremlin id and the remaining text as the steering message.
-- [ ] Missing id and missing message produce clear notifications and do not call steering.
-- [ ] Successful command handling calls the target child SDK `AgentSession.steer(message)` exactly once with the parsed message.
-- [ ] The implementation does not use parent `pi.sendUserMessage`, `deliverAs: "steer"`, `followUp`, subprocess/RPC steering, or viewer/popup UI.
-- [ ] Active child SDK sessions are registered as soon as they can be steered and are keyed in a way that can safely resolve or reject user ids.
-- [ ] Registry entries exist only during the relevant active `runSingleGremlin` lifetime and are removed on completion, failure, cancellation, abort, setup failure, disposal, and extension/session shutdown.
-- [ ] Unknown, completed, canceled, disposed, failed, aborted, setup-failed, and stale gremlin ids are rejected safely.
-- [ ] `G1`/`g1` behavior is documented and covered by tests.
-- [ ] Concurrent-batch id ambiguity is handled safely by failing ambiguous references with a clear notification or by documenting/testing a stable namespace.
-- [ ] Steering observes official Pi SDK timing and does not wait for the parent user's next turn or gremlin completion.
-- [ ] Child isolation remains intact: no parent history/system/primary-agent markdown/extensions/skills/prompts/themes/`AGENTS` leakage is introduced.
-- [ ] Existing tests/docs that currently encode "no `/gremlins:steer`" are updated to permit official SDK steering only and still ban legacy steering mechanisms.
-- [ ] User-facing docs explain syntax, lifecycle limits, ambiguity behavior, expected timing, and the distinction from removed legacy steering.
-- [ ] CHANGELOG entry for implementation references PRD-0006 and ADR-0006.
+- [x] `/gremlins:steer <G-id> <message>` is registered through `pi.registerCommand("gremlins:steer", ...)`.
+- [x] The command parser treats the first argument as the gremlin id and the remaining text as the steering message.
+- [x] Missing id and missing message produce clear notifications and do not call steering.
+- [x] Successful command handling calls the target child SDK `AgentSession.steer(message)` exactly once with the parsed message.
+- [x] The implementation does not use parent `pi.sendUserMessage`, `deliverAs: "steer"`, `followUp`, subprocess/RPC steering, or viewer/popup UI.
+- [x] Active child SDK sessions are registered as soon as they can be steered and are keyed in a way that can safely resolve or reject user ids.
+- [x] Registry entries exist only during the relevant active `runSingleGremlin` lifetime and are removed on completion, failure, cancellation, abort, setup failure, disposal, and extension/session shutdown.
+- [x] Unknown, completed, canceled, disposed, failed, aborted, setup-failed, and stale gremlin ids are rejected safely.
+- [x] `G1`/`g1` behavior is documented and covered by tests.
+- [x] Concurrent-batch id ambiguity is handled safely by failing ambiguous references with a clear notification or by documenting/testing a stable namespace.
+- [x] Steering observes official Pi SDK timing and does not wait for the parent user's next turn or gremlin completion.
+- [x] Child isolation remains intact: no parent history/system/primary-agent markdown/extensions/skills/prompts/themes/`AGENTS` leakage is introduced.
+- [x] Existing tests/docs that currently encode "no `/gremlins:steer`" are updated to permit official SDK steering only and still ban legacy steering mechanisms.
+- [x] User-facing docs explain syntax, lifecycle limits, ambiguity behavior, expected timing, and the distinction from removed legacy steering.
+- [x] CHANGELOG entry for implementation references PRD-0006 and ADR-0006.
 
 ## Technical Surface
 
@@ -83,11 +83,12 @@ Current governance intentionally removed targeted steering during the v1 SDK rew
 - Ambiguity across concurrent batches should fail safe unless a namespaced id is made visible to users.
 - The visible gremlin id format should stay aligned with existing inline rendering (`g1`, `g2`, ...), with casing behavior explicitly documented.
 
-## Open Questions
+## Resolved Questions
 
-- Should concurrent batches expose a stable namespace such as `toolCallId:g1`, or is fail-on-ambiguous `g1` enough for the first implementation?
-- Should command success notifications include the gremlin display name/agent name in addition to the id?
+- Concurrent batches use fail-on-ambiguous `g1` behavior for the first implementation; no user-visible `toolCallId:g1` namespace was added.
+- Command success remains concise and id-based; no additional display-name/agent-name requirement was added.
 
 ## Revision History
 
 - 2026-04-30: Active PRD created for issue #53; supersedes only the prior targeted-steering non-goal for official SDK child-session steering.
+- 2026-04-30: Marked Completed after implementation commit `f1e77d6b5eb1e82372c916cebb92a21e9dfd5b18`, PR [#55](https://github.com/magimetal/pi-gremlins/pull/55), and passing execution review.
