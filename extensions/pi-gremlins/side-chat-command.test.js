@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { beforeEach, describe, expect, test } from "bun:test";
 import "./v1-contract-harness.js";
+import { getResourceLoaderInstances, resetV1ContractHarness } from "./v1-contract-harness.js";
 import { createWorkspace } from "./test-helpers.js";
 
 function createFakePi() {
@@ -76,16 +77,6 @@ function createFakeCtx({ branchEntries = [], hasUI = true, model, cwd = "/tmp" }
 		model,
 		signal: undefined,
 	};
-}
-
-function writeSettings(repoRoot, sideChat) {
-	const piDir = path.join(repoRoot, ".pi");
-	fs.mkdirSync(piDir, { recursive: true });
-	fs.writeFileSync(
-		path.join(piDir, "settings.json"),
-		`${JSON.stringify({ "pi-gremlins": { sideChat } }, null, 2)}\n`,
-		"utf-8",
-	);
 }
 
 function createFakeSessionFactory({ events = [] } = {}) {
@@ -163,7 +154,8 @@ describe("side-chat overlay command contract", () => {
 		await pi.commands.get("gremlins:tangent").handler("explore", ctx);
 		expect(factory.calls.length).toBe(1);
 		expect(factory.calls[0].mode).toBe("tangent");
-		expect(factory.calls[0].sessionConfig.tools).toEqual([]);
+		expect(factory.calls[0].sessionConfig.tools).toBeUndefined();
+		expect(Object.hasOwn(factory.calls[0].sessionConfig, "tools")).toBe(false);
 		expect(pi.entries.some((entry) => entry.customType === "pi-gremlins:side-chat-thread")).toBe(true);
 	});
 
@@ -206,34 +198,36 @@ describe("side-chat overlay command contract", () => {
 		expect(result.messages).toEqual([{ role: "user", content: "keep" }]);
 	});
 
-	test("chat and tangent resolve independent capability profiles", async () => {
+	test("old side-chat settings are ignored and cannot change session tools", async () => {
 		const { registerSideChatCommands } = await loadCommandModule();
 		const { repoRoot } = createWorkspace();
-		writeSettings(repoRoot, { chat: { tools: ["read"] } });
+		const piDir = path.join(repoRoot, ".pi");
+		fs.mkdirSync(piDir, { recursive: true });
+		fs.writeFileSync(path.join(piDir, "settings.json"), JSON.stringify({
+			"pi-gremlins": { sideChat: { chat: { tools: ["unknown"], skillPaths: ["bad"] } } },
+		}));
 		const factory = createFakeSessionFactory();
 		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
 		await pi.commands.get("gremlins:chat").handler("inspect", createFakeCtx({ cwd: repoRoot }));
 		expect(factory.calls[0].mode).toBe("chat");
-		expect(factory.calls[0].sessionConfig.tools).toEqual(["read"]);
+		expect(factory.calls[0].sessionConfig.tools).toBeUndefined();
 		await pi.commands.get("gremlins:tangent:new").handler("explore", createFakeCtx({ cwd: repoRoot }));
 		expect(factory.calls[1].mode).toBe("tangent");
-		expect(factory.calls[1].sessionConfig.tools).toEqual([]);
+		expect(factory.calls[1].sessionConfig.tools).toBeUndefined();
 		expect(factory.calls[1].sessionConfig.prompt).not.toContain("parent-transcript-snapshot");
 	});
 
-	test("invalid capability profile reports startup failure and appends no thread entry", async () => {
+	test("active side-chat session reuse does not construct another resource loader", async () => {
+		resetV1ContractHarness();
 		const { registerSideChatCommands } = await loadCommandModule();
-		const { repoRoot } = createWorkspace();
-		writeSettings(repoRoot, { chat: { tools: ["bash"] } });
 		const factory = createFakeSessionFactory();
 		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
-		const ctx = createFakeCtx({ cwd: repoRoot });
-		await pi.commands.get("gremlins:chat").handler("inspect", ctx);
-		expect(factory.calls.length).toBe(0);
-		expect(ctx.notifications).toContainEqual(
-			expect.objectContaining({ type: "error" }),
-		);
-		expect(pi.entries.some((entry) => entry.customType === "pi-gremlins:side-chat-thread")).toBe(false);
+		const ctx = createFakeCtx();
+		await pi.commands.get("gremlins:chat").handler("first", ctx);
+		await pi.commands.get("gremlins:chat").handler("second", ctx);
+		expect(factory.calls.length).toBe(1);
+		expect(factory.sessions[0]).toBeDefined();
+		expect(getResourceLoaderInstances().length).toBe(1);
 	});
 
 	test("tool-like assistant events still persist a completed side-chat exchange", async () => {

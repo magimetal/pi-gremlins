@@ -1,46 +1,31 @@
 /**
- * Side-chat session factory (PRD-0004 / ADR-0004).
+ * Side-chat session factory (PRD-0008 / ADR-0008).
  *
- * Produces an isolated, capability-profile-aware SDK session for a
- * single `/gremlins:chat` or `/gremlins:tangent` invocation. Composes the
- * gremlin-session-factory primitives to inherit ADR-0003 isolation
- * (no parent extensions / skills / prompts / themes / AGENTS / primary-agent
- * markdown leakage) without modifying the gremlin factory's surface.
- *
- * Confirmed (Observed) symbols:
- * - `createAgentSession.tools?: string[]` — explicit allowlist.
- *   Empty array `[]` => zero tools enabled. Source:
- *   node_modules/@mariozechner/pi-coding-agent/dist/core/sdk.d.ts:36.
- * - `pi.sendMessage({ customType, content, display, details })` is the
- *   inline rendering path (types.d.ts:817).
- * - `pi.registerMessageRenderer<T>(customType, renderer)` provides the
- *   inline renderer hook (types.d.ts:815, 752).
- * - `ctx.sessionManager.getBranch()` returns `SessionEntry[]` whose
- *   `SessionMessageEntry.message` carries the `AgentMessage` shape
- *   (session-manager.d.ts:23–25, 244).
+ * Produces isolated `/gremlins:chat` and `/gremlins:tangent` SDK child
+ * sessions that omit explicit `tools` so Pi SDK default built-ins apply, while
+ * using a fresh child DefaultResourceLoader for enabled extension custom tools.
  *
  * Guardrails:
  * - Does NOT import `gremlin-prompt.ts` / `buildGremlinPrompt`.
- * - Does NOT mutate or re-export `gremlin-session-factory.ts` shapes.
- * - Does NOT register any tools except explicitly approved side-chat tools.
- * - Does NOT expose per-side-chat model/thinking overrides (D8).
+ * - Does NOT read side-chat-specific `.pi/settings.json` capability config.
+ * - Does NOT pass parent resources, prompts, themes, skills, AGENTS files, or
+ *   primary-agent material into the child loader.
  */
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Model } from "@mariozechner/pi-ai";
-import type {
-	CreateAgentSessionResult,
-	ModelRegistry,
-	ResourceLoader,
-} from "@mariozechner/pi-coding-agent";
 import {
-	readSideChatCapabilities,
-	type ResolvedSideChatCapabilities,
-} from "./side-chat-capabilities.js";
+	DefaultResourceLoader,
+	getAgentDir,
+	SettingsManager,
+	type CreateAgentSessionResult,
+	type ExtensionFactory,
+	type ModelRegistry,
+	type ResourceLoader,
+} from "@mariozechner/pi-coding-agent";
 import {
 	createEmptyGremlinResources,
 	createGremlinSession,
-	createIsolatedGremlinResourceLoader,
 	resolveGremlinModel,
 	resolveGremlinThinking,
 } from "./gremlin-session-factory.js";
@@ -64,8 +49,10 @@ export interface BuildSideChatSessionConfigOptions {
 	parentModel?: string | Model<any>;
 	parentThinking?: ThinkingLevel;
 	cwd?: string;
+	agentDir?: string;
+	settingsManager?: SettingsManager;
 	modelRegistry?: ModelRegistry;
-	capabilities?: ResolvedSideChatCapabilities;
+	extensionFactories?: ExtensionFactory[];
 }
 
 export interface SideChatSessionConfig {
@@ -75,8 +62,10 @@ export interface SideChatSessionConfig {
 	resolvedModel?: Model<any>;
 	modelResolutionError?: string;
 	thinking?: ThinkingLevel;
-	tools: string[];
+	tools?: string[];
 	cwd?: string;
+	agentDir?: string;
+	settingsManager?: SettingsManager;
 	usesSubprocess: false;
 	writesTempPromptFile: false;
 	resources: ReturnType<typeof createEmptyGremlinResources>;
@@ -88,45 +77,24 @@ export interface CreateSideChatSessionOptions
 	sessionConfig?: SideChatSessionConfig;
 }
 
-export const SIDE_CHAT_SYSTEM_PROMPT_CHAT = buildSideChatSystemPrompt({
-	mode: "chat",
-	tools: [],
-});
+export const SIDE_CHAT_SYSTEM_PROMPT_CHAT = buildSideChatSystemPrompt("chat");
+export const SIDE_CHAT_SYSTEM_PROMPT_TANGENT = buildSideChatSystemPrompt("tangent");
 
-export const SIDE_CHAT_SYSTEM_PROMPT_TANGENT = buildSideChatSystemPrompt({
-	mode: "tangent",
-	tools: [],
-});
-
-function buildSideChatSystemPrompt(options: {
-	mode: SideChatMode;
-	tools: string[];
-}): string {
+function buildSideChatSystemPrompt(mode: SideChatMode): string {
 	const modeLine =
-		options.mode === "chat"
+		mode === "chat"
 			? "You are a side-chat conversational assistant for the Gremlins🧌 host session."
 			: "You are a side-chat tangent assistant for the Gremlins🧌 host session.";
 	const contextLine =
-		options.mode === "chat"
-			? "You receive a snapshot of the parent transcript only as conversational context."
-			: "You start with a clean slate: no parent transcript, no project context.";
-	const capabilityLine =
-		options.tools.length === 0
-			? "You have NO tools, no workspace access, and cannot read or modify files."
-			: [
-					`You may use only these approved read-only workspace tools: ${options.tools.join(", ")}.`,
-					"Workspace inspection may include reading files, searching text, finding files, and listing directories according to the approved tools.",
-					"You have no mutation, shell, write, edit, or unlisted tools; do not claim to modify files or run shell commands.",
-				].join(" ");
-	const toolInstruction =
-		options.tools.length === 0
-			? "Do not pretend to run commands, edit files, or call tools — you cannot."
-			: "Use approved tools only when needed; otherwise answer conversationally and keep tool use minimal.";
+		mode === "chat"
+			? "You receive only the parent transcript snapshot included in the user prompt as conversational context; you do not inherit live parent history."
+			: "You start without parent transcript context and do not receive parent history.";
 	return [
 		modeLine,
-		capabilityLine,
+		"Pi SDK default built-in tools may be available because this child session does not set an explicit tool allowlist; current SDK defaults may include read, bash/shell, edit, and write capabilities.",
+		"Enabled extension custom tools may also be available through the child session's fresh extension loader.",
 		contextLine,
-		toolInstruction,
+		"Do not assume parent prompts, themes, skills, AGENTS files, primary-agent material, or hidden parent context are inherited.",
 		"Be terse by default. Answer directly. Ask one focused question if input is ambiguous.",
 	].join("\n");
 }
@@ -160,26 +128,57 @@ function buildTangentPrompt(userPrompt: string): string {
 	return `<side-chat-question>\n${trimmedUserPrompt}\n</side-chat-question>`;
 }
 
-function createSideChatResourceLoader(
-	systemPrompt: string,
-	capabilities: ResolvedSideChatCapabilities,
-): ResourceLoader {
-	const base = createIsolatedGremlinResourceLoader(systemPrompt);
-	return {
-		...base,
-		getSkills: () => ({ skills: capabilities.skills, diagnostics: [] }),
-	};
+export function buildSideChatPrompt(options: {
+	mode: SideChatMode;
+	userPrompt: string;
+	parentSnapshot?: ParentTranscriptSnapshot;
+}): string {
+	return options.mode === "chat"
+		? buildChatPrompt(options.userPrompt, options.parentSnapshot)
+		: buildTangentPrompt(options.userPrompt);
+}
+
+function createSideChatResourceLoader(options: {
+	cwd: string;
+	agentDir: string;
+	settingsManager: SettingsManager;
+	systemPrompt: string;
+	extensionFactories?: ExtensionFactory[];
+}): ResourceLoader {
+	return new DefaultResourceLoader({
+		cwd: options.cwd,
+		agentDir: options.agentDir,
+		settingsManager: options.settingsManager,
+		extensionFactories: options.extensionFactories,
+		noSkills: true,
+		noPromptTemplates: true,
+		noThemes: true,
+		noContextFiles: true,
+		systemPrompt: options.systemPrompt,
+		appendSystemPrompt: [],
+		// Preserve extension records/runtime so registered custom tools survive.
+		// Strip non-tool surfaces via the resource getters below instead of
+		// replacing `extensions` with [] — ExtensionRunner needs those records.
+		skillsOverride: () => ({ skills: [], diagnostics: [] }),
+		promptsOverride: () => ({ prompts: [], diagnostics: [] }),
+		themesOverride: () => ({ themes: [], diagnostics: [] }),
+		agentsFilesOverride: () => ({ agentsFiles: [] }),
+		systemPromptOverride: () => options.systemPrompt,
+		appendSystemPromptOverride: () => [],
+	});
 }
 
 export function buildSideChatSessionConfig(
 	options: BuildSideChatSessionConfigOptions,
 ): SideChatSessionConfig {
-	const capabilities =
-		options.capabilities ?? readSideChatCapabilities(options.cwd, options.mode);
-	const systemPrompt = buildSideChatSystemPrompt({
-		mode: options.mode,
-		tools: capabilities.tools,
-	});
+	const systemPrompt =
+		options.mode === "chat"
+			? SIDE_CHAT_SYSTEM_PROMPT_CHAT
+			: SIDE_CHAT_SYSTEM_PROMPT_TANGENT;
+	const cwd = options.cwd ?? process.cwd();
+	const agentDir = options.agentDir ?? getAgentDir();
+	const settingsManager =
+		options.settingsManager ?? SettingsManager.create(cwd, agentDir);
 
 	// D8: no per-side-chat model/thinking overrides; reuse parent fallback only.
 	const resolvedModel = resolveGremlinModel(
@@ -189,10 +188,11 @@ export function buildSideChatSessionConfig(
 	);
 	const thinking = resolveGremlinThinking(undefined, options.parentThinking);
 
-	const prompt =
-		options.mode === "chat"
-			? buildChatPrompt(options.userPrompt, options.parentSnapshot)
-			: buildTangentPrompt(options.userPrompt);
+	const prompt = buildSideChatPrompt({
+		mode: options.mode,
+		userPrompt: options.userPrompt,
+		parentSnapshot: options.parentSnapshot,
+	});
 
 	return {
 		systemPrompt,
@@ -201,12 +201,19 @@ export function buildSideChatSessionConfig(
 		resolvedModel: resolvedModel.model,
 		modelResolutionError: resolvedModel.error,
 		thinking,
-		tools: [...capabilities.tools],
-		cwd: options.cwd,
+		cwd,
+		agentDir,
+		settingsManager,
 		usesSubprocess: false,
 		writesTempPromptFile: false,
 		resources: createEmptyGremlinResources(),
-		resourceLoader: createSideChatResourceLoader(systemPrompt, capabilities),
+		resourceLoader: createSideChatResourceLoader({
+			cwd,
+			agentDir,
+			settingsManager,
+			systemPrompt,
+			extensionFactories: options.extensionFactories,
+		}),
 	};
 }
 
@@ -214,10 +221,11 @@ export async function createSideChatSession(
 	options: CreateSideChatSessionOptions,
 ): Promise<CreateAgentSessionResult> {
 	const plan = options.sessionConfig ?? buildSideChatSessionConfig(options);
+	await plan.resourceLoader.reload();
 	// Compose through createGremlinSession by passing a synthetic gremlin
 	// definition that yields the same plan. We bypass that path by passing
 	// the prebuilt sessionConfig directly — createGremlinSession honors
-	// `options.sessionConfig` and uses its `tools`, `resourceLoader`,
+	// `options.sessionConfig` and uses omitted `tools`, the fresh resourceLoader,
 	// `resolvedModel`, and `thinking` verbatim.
 	return createGremlinSession({
 		sessionConfig: plan,
@@ -231,7 +239,9 @@ export async function createSideChatSession(
 		},
 		intent: "",
 		context: "",
-		cwd: options.cwd,
+		cwd: plan.cwd ?? options.cwd,
+		agentDir: plan.agentDir ?? options.agentDir,
+		settingsManager: plan.settingsManager ?? options.settingsManager,
 		parentModel: options.parentModel,
 		parentThinking: options.parentThinking,
 		modelRegistry: options.modelRegistry,

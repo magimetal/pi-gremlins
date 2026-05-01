@@ -1,8 +1,6 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { describe, expect, test } from "bun:test";
 import "./v1-contract-harness.js";
-import { createWorkspace } from "./test-helpers.js";
+import { getResourceLoaderInstances, resetV1ContractHarness, setCreateAgentSessionImpl } from "./v1-contract-harness.js";
 
 const PARENT_PRIMARY_BLOCK_START = "<!-- pi-gremlins primary agent:start -->";
 
@@ -10,78 +8,35 @@ function makeSnapshot(entries, capturedAt = "2026-04-29T00:00:00.000Z") {
 	return { entries, capturedAt };
 }
 
-function writeSettings(repoRoot, sideChat) {
-	const piDir = path.join(repoRoot, ".pi");
-	fs.mkdirSync(piDir, { recursive: true });
-	fs.writeFileSync(
-		path.join(piDir, "settings.json"),
-		`${JSON.stringify({ "pi-gremlins": { sideChat } }, null, 2)}\n`,
-		"utf-8",
-	);
+function fakeToolExtension(name = "side_custom_tool") {
+	return () => ({
+		path: "fake-extension",
+		resolvedPath: "fake-extension",
+		sourceInfo: { type: "extension", path: "fake-extension" },
+		handlers: new Map(),
+		tools: new Map([[name, { name, description: "fake", parameters: {} }]]),
+		messageRenderers: new Map(),
+		commands: new Map([["hidden-command", {}]]),
+		flags: new Map(),
+		shortcuts: new Map(),
+	});
 }
 
-function writeSkill(repoRoot, skillName = "factory-skill") {
-	const skillDir = path.join(repoRoot, ".pi", "skills", skillName);
-	fs.mkdirSync(skillDir, { recursive: true });
-	fs.writeFileSync(
-		path.join(skillDir, "SKILL.md"),
-		`---\nname: ${skillName}\ndescription: Factory skill\n---\nUse it.\n`,
-		"utf-8",
-	);
-}
-
-describe("side-chat session factory v1 contract", () => {
-	test("T1 chat mode emits zero tools (empty array, not undefined)", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const config = buildSideChatSessionConfig({
-			mode: "chat",
-			userPrompt: "hello",
-		});
-		expect(Array.isArray(config.tools)).toBe(true);
-		expect(config.tools.length).toBe(0);
-		expect(config.tools).toEqual([]);
+describe("side-chat session factory PRD-0008/ADR-0008 contract", () => {
+	test("chat and tangent omit explicit tools so SDK defaults apply", async () => {
+		const { buildSideChatSessionConfig } = await import("./side-chat-session-factory.ts");
+		const chat = buildSideChatSessionConfig({ mode: "chat", userPrompt: "hello" });
+		const tangent = buildSideChatSessionConfig({ mode: "tangent", userPrompt: "hello" });
+		expect(Object.hasOwn(chat, "tools")).toBe(false);
+		expect(chat.tools).toBeUndefined();
+		expect(Object.hasOwn(tangent, "tools")).toBe(false);
+		expect(tangent.tools).toBeUndefined();
 	});
 
-	test("T2 tangent mode emits zero tools", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const config = buildSideChatSessionConfig({
-			mode: "tangent",
-			userPrompt: "hello",
-		});
-		expect(Array.isArray(config.tools)).toBe(true);
-		expect(config.tools.length).toBe(0);
-	});
-
-	test("T3 resources are empty (ADR-0003 isolation primitive)", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const config = buildSideChatSessionConfig({
-			mode: "chat",
-			userPrompt: "hello",
-		});
-		expect(config.resources).toEqual({
-			agents: [],
-			extensions: [],
-			prompts: [],
-			skills: [],
-			themes: [],
-		});
-	});
-
-	test("T4 resourceLoader getters return empty results", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const config = buildSideChatSessionConfig({
-			mode: "tangent",
-			userPrompt: "hello",
-		});
-		expect(config.resourceLoader.getExtensions().extensions).toEqual([]);
+	test("resources remain empty while resource loader strips non-tool surfaces", async () => {
+		const { buildSideChatSessionConfig } = await import("./side-chat-session-factory.ts");
+		const config = buildSideChatSessionConfig({ mode: "chat", userPrompt: "hello" });
+		expect(config.resources).toEqual({ agents: [], extensions: [], prompts: [], skills: [], themes: [] });
 		expect(config.resourceLoader.getSkills().skills).toEqual([]);
 		expect(config.resourceLoader.getPrompts().prompts).toEqual([]);
 		expect(config.resourceLoader.getThemes().themes).toEqual([]);
@@ -90,12 +45,8 @@ describe("side-chat session factory v1 contract", () => {
 		expect(config.resourceLoader.getSystemPrompt()).toBe(config.systemPrompt);
 	});
 
-	test("T5 system prompt is fixed and isolated from any parent text", async () => {
-		const {
-			buildSideChatSessionConfig,
-			SIDE_CHAT_SYSTEM_PROMPT_CHAT,
-			SIDE_CHAT_SYSTEM_PROMPT_TANGENT,
-		} = await import("./side-chat-session-factory.ts");
+	test("system prompts describe SDK defaults and extension tools without parent leakage", async () => {
+		const { buildSideChatSessionConfig, SIDE_CHAT_SYSTEM_PROMPT_CHAT, SIDE_CHAT_SYSTEM_PROMPT_TANGENT } = await import("./side-chat-session-factory.ts");
 		const sentinel = "PARENT_SENTINEL_BANNED_DO_NOT_LEAK";
 		const chat = buildSideChatSessionConfig({
 			mode: "chat",
@@ -112,33 +63,24 @@ describe("side-chat session factory v1 contract", () => {
 		});
 		expect(chat.systemPrompt).toBe(SIDE_CHAT_SYSTEM_PROMPT_CHAT);
 		expect(tangent.systemPrompt).toBe(SIDE_CHAT_SYSTEM_PROMPT_TANGENT);
-		expect(chat.systemPrompt).not.toContain(sentinel);
-		expect(chat.systemPrompt).not.toContain(PARENT_PRIMARY_BLOCK_START);
-		expect(chat.systemPrompt).not.toContain("AGENTS.md");
-		expect(tangent.systemPrompt).not.toContain(sentinel);
+		for (const prompt of [chat.systemPrompt, tangent.systemPrompt]) {
+			expect(prompt).toContain("SDK default built-in tools may be available");
+			expect(prompt).toContain("read");
+			expect(prompt).toContain("bash/shell");
+			expect(prompt).toContain("edit");
+			expect(prompt).toContain("write");
+			expect(prompt).toContain("Enabled extension custom tools may also be available");
+			expect(prompt).not.toContain("NO tools");
+			expect(prompt).not.toContain("conversational-only");
+			expect(prompt).not.toContain("approved read-only");
+			expect(prompt).not.toContain(sentinel);
+			expect(prompt).not.toContain(PARENT_PRIMARY_BLOCK_START);
+		}
 	});
 
-	test("T6 tangent mode passes no parent transcript even if supplied", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const sentinel = "TANGENT_LEAK_SENTINEL";
-		const config = buildSideChatSessionConfig({
-			mode: "tangent",
-			userPrompt: "what about this?",
-			parentSnapshot: makeSnapshot([{ role: "user", text: sentinel }]),
-		});
-		expect(config.prompt).not.toContain("parent-transcript-snapshot");
-		expect(config.prompt).not.toContain(sentinel);
-		expect(config.prompt).toContain("<side-chat-question>");
-		expect(config.prompt).toContain("what about this?");
-	});
-
-	test("T7 chat mode embeds snapshot only as input prompt, not system prompt", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const config = buildSideChatSessionConfig({
+	test("chat embeds only origin transcript snapshot in user prompt; tangent omits supplied snapshots", async () => {
+		const { buildSideChatSessionConfig } = await import("./side-chat-session-factory.ts");
+		const chat = buildSideChatSessionConfig({
 			mode: "chat",
 			userPrompt: "summarize",
 			parentSnapshot: makeSnapshot([
@@ -146,101 +88,50 @@ describe("side-chat session factory v1 contract", () => {
 				{ role: "assistant", text: "X2_ASSISTANT_TURN" },
 			]),
 		});
-		expect(config.prompt).toContain("X1_USER_TURN");
-		expect(config.prompt).toContain("X2_ASSISTANT_TURN");
-		expect(config.prompt).toContain("parent-transcript-snapshot");
-		expect(config.systemPrompt).not.toContain("X1_USER_TURN");
-		expect(config.systemPrompt).not.toContain("X2_ASSISTANT_TURN");
-		expect(config.tools).toEqual([]);
-		expect(config.resources.extensions).toEqual([]);
+		const tangent = buildSideChatSessionConfig({
+			mode: "tangent",
+			userPrompt: "what about this?",
+			parentSnapshot: makeSnapshot([{ role: "user", text: "TANGENT_LEAK_SENTINEL" }]),
+		});
+		expect(chat.prompt).toContain("parent-transcript-snapshot");
+		expect(chat.prompt).toContain("X1_USER_TURN");
+		expect(chat.prompt).toContain("X2_ASSISTANT_TURN");
+		expect(chat.systemPrompt).not.toContain("X1_USER_TURN");
+		expect(tangent.prompt).not.toContain("parent-transcript-snapshot");
+		expect(tangent.prompt).not.toContain("TANGENT_LEAK_SENTINEL");
+		expect(tangent.prompt).toContain("what about this?");
 	});
 
-	test("T8 empty snapshot in chat mode is allowed and omits transcript block", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const config = buildSideChatSessionConfig({
+	test("empty snapshot, model, and thinking behavior are preserved", async () => {
+		const { buildSideChatSessionConfig } = await import("./side-chat-session-factory.ts");
+		const empty = buildSideChatSessionConfig({ mode: "chat", userPrompt: "first", parentSnapshot: makeSnapshot([]) });
+		expect(empty.prompt).toContain("first");
+		expect(empty.prompt).not.toContain("parent-transcript-snapshot");
+		const inherited = buildSideChatSessionConfig({ mode: "chat", userPrompt: "hi", parentModel: "openai/gpt-5", parentThinking: "medium" });
+		expect(inherited.model).toBe("openai/gpt-5");
+		expect(inherited.thinking).toBe("medium");
+	});
+
+	test("createSideChatSession reloads fresh loader before createAgentSession and preserves extension tool records", async () => {
+		resetV1ContractHarness();
+		const { createSideChatSession } = await import("./side-chat-session-factory.ts");
+		const calls = [];
+		setCreateAgentSessionImpl(async (options) => {
+			calls.push(options);
+			const extensionResult = options.resourceLoader.getExtensions();
+			expect(extensionResult.extensions.length).toBe(1);
+			expect(extensionResult.extensions[0].tools.has("side_custom_tool")).toBe(true);
+			expect(options.tools).toBeUndefined();
+			return { session: { subscribe: () => () => {}, async prompt() {}, dispose() {} }, extensionsResult: extensionResult };
+		});
+		const created = await createSideChatSession({
 			mode: "chat",
-			userPrompt: "first message",
-			parentSnapshot: makeSnapshot([]),
+			userPrompt: "use extension tool",
+			extensionFactories: [fakeToolExtension()],
 		});
-		expect(config.prompt).toContain("<side-chat-question>");
-		expect(config.prompt).toContain("first message");
-		expect(config.prompt).not.toContain("parent-transcript-snapshot");
-	});
-
-	test("T9 model and thinking inherit from parent when supplied", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const config = buildSideChatSessionConfig({
-			mode: "chat",
-			userPrompt: "hi",
-			parentModel: "openai/gpt-5",
-			parentThinking: "medium",
-		});
-		expect(config.model).toBe("openai/gpt-5");
-		expect(config.thinking).toBe("medium");
-	});
-
-	test("T10 approved read-only tools are passed explicitly and prompt reflects inspection only", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const { repoRoot } = createWorkspace();
-		writeSettings(repoRoot, {
-			chat: { tools: ["read", "grep", "find", "ls"] },
-		});
-		const config = buildSideChatSessionConfig({
-			mode: "chat",
-			userPrompt: "inspect",
-			cwd: repoRoot,
-		});
-		expect(config.tools).toEqual(["read", "grep", "find", "ls"]);
-		expect(config.systemPrompt).toContain("approved read-only workspace tools: read, grep, find, ls");
-		expect(config.systemPrompt).toContain("no mutation, shell, write, edit, or unlisted tools");
-	});
-
-	test("T11 approved skills are exposed only through side-chat skill loader", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const { repoRoot } = createWorkspace();
-		writeSkill(repoRoot);
-		writeSettings(repoRoot, {
-			chat: { tools: ["read"], skillPaths: [".pi/skills/factory-skill/SKILL.md"] },
-		});
-		const config = buildSideChatSessionConfig({
-			mode: "chat",
-			userPrompt: "use skill",
-			cwd: repoRoot,
-		});
-		const skillResult = config.resourceLoader.getSkills();
-		expect(skillResult.diagnostics).toEqual([]);
-		expect(skillResult.skills.map((skill) => skill.name)).toEqual(["factory-skill"]);
-		expect(config.resourceLoader.getExtensions().extensions).toEqual([]);
-		expect(config.resourceLoader.getPrompts().prompts).toEqual([]);
-		expect(config.resourceLoader.getThemes().themes).toEqual([]);
-		expect(config.resourceLoader.getAgentsFiles().agentsFiles).toEqual([]);
-		expect(config.resourceLoader.getAppendSystemPrompt()).toEqual([]);
-	});
-
-	test("T12 invalid tools and skill gating fail closed before config is produced", async () => {
-		const { buildSideChatSessionConfig } = await import(
-			"./side-chat-session-factory.ts"
-		);
-		const { SideChatCapabilityError } = await import("./side-chat-capabilities.ts");
-		const { repoRoot } = createWorkspace();
-		writeSkill(repoRoot);
-		writeSettings(repoRoot, { chat: { tools: ["bash"] } });
-		expect(() =>
-			buildSideChatSessionConfig({ mode: "chat", userPrompt: "x", cwd: repoRoot }),
-		).toThrow(SideChatCapabilityError);
-		writeSettings(repoRoot, {
-			chat: { tools: ["grep"], skillPaths: [".pi/skills/factory-skill/SKILL.md"] },
-		});
-		expect(() =>
-			buildSideChatSessionConfig({ mode: "chat", userPrompt: "x", cwd: repoRoot }),
-		).toThrow(SideChatCapabilityError);
+		expect(calls.length).toBe(1);
+		expect(created.extensionsResult.extensions.length).toBe(1);
+		const [loader] = getResourceLoaderInstances();
+		expect(loader.reloadCount).toBe(1);
 	});
 });

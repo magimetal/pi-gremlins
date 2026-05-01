@@ -1,6 +1,6 @@
 # ADR-0007: Guarded Side-Chat Tool Capabilities
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0008
 - **Date:** 2026-05-01
 - **Decision Maker:** magimetal
 - **Related:** GitHub issue [#57](https://github.com/magimetal/pi-gremlins/issues/57), [PRD-0007](../prd/0007-allow-side-chat-sessions-to-use-approved-skills-and-tools.md), [PRD-0005](../prd/0005-persistent-overlay-side-chat.md), [ADR-0005](0005-persistent-overlay-side-chat.md), [ADR-0003](0003-unified-agent-discovery-and-primary-agent-prompt-injection-in-pi-gremlins.md)
@@ -127,4 +127,5 @@ Approved tools/skills do not authorize parent prompt/history inheritance. Capabi
 
 ## Status History
 
+- 2026-05-01: Superseded by [ADR-0008](0008-sdk-default-side-chat-tool-capabilities.md); side-chat now uses SDK-default built-in tools plus extension custom tools through fresh side-chat resource loading instead of a side-chat capability profile.
 - 2026-05-01: Accepted for issue #57; replaces the zero-tool side-chat rule with an explicit guarded capability-profile boundary while preserving ADR-0005 overlay and isolation semantics.

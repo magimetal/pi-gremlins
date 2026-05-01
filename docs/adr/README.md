@@ -71,4 +71,5 @@ Reference ADR IDs in changelog entries for significant changes:
 | 0004 | Side-Chat Absorption from pi-gizmo into pi-gremlins              | Accepted | 2026-04-29 |
 | 0005 | Persistent Overlay Side-Chat                                    | Accepted | 2026-04-30 |
 | 0006 | Official SDK Steering for Active Gremlin Sessions               | Accepted | 2026-04-30 |
-| 0007 | Guarded Side-Chat Tool Capabilities                            | Accepted | 2026-05-01 |
+| 0007 | Guarded Side-Chat Tool Capabilities                            | Superseded by ADR-0008 | 2026-05-01 |
+| 0008 | SDK-Default Side-Chat Tool Capabilities                        | Accepted | 2026-05-01 |

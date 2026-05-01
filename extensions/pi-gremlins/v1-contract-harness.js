@@ -6,6 +6,7 @@ import { MockContainer, MockMarkdown, MockSpacer, MockText, parseFrontmatter } f
 
 const state = {
 	mockAgentDir: "/tmp",
+	resourceLoaderInstances: [],
 	createAgentSessionImpl: async () => ({
 		session: {
 			subscribe: () => () => {},
@@ -19,6 +20,7 @@ const state = {
 
 function resetState() {
 	state.mockAgentDir = "/tmp";
+	state.resourceLoaderInstances = [];
 	state.createAgentSessionImpl = async () => ({
 		session: {
 			subscribe: () => () => {},
@@ -28,6 +30,41 @@ function resetState() {
 		},
 		extensionsResult: {},
 	});
+}
+
+class DefaultResourceLoader {
+	constructor(options) {
+		this.options = options;
+		this.reloadCount = 0;
+		this.extensionsResult = { extensions: [], errors: [], runtime: {} };
+		state.resourceLoaderInstances.push(this);
+	}
+	getExtensions() { return this.extensionsResult; }
+	getSkills() { return this.options.skillsOverride?.({ skills: [{ name: "parent-skill" }], diagnostics: [] }) ?? { skills: [], diagnostics: [] }; }
+	getPrompts() { return this.options.promptsOverride?.({ prompts: [{ name: "parent-prompt" }], diagnostics: [] }) ?? { prompts: [], diagnostics: [] }; }
+	getThemes() { return this.options.themesOverride?.({ themes: [{ name: "parent-theme" }], diagnostics: [] }) ?? { themes: [], diagnostics: [] }; }
+	getAgentsFiles() { return this.options.agentsFilesOverride?.({ agentsFiles: [{ path: "AGENTS.md", content: "parent agents" }] }) ?? { agentsFiles: [] }; }
+	getSystemPrompt() { return this.options.systemPromptOverride?.(this.options.systemPrompt) ?? this.options.systemPrompt; }
+	getAppendSystemPrompt() { return this.options.appendSystemPromptOverride?.(["parent append"]) ?? []; }
+	extendResources() {}
+	async reload() {
+		this.reloadCount += 1;
+		const extensions = (this.options.extensionFactories ?? []).map((factory, index) => {
+			const produced = typeof factory === "function" ? factory() : factory;
+			return produced?.extension ?? produced ?? {
+				path: `fake-${index}`,
+				resolvedPath: `fake-${index}`,
+				sourceInfo: { type: "extension", path: `fake-${index}` },
+				handlers: new Map(),
+				tools: new Map([[`fake-tool-${index}`, { name: `fake-tool-${index}` }]]),
+				messageRenderers: new Map(),
+				commands: new Map(),
+				flags: new Map(),
+				shortcuts: new Map(),
+			};
+		});
+		this.extensionsResult = { extensions, errors: [], runtime: {} };
+	}
 }
 
 function loadSkills({ skillPaths }) {
@@ -68,6 +105,7 @@ function loadSkills({ skillPaths }) {
 }
 
 mock.module("@mariozechner/pi-coding-agent", () => ({
+	DefaultResourceLoader,
 	AuthStorage: {
 		inMemory: () => ({}),
 	},
@@ -136,6 +174,10 @@ export function setMockAgentDir(path) {
 
 export function setCreateAgentSessionImpl(impl) {
 	state.createAgentSessionImpl = impl;
+}
+
+export function getResourceLoaderInstances() {
+	return state.resourceLoaderInstances;
 }
 
 export function createExtensionHarness() {

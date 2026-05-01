@@ -1,6 +1,6 @@
 # PRD-0007: Allow Side-Chat Sessions to Use Approved Skills and Tools
 
-- **Status:** Completed
+- **Status:** Superseded by PRD-0008
 - **Date:** 2026-05-01
 - **Author:** Magi Metal
 - **Related:** GitHub issue [#57](https://github.com/magimetal/pi-gremlins/issues/57), [PRD-0005](0005-persistent-overlay-side-chat.md), [ADR-0007](../adr/0007-guarded-side-chat-tool-capabilities.md), [ADR-0005](../adr/0005-persistent-overlay-side-chat.md), [ADR-0003](../adr/0003-unified-agent-discovery-and-primary-agent-prompt-injection-in-pi-gremlins.md), [ADR-0004](../adr/0004-side-chat-absorption-from-pi-gizmo.md)
@@ -97,6 +97,7 @@ When capabilities are disabled, the assistant should continue to state that it c
 
 ## Revision History
 
+- 2026-05-01: Superseded by PRD-0008 after issue #57 / PR #58 scope changed from configurable side-chat allowlists to SDK default built-in tools plus enabled extension custom tools with no side-chat-specific configuration.
 - 2026-05-01: Marked Completed after implementation, passing verification, and execution review PASS for issue #57.
 - 2026-05-01: Active after approved implementation plan.
 - 2026-05-01: Draft created for GitHub issue #57.
