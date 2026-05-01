@@ -29,6 +29,11 @@ import {
 	normalizeInvocationDetails,
 	type PiGremlinsArgs,
 } from "./gremlin-tool-execution.js";
+import { createActiveGremlinSessionRegistry } from "./gremlin-session-registry.js";
+import {
+	createGremlinSteerCommandHandler,
+	GREMLIN_STEER_COMMAND,
+} from "./gremlin-steer-command.js";
 import {
 	cyclePrimaryAgent,
 	notifyPrimaryAgent,
@@ -101,6 +106,7 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 				userAgentsDir: agentsDir,
 			});
 		let primaryAgentState: PrimaryAgentState = createInitialPrimaryAgentState();
+		const activeSessionRegistry = createActiveGremlinSessionRegistry();
 
 		registerSideChatCommands(pi);
 
@@ -137,6 +143,7 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 		pi.on("session_shutdown", () => {
 			discovery.clear();
 			primaryAgentDiscovery.clear();
+			activeSessionRegistry.clearActiveGremlinSessions();
 		});
 
 		pi.registerCommand("gremlins:primary", {
@@ -150,6 +157,11 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 					args,
 				);
 			},
+		});
+
+		pi.registerCommand(GREMLIN_STEER_COMMAND, {
+			description: "Steer an active gremlin child session",
+			handler: createGremlinSteerCommandHandler(activeSessionRegistry),
 		});
 
 		pi.registerShortcut(PRIMARY_SHORTCUT, {
@@ -206,18 +218,20 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 			},
 
 			async execute(
-				_toolCallId: string,
+				toolCallId: string,
 				params: PiGremlinsArgs,
 				signal: AbortSignal | undefined,
 				onUpdate: AgentToolUpdateCallback<GremlinInvocationDetails> | undefined,
 				ctx: ExtensionContext,
 			) {
 				return executePiGremlinsTool({
+					toolCallId,
 					params,
 					signal,
 					onUpdate,
 					ctx,
 					discovery,
+					activeSessionRegistry,
 					notifyDiagnostics: (diagnostics) =>
 						notifyDiscoveryDiagnostics(ctx, diagnostics),
 				});

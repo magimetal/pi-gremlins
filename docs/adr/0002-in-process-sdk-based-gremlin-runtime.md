@@ -14,7 +14,7 @@ Main complexity sits in:
 
 - `extensions/pi-gremlins/single-agent-runner.ts` — spawns nested Pi processes, manages stdout JSON parsing, temp prompt files, abort timers, late exit handling, and steerable RPC sessions.
 - `extensions/pi-gremlins/execution-modes.ts` — supports single, parallel, and chain execution.
-- `extensions/pi-gremlins/index.ts` plus viewer modules — manages popup overlay state, inline/viewer semantic projection, and targeted steering.
+- `extensions/pi-gremlins/index.ts` plus viewer modules — managed popup overlay state, inline/viewer semantic projection, and legacy targeted steering.
 
 This architecture solved isolation by process boundary, but it also created repeated failure surface:
 
@@ -122,7 +122,7 @@ Rationale: User asked for full rewrite because subprocess termination has been p
 - **Migration/ops:**
   - No persistence or config migration.
   - Public tool schema changes materially: old multi-mode params are removed in favor of `gremlins: [{ intent, agent, context, cwd? }, ...]`.
-  - Legacy commands `/gremlins:view` and `/gremlins:steer` are removed as part of rewrite.
+  - Legacy commands `/gremlins:view` and legacy `/gremlins:steer` are removed as part of rewrite. Official active child-session steering through `AgentSession.steer(message)` is governed separately by ADR-0006.
   - Extension entry remains under `./extensions/pi-gremlins`, but implementation beneath it is rewritten from scratch and legacy modules deleted after cutover verification.
 
 ## Verification
@@ -157,8 +157,11 @@ Research inputs driving this decision:
 
 This ADR intentionally supersedes ADR-0001. ADR-0001 optimized popup viewer and shared viewer-entry presentation surfaces. V1 rewrite removes popup viewer entirely and no longer treats viewer architecture as core runtime boundary.
 
+ADR-0006 supersedes this ADR only for the targeted-steering prohibition: official child `AgentSession.steer(message)` support is allowed for active gremlin sessions, while legacy subprocess/RPC/viewer steering remains prohibited.
+
 ## Status History
 
 - 2026-04-22: Accepted; supersedes ADR-0001 in favor of SDK-based in-process child sessions and inline-only v1 UI
 - 2026-04-24: Noted required per-gremlin `intent` field as part of public v1 request contract and child prompt framing
 - 2026-04-25: Clarified issue #41 prompt-isolation boundary after primary-agent merge: gremlin child sessions use selected sub-agent markdown as system prompt and do not propagate parent prompt snapshots or primary-agent blocks
+- 2026-04-30: Clarified issue #53 partial supersession by ADR-0006: official active child-session steering is allowed; legacy subprocess/RPC/viewer steering remains prohibited

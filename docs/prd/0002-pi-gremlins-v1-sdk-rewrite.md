@@ -21,7 +21,7 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 - Each gremlin gets its own markdown definition as child system prompt, plus caller-supplied intent and caller-supplied context as the child user prompt.
 - No full parent conversation history.
 - No chain mode.
-- No popup viewer, no `/gremlins:view`, no targeted steering command.
+- No popup viewer or `/gremlins:view`; no legacy targeted steering command. Official SDK child-session steering is governed separately by [PRD-0006](0006-active-gremlin-session-steering.md).
 - Inline progress must stay visible and expand with Pi's existing `Ctrl+O` tool-row affordance.
 
 ## Product Goals
@@ -77,7 +77,7 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 
 - Chain mode.
 - Popup viewer and `/gremlins:view`.
-- Targeted steering and `/gremlins:steer`.
+- Legacy targeted steering and legacy `/gremlins:steer` mechanisms. Official active child-session steering through `AgentSession.steer(message)` is governed by [PRD-0006](0006-active-gremlin-session-steering.md).
 - `agentScope`, `confirmProjectAgents`, package-agent discovery, or any user-facing scope selector.
 - Package-provided gremlin definitions.
 - Session-local viewer snapshot architecture from current implementation.
@@ -116,7 +116,7 @@ V1 rewrite must keep premise and operator value, but deliberately cut scope unti
 - **Discovery:** new modules for gremlin definition loading, frontmatter parsing, `agent_type: sub-agent` gating, both-scope resolution, and duplicate-name precedence.
 - **Child-session runtime:** new SDK-based session factory using `createAgentSession()`, in-memory session state, and custom `ResourceLoader`/system prompt override.
 - **Execution:** new scheduler and invocation controller for 1-10 gremlins, structured cancellation, event fan-in, and aggregate result handling.
-- **Rendering:** new inline collapsed/expanded renderer only; no overlay, popup, viewer snapshot, or steering UI.
+- **Rendering:** new inline collapsed/expanded renderer only; no overlay, popup, viewer snapshot, or legacy steering UI. Official command-only SDK steering is governed by [PRD-0006](0006-active-gremlin-session-steering.md).
 - **Testing:** new Bun tests beside rewritten modules; no dependency on current viewer-specific test helpers except generic Bun mocking patterns.
 - **Related ADRs:** ADR-0002 — `docs/adr/0002-in-process-sdk-based-gremlin-runtime.md`
 
@@ -161,3 +161,4 @@ Primary references used for this PRD:
 - 2026-04-22: Draft created
 - 2026-04-24: V1 request contract updated to require per-gremlin `intent` separate from `context`
 - 2026-04-25: Prompt isolation refined for issue #41 so gremlin child sessions receive selected sub-agent markdown only as system prompt; parent snapshots and primary-agent prompt blocks stay out of child sessions
+- 2026-04-30: Targeted-steering non-goal narrowed for issue #53: legacy subprocess/RPC/viewer steering remains out of scope, while official active child-session steering is governed by PRD-0006

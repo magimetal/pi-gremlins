@@ -52,7 +52,7 @@ Issue #39 asks to deprecate `pi-mohawk` by moving primary-agent functionality in
 
 - Changing the `pi-gremlins` tool schema for gremlin delegation.
 - Renaming machine-facing package, extension, tool, schema, or runtime identifiers away from `pi-gremlins`.
-- Reintroducing chain mode, popup viewer, `/gremlins:view`, targeted steering, package gremlin discovery, or scope toggles.
+- Reintroducing chain mode, popup viewer, `/gremlins:view`, legacy targeted steering, package gremlin discovery, or scope toggles. Official active child-session steering is governed separately by [PRD-0006](0006-active-gremlin-session-steering.md).
 - Editing, creating, or deleting agent markdown definitions from the extension.
 - Loading untyped, malformed, or legacy-role markdown as primary agents or gremlins.
 - Persisting raw primary-agent markdown in session entries.
@@ -136,3 +136,4 @@ Docs now describe both agent roles, migration behavior, command/status semantics
 - 2026-04-25: Marked Completed after implementation review PASS; recorded delivered primary-agent behavior and verification evidence.
 - 2026-04-25: Activated for implementation after ADR-0003 acceptance; replaced placeholder ADR references with concrete ADR link.
 - 2026-04-25: Draft created for GitHub issue #39 product scope.
+- 2026-04-30: Clarified for issue #53 that only legacy targeted steering remains out of scope; official active child-session steering is governed by PRD-0006.
