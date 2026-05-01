@@ -5,6 +5,8 @@ import "./v1-contract-harness.js";
 import { getResourceLoaderInstances, resetV1ContractHarness } from "./v1-contract-harness.js";
 import { createWorkspace } from "./test-helpers.js";
 
+const LEGACY_SIDE_CHAT_SKILL_SENTINEL = "ISSUE_59_LEGACY_SIDE_CHAT_SKILL_PATH_SHOULD_NOT_LEAK";
+
 function createFakePi() {
 	const commands = new Map();
 	const entries = [];
@@ -203,18 +205,30 @@ describe("side-chat overlay command contract", () => {
 		const { repoRoot } = createWorkspace();
 		const piDir = path.join(repoRoot, ".pi");
 		fs.mkdirSync(piDir, { recursive: true });
+		const legacySkillDir = path.join(repoRoot, "legacy-side-chat-skill");
+		fs.mkdirSync(legacySkillDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(legacySkillDir, "SKILL.md"),
+			`---\nname: legacy-side-chat-skill\ndescription: ${LEGACY_SIDE_CHAT_SKILL_SENTINEL}\n---\n\n${LEGACY_SIDE_CHAT_SKILL_SENTINEL}`,
+		);
 		fs.writeFileSync(path.join(piDir, "settings.json"), JSON.stringify({
-			"pi-gremlins": { sideChat: { chat: { tools: ["unknown"], skillPaths: ["bad"] } } },
+			"pi-gremlins": { sideChat: { chat: { tools: ["unknown"], skillPaths: [legacySkillDir] } } },
 		}));
 		const factory = createFakeSessionFactory();
 		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
 		await pi.commands.get("gremlins:chat").handler("inspect", createFakeCtx({ cwd: repoRoot }));
 		expect(factory.calls[0].mode).toBe("chat");
 		expect(factory.calls[0].sessionConfig.tools).toBeUndefined();
+		expect(factory.calls[0].sessionConfig.prompt).not.toContain(LEGACY_SIDE_CHAT_SKILL_SENTINEL);
+		expect(factory.calls[0].sessionConfig.systemPrompt).not.toContain(LEGACY_SIDE_CHAT_SKILL_SENTINEL);
+		expect(JSON.stringify(factory.calls[0].sessionConfig.resources)).not.toContain(LEGACY_SIDE_CHAT_SKILL_SENTINEL);
 		await pi.commands.get("gremlins:tangent:new").handler("explore", createFakeCtx({ cwd: repoRoot }));
 		expect(factory.calls[1].mode).toBe("tangent");
 		expect(factory.calls[1].sessionConfig.tools).toBeUndefined();
 		expect(factory.calls[1].sessionConfig.prompt).not.toContain("parent-transcript-snapshot");
+		expect(factory.calls[1].sessionConfig.prompt).not.toContain(LEGACY_SIDE_CHAT_SKILL_SENTINEL);
+		expect(factory.calls[1].sessionConfig.systemPrompt).not.toContain(LEGACY_SIDE_CHAT_SKILL_SENTINEL);
+		expect(JSON.stringify(factory.calls[1].sessionConfig.resources)).not.toContain(LEGACY_SIDE_CHAT_SKILL_SENTINEL);
 	});
 
 	test("active side-chat session reuse does not construct another resource loader", async () => {

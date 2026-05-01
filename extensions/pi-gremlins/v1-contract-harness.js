@@ -40,7 +40,17 @@ class DefaultResourceLoader {
 		state.resourceLoaderInstances.push(this);
 	}
 	getExtensions() { return this.extensionsResult; }
-	getSkills() { return this.options.skillsOverride?.({ skills: [{ name: "parent-skill" }], diagnostics: [] }) ?? { skills: [], diagnostics: [] }; }
+	getSkills() {
+		const base = this.options.noSkills
+			? { skills: [], diagnostics: [] }
+			: loadSkills({
+				cwd: this.options.cwd,
+				agentDir: this.options.agentDir,
+				skillPaths: [],
+				includeDefaults: true,
+			});
+		return this.options.skillsOverride?.(base) ?? base;
+	}
 	getPrompts() { return this.options.promptsOverride?.({ prompts: [{ name: "parent-prompt" }], diagnostics: [] }) ?? { prompts: [], diagnostics: [] }; }
 	getThemes() { return this.options.themesOverride?.({ themes: [{ name: "parent-theme" }], diagnostics: [] }) ?? { themes: [], diagnostics: [] }; }
 	getAgentsFiles() { return this.options.agentsFilesOverride?.({ agentsFiles: [{ path: "AGENTS.md", content: "parent agents" }] }) ?? { agentsFiles: [] }; }
@@ -67,11 +77,27 @@ class DefaultResourceLoader {
 	}
 }
 
-function loadSkills({ skillPaths }) {
+function collectSkillFiles(inputPath) {
+	if (!fs.existsSync(inputPath)) return [];
+	const stats = fs.statSync(inputPath);
+	if (stats.isFile()) return inputPath.endsWith(".md") ? [inputPath] : [];
+	const directSkill = path.join(inputPath, "SKILL.md");
+	if (fs.existsSync(directSkill)) return [directSkill];
+	return fs.readdirSync(inputPath, { withFileTypes: true }).flatMap((entry) => {
+		if (entry.name.startsWith(".")) return [];
+		const entryPath = path.join(inputPath, entry.name);
+		return entry.isDirectory() ? collectSkillFiles(entryPath) : [];
+	});
+}
+
+function loadSkills({ cwd, agentDir, skillPaths = [], includeDefaults = false }) {
 	const skills = [];
 	const diagnostics = [];
 	const byName = new Map();
-	for (const filePath of skillPaths) {
+	const inputs = includeDefaults
+		? [path.join(agentDir, "skills"), path.join(cwd, ".pi", "skills"), ...skillPaths]
+		: skillPaths;
+	for (const filePath of inputs.flatMap((inputPath) => collectSkillFiles(inputPath))) {
 		try {
 			const content = fs.readFileSync(filePath, "utf-8");
 			const { frontmatter } = parseFrontmatter(content);
