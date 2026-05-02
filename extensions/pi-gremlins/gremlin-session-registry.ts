@@ -2,12 +2,17 @@ export interface SteerableGremlinSession {
 	steer(message: string): Promise<unknown> | unknown;
 }
 
+export type ActiveGremlinSteeringEvent =
+	| { status: "queued"; message: string }
+	| { status: "rejected"; message: string; errorMessage: string };
+
 export interface ActiveGremlinSessionEntry {
 	readonly gremlinId: string;
 	readonly normalizedGremlinId: string;
 	readonly toolCallId: string;
 	readonly agent: string;
 	readonly session: SteerableGremlinSession;
+	recordSteeringEvent?(event: ActiveGremlinSteeringEvent): void;
 }
 
 export type ActiveGremlinSessionHandle = symbol;
@@ -23,6 +28,7 @@ export interface ActiveGremlinSessionRegistry {
 		toolCallId: string;
 		agent: string;
 		session: SteerableGremlinSession;
+		recordSteeringEvent?(event: ActiveGremlinSteeringEvent): void;
 	}): ActiveGremlinSessionHandle;
 	unregisterActiveGremlinSession(handle: ActiveGremlinSessionHandle): boolean;
 	resolveActiveGremlinSession(gremlinId: string): ResolveActiveGremlinSessionResult;
@@ -45,6 +51,7 @@ export function createActiveGremlinSessionRegistry(): ActiveGremlinSessionRegist
 				toolCallId: entry.toolCallId,
 				agent: entry.agent,
 				session: entry.session,
+				recordSteeringEvent: entry.recordSteeringEvent,
 			});
 			return handle;
 		},

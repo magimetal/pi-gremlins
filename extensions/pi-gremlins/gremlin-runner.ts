@@ -18,6 +18,7 @@ import type {
 import type {
 	ActiveGremlinSessionHandle,
 	ActiveGremlinSessionRegistry,
+	ActiveGremlinSteeringEvent,
 } from "./gremlin-session-registry.js";
 
 export interface GremlinRunnerUpdate {
@@ -455,6 +456,14 @@ export async function runSingleGremlin({
 			toolCallId,
 			agent: request.agent,
 			session,
+			recordSteeringEvent(event: ActiveGremlinSteeringEvent) {
+				const phase = event.status === "queued" ? "steering:queued" : "steering:rejected";
+				const text =
+					event.status === "queued"
+						? `queued · ${event.message}`
+						: `rejected · ${event.errorMessage} · ${event.message}`;
+				publish({}, { kind: "steering", phase, text });
+			},
 		});
 		unsubscribe = session.subscribe?.((event: GremlinEvent) => {
 			projectGremlinEvent(event, state, session, publish, textDeltaPublisher);

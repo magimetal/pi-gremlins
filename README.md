@@ -168,7 +168,17 @@ Behavior:
 - Only currently active gremlin sessions can be steered. Unknown, completed, canceled, failed, setup-failed, stale, or disposed ids are rejected.
 - Concurrent batches can each have a `g1`. If more than one active session shares an id, steering that id fails as ambiguous instead of guessing.
 - Pi SDK queues steering for the target child session after its current child tool calls finish and before its next child LLM call; it does not interrupt a running tool call immediately.
+- Successful active steering is recorded in the inline gremlin activity stream as `steering · steering:queued · queued · <message>` and also emits a transient notification. If the active session rejects steering, the inline activity stream records `steering:rejected` with the failure reason.
 - This is official child-session steering. It does not restore legacy subprocess/RPC steering, parent-message injection, prompt-history injection, popup UI, or `/gremlins:view` viewer controls.
+
+Manual live repro:
+
+1. Start a long-running gremlin task that will make more than one child LLM call, such as a task that asks a gremlin to inspect several files and wait to summarize until all files are read.
+2. While the gremlin row still shows `Active`, run `/gremlins:steer G1 keep investigating before summarizing` in the parent session.
+3. Confirm the notification says `Steering queued for g1 (...)` and expand the gremlin row with Pi's standard tool-row expand control to confirm a `steering:queued` activity line appears.
+4. Confirm the gremlin incorporates the steering before its next LLM response. Steering submitted after completion should warn `No active gremlin found`.
+
+Install/version drift check: because the package version may remain `0.1.0` between unreleased commits, confirm the installed source by checking the Pi package install location or reinstalling from the intended Git commit/branch before testing steering behavior.
 
 See [PRD-0006](docs/prd/0006-active-gremlin-session-steering.md) and [ADR-0006](docs/adr/0006-official-sdk-steering-for-active-gremlin-sessions.md).
 
