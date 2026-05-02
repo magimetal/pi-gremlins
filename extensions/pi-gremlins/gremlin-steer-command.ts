@@ -40,7 +40,7 @@ export function createGremlinSteerCommandHandler(
 			return;
 		}
 
-		const { gremlinId, message } = parsed.value;
+		const { gremlinId, message: steeringMessage } = parsed.value;
 		const resolved = registry.resolveActiveGremlinSession(gremlinId);
 		if (resolved.status === "missing") {
 			ctx.ui?.notify?.(
@@ -58,13 +58,22 @@ export function createGremlinSteerCommandHandler(
 		}
 
 		try {
-			await resolved.entry.session.steer(message);
+			await resolved.entry.session.steer(steeringMessage);
+			resolved.entry.recordSteeringEvent?.({
+				status: "queued",
+				message: steeringMessage,
+			});
 			ctx.ui?.notify?.(
 				`Steering queued for ${resolved.entry.gremlinId} (${resolved.entry.agent}).`,
 				"info",
 			);
 		} catch (error) {
 			const messageText = error instanceof Error ? error.message : String(error);
+			resolved.entry.recordSteeringEvent?.({
+				status: "rejected",
+				message: steeringMessage,
+				errorMessage: messageText,
+			});
 			ctx.ui?.notify?.(
 				`Failed to steer ${resolved.entry.gremlinId} (${resolved.entry.agent}): ${messageText}`,
 				"error",

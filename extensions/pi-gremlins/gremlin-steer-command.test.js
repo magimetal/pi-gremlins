@@ -71,10 +71,11 @@ describe("gremlin steer command", () => {
 		expect(steerCalls).toBe(0);
 	});
 
-	test("awaits child session steer exactly once, then notifies success", async () => {
+	test("awaits child session steer exactly once, records inline evidence, then notifies success", async () => {
 		const { createGremlinSteerCommandHandler } = await import("./gremlin-steer-command.ts");
 		const order = [];
 		const steerMessages = [];
+		const steeringEvents = [];
 		let resolveSteer;
 		const steerPromise = new Promise((resolve) => {
 			resolveSteer = resolve;
@@ -84,6 +85,9 @@ describe("gremlin steer command", () => {
 			entry: {
 				gremlinId: "g1",
 				agent: "researcher",
+				recordSteeringEvent(event) {
+					steeringEvents.push(event);
+				},
 				session: {
 					async steer(message) {
 						steerMessages.push(message);
@@ -103,16 +107,21 @@ describe("gremlin steer command", () => {
 
 		expect(steerMessages).toEqual(["keep investigating auth flow"]);
 		expect(order).toEqual(["steer-start", "steer-end"]);
+		expect(steeringEvents).toEqual([{ status: "queued", message: "keep investigating auth flow" }]);
 		expect(ctx.notifications).toEqual([{ message: "Steering queued for g1 (researcher).", type: "info" }]);
 	});
 
-	test("steer rejection notifies failure with no success", async () => {
+	test("steer rejection records inline evidence and notifies failure with no success", async () => {
 		const { createGremlinSteerCommandHandler } = await import("./gremlin-steer-command.ts");
+		const steeringEvents = [];
 		const registry = createRegistry({
 			status: "active",
 			entry: {
 				gremlinId: "g1",
 				agent: "researcher",
+				recordSteeringEvent(event) {
+					steeringEvents.push(event);
+				},
 				session: {
 					async steer() {
 						throw new Error("disposed");
@@ -122,6 +131,9 @@ describe("gremlin steer command", () => {
 		});
 		const ctx = createCtx();
 		await createGremlinSteerCommandHandler(registry)("g1 continue", ctx);
+		expect(steeringEvents).toEqual([
+			{ status: "rejected", message: "continue", errorMessage: "disposed" },
+		]);
 		expect(ctx.notifications).toEqual([{ message: "Failed to steer g1 (researcher): disposed", type: "error" }]);
 	});
 });

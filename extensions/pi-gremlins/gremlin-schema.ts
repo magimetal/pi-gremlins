@@ -59,6 +59,7 @@ export type GremlinActivityKind =
 	| "tool-result"
 	| "text"
 	| "task"
+	| "steering"
 	| "idle";
 
 export interface GremlinActivity {

@@ -502,4 +502,52 @@ describe("gremlin runner v1 contract", () => {
 			"dispose",
 		]);
 	});
+
+	test("records steering events from the active registry into gremlin activity", async () => {
+		const { runSingleGremlin } = await import("./gremlin-runner.ts");
+		let registeredEntry;
+		const fake = createFakeSession({
+			onPrompt: async () => {
+				registeredEntry.recordSteeringEvent({
+					status: "queued",
+					message: "keep investigating before summarizing",
+				});
+			},
+		});
+		const registry = {
+			registerActiveGremlinSession(entry) {
+				registeredEntry = entry;
+				return Symbol("active");
+			},
+			unregisterActiveGremlinSession() {
+				return true;
+			},
+			resolveActiveGremlinSession() {
+				return { status: "missing" };
+			},
+			clearActiveGremlinSessions() {},
+		};
+
+		const result = await runSingleGremlin({
+			gremlinId: "g1",
+			activeSessionRegistry: registry,
+			request: { intent: "Inspect implementation independently", agent: "researcher", context: "Inspect auth flow" },
+			definition: {
+				name: "researcher",
+				source: "project",
+				filePath: "/tmp/researcher.md",
+				rawMarkdown: "---\nname: researcher\n---\nraw gremlin body",
+				frontmatter: {},
+			},
+			createSession: async () => fake,
+		});
+
+		expect(result.activities).toContainEqual(
+			expect.objectContaining({
+				kind: "steering",
+				phase: "steering:queued",
+				text: "queued · keep investigating before summarizing",
+			}),
+		);
+	});
 });

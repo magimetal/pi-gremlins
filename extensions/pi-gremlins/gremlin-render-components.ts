@@ -236,6 +236,8 @@ function getActivityLabel(kind: GremlinActivityKind): string {
 			return "latest";
 		case "task":
 			return "task";
+		case "steering":
+			return "steering";
 		case "idle":
 			return "idle";
 	}
