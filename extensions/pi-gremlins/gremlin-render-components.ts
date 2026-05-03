@@ -11,6 +11,8 @@ const ENTRY_CACHE_LIMIT = 256;
 const COLLAPSED_PREVIEW_LIMIT = 96;
 const COLLAPSED_CONTEXT_LINE_LIMIT = 3;
 const COLLAPSED_ACTIVITY_LINE_LIMIT = 3;
+const EXPANDED_FIELD_LINE_LIMIT = 4;
+const EXPANDED_FIELD_CHAR_LIMIT = 120;
 const collapsedLinesCache = new Map<string, string[]>();
 const expandedLinesCache = new Map<string, string[]>();
 
@@ -261,6 +263,25 @@ function formatIntentPreviewLine(intent?: string): string | undefined {
 	return preview ? `intent · ${preview}` : undefined;
 }
 
+function boundExpandedLine(line: string): string {
+	if (line.length <= EXPANDED_FIELD_CHAR_LIMIT) return line;
+	return `${line.slice(0, EXPANDED_FIELD_CHAR_LIMIT - 1).trimEnd()}…`;
+}
+
+function formatExpandedFieldLines(label: string, value?: string): string[] {
+	const normalized = normalizeText(value);
+	if (!normalized) return [];
+	const sourceLines = normalized.split(/\r?\n/);
+	const visibleLines = sourceLines
+		.slice(0, EXPANDED_FIELD_LINE_LIMIT)
+		.map((line) => `${label} · ${boundExpandedLine(line)}`);
+	const omittedLines = sourceLines.length - visibleLines.length;
+	if (omittedLines > 0) {
+		visibleLines.push(`${label} · … ${omittedLines} lines omitted`);
+	}
+	return visibleLines;
+}
+
 export function formatBatchHeadline(details: GremlinInvocationDetails): string {
 	return [
 		"Gremlins🧌",
@@ -296,23 +317,21 @@ export function formatExpandedGremlinLines(entry: GremlinInvocationEntry): strin
 	const lines = [
 		`[${formatGremlinStatus(entry.status)}] ${formatGremlinIdentity(entry)}`,
 		...dedupeParts([formatIntentPreviewLine(entry.intent)]),
-		`task · ${entry.context}`,
+		...formatExpandedFieldLines("task", entry.context),
 	];
 	const metaLines = dedupeParts([
 		normalizeText(entry.cwd) ? `cwd · ${entry.cwd}` : undefined,
 		normalizeText(entry.model) ? `model · ${entry.model}` : undefined,
 		normalizeText(entry.thinking) ? `thinking · ${entry.thinking}` : undefined,
 		normalizeText(entry.currentPhase) ? `phase · ${entry.currentPhase}` : undefined,
-		normalizeText(entry.latestText) ? `latest · ${entry.latestText}` : undefined,
-		normalizeText(entry.latestToolCall)
-			? `tool call · ${entry.latestToolCall}`
-			: undefined,
-		normalizeText(entry.latestToolResult)
-			? `tool result · ${entry.latestToolResult}`
-			: undefined,
-		normalizeText(entry.errorMessage) ? `error · ${entry.errorMessage}` : undefined,
 	]);
-	lines.push(...metaLines);
+	lines.push(
+		...metaLines,
+		...formatExpandedFieldLines("latest", entry.latestText),
+		...formatExpandedFieldLines("tool call", entry.latestToolCall),
+		...formatExpandedFieldLines("tool result", entry.latestToolResult),
+		...formatExpandedFieldLines("error", entry.errorMessage),
+	);
 	const usage = formatUsageSummary(entry.usage);
 	if (usage) lines.push(`usage · ${usage}`);
 

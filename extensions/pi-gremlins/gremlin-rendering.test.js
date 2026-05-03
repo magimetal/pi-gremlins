@@ -423,12 +423,9 @@ describe("gremlin rendering v1 contract", () => {
 		expect(text.split("\n").length).toBeGreaterThan(INLINE_RESULT_PREVIEW_LINES);
 	});
 
-	test("keeps expanded component intentionally uncapped", async () => {
-		const {
-			GremlinInlineResultComponent,
-			INLINE_RESULT_PREVIEW_LINES,
-			renderGremlinInvocationText,
-		} = await import("./gremlin-rendering.ts");
+	test("bounds expanded render output for large multiline fields", async () => {
+		const { renderGremlinInvocationText } = await import("./gremlin-rendering.ts");
+		const hugeLines = Array.from({ length: 80 }, (_value, index) => `expanded line ${index + 1} ${"x".repeat(180)}`).join("\n");
 		const details = {
 			requestedCount: 1,
 			activeCount: 0,
@@ -440,16 +437,23 @@ describe("gremlin rendering v1 contract", () => {
 				agent: "researcher",
 				source: "project",
 				status: "completed",
-				context: Array.from({ length: 30 }, (_, index) => `expanded line ${index + 1}`).join("\n"),
-				latestText: "done",
+				context: hugeLines,
+				latestText: hugeLines,
+				latestToolCall: hugeLines,
+				latestToolResult: hugeLines,
+				errorMessage: hugeLines,
 				revision: 1,
 			}],
 			revision: 1,
 		};
-		const text = renderGremlinInvocationText(details, { expanded: true });
-		const component = new GremlinInlineResultComponent(text, true);
 
-		expect(component.render(80).length).toBeGreaterThan(INLINE_RESULT_PREVIEW_LINES);
+		const lines = renderGremlinInvocationText(details, { expanded: true, width: 140 }).split("\n");
+
+		expect(lines.length).toBeLessThanOrEqual(38);
+		expect(lines.some((line) => line.includes("omitted"))).toBe(true);
+		for (const line of lines) {
+			expect(line.length).toBeLessThanOrEqual(140);
+		}
 	});
 
 	test("updates changed entry output while preserving unchanged entry text across revisions", async () => {

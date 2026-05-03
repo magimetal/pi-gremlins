@@ -1,10 +1,11 @@
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Model, TextContent } from "@mariozechner/pi-ai";
+import type { Model } from "@mariozechner/pi-ai";
 import type {
 	CreateAgentSessionResult,
 	ModelRegistry,
 } from "@mariozechner/pi-coding-agent";
 import type { GremlinDefinition } from "./gremlin-definition.js";
+import { extractTextFromContent } from "./gremlin-content-utils.js";
 import {
 	buildGremlinSessionConfig,
 	createGremlinSession,
@@ -85,19 +86,6 @@ export interface RunSingleGremlinOptions {
 	) => Promise<CreateAgentSessionResult>;
 }
 
-function extractTextFromContent(content: unknown): string {
-	if (!Array.isArray(content)) return "";
-	return content
-		.flatMap((item) => {
-			if (!item || typeof item !== "object") return [];
-			if ((item as { type?: string }).type !== "text") return [];
-			const text = (item as TextContent).text;
-			return typeof text === "string" ? [text] : [];
-		})
-		.join("")
-		.trim();
-}
-
 function formatToolCall(toolName: unknown, args: unknown): string {
 	if (typeof toolName !== "string" || !toolName) return "tool";
 	if (args && typeof args === "object") {
@@ -110,7 +98,7 @@ function formatToolCall(toolName: unknown, args: unknown): string {
 
 function extractToolResultText(result: unknown): string {
 	if (!result || typeof result !== "object") return "";
-	return extractTextFromContent((result as { content?: unknown }).content);
+	return extractTextFromContent((result as { content?: unknown }).content).trim();
 }
 
 function mergeUsage(
@@ -322,7 +310,7 @@ function projectGremlinEvent(
 		}
 		case "message_end": {
 			textDeltaPublisher.flush();
-			const latestText = extractTextFromContent(event.message?.content);
+			const latestText = extractTextFromContent(event.message?.content).trim();
 			const finalText = latestText || state.latestText;
 			const patch = {
 				status: "active" as const,

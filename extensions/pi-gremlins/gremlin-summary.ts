@@ -3,6 +3,7 @@ import type {
 	GremlinInvocationEntry,
 	GremlinRunResult,
 } from "./gremlin-schema.js";
+import { pushLimitedCache } from "./gremlin-cache-utils.js";
 import {
 	formatBatchHeadline,
 	formatCollapsedGremlinLines,
@@ -11,14 +12,6 @@ import {
 const HEADLINE_CACHE_LIMIT = 64;
 const headlineCache = new Map<string, string>();
 const summaryLineCache = new WeakMap<GremlinInvocationEntry, { revision: number; lines: string[] }>();
-
-function pushCacheEntry<T>(cache: Map<string, T>, limit: number, key: string, value: T): T {
-	cache.set(key, value);
-	if (cache.size <= limit) return value;
-	const firstKey = cache.keys().next().value;
-	if (typeof firstKey === "string") cache.delete(firstKey);
-	return value;
-}
 
 function getHeadlineCacheKey(details: GremlinInvocationDetails): string {
 	return [
@@ -43,7 +36,7 @@ function summarizeHeadline(details: GremlinInvocationDetails): string {
 	const cacheKey = getHeadlineCacheKey(details);
 	const cached = headlineCache.get(cacheKey);
 	if (cached) return cached;
-	return pushCacheEntry(
+	return pushLimitedCache(
 		headlineCache,
 		HEADLINE_CACHE_LIMIT,
 		cacheKey,

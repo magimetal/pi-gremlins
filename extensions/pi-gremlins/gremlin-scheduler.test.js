@@ -11,39 +11,48 @@ function createDeferred() {
 }
 
 describe("gremlin scheduler v1 contract", () => {
-	test("starts all requested gremlins in parallel immediately with no chain mode fallback and no hidden lower cap", async () => {
-		const { runGremlinBatch } = await import("./gremlin-scheduler.ts");
+	test("starts gremlins with bounded concurrency while preserving request order", async () => {
+		const { DEFAULT_GREMLIN_BATCH_CONCURRENCY, runGremlinBatch } = await import("./gremlin-scheduler.ts");
 
-		const first = createDeferred();
-		const second = createDeferred();
+		const deferreds = Array.from({ length: DEFAULT_GREMLIN_BATCH_CONCURRENCY + 2 }, createDeferred);
 		const started = [];
+		let active = 0;
+		let maxActive = 0;
 		const updates = [];
 		const batchPromise = runGremlinBatch({
-			gremlins: [
-				{ intent: "Find alpha independently", agent: "alpha", context: "Find alpha" },
-				{ intent: "Find beta independently", agent: "beta", context: "Find beta" },
-			],
+			gremlins: deferreds.map((_deferred, index) => ({
+				intent: `Find ${index} independently`,
+				agent: `agent-${index}`,
+				context: `Find ${index}`,
+			})),
 			onUpdate: (details) => updates.push(details),
 			runGremlin: async ({ gremlin, gremlinId, onUpdate }) => {
+				const index = Number(gremlin.agent.replace("agent-", ""));
 				started.push(gremlin.agent);
+				active++;
+				maxActive = Math.max(maxActive, active);
 				onUpdate?.({ gremlinId, agent: gremlin.agent, status: "active", currentPhase: "streaming" });
-				if (gremlin.agent === "alpha") return await first.promise;
-				return await second.promise;
+				try {
+					return await deferreds[index].promise;
+				} finally {
+					active--;
+				}
 			},
 		});
 
 		await Promise.resolve();
-		expect(started).toEqual(["alpha", "beta"]);
-		expect(updates[0]).toMatchObject({ requestedCount: 2 });
+		expect(started).toEqual(["agent-0", "agent-1", "agent-2", "agent-3"]);
+		expect(maxActive).toBeLessThanOrEqual(DEFAULT_GREMLIN_BATCH_CONCURRENCY);
+		expect(updates[0]).toMatchObject({ requestedCount: deferreds.length });
 
-		first.resolve({ gremlinId: "g1", agent: "alpha", source: "user", status: "completed", context: "Find alpha", latestText: "alpha done" });
-		second.resolve({ gremlinId: "g2", agent: "beta", source: "user", status: "completed", context: "Find beta", latestText: "beta done" });
+		for (let index = deferreds.length - 1; index >= 0; index--) {
+			deferreds[index].resolve({ gremlinId: `g${index + 1}`, agent: `agent-${index}`, source: "user", status: "completed", context: `Find ${index}`, latestText: `${index} done` });
+			await Promise.resolve();
+		}
 		const result = await batchPromise;
 
-		expect(result.results).toEqual([
-			expect.objectContaining({ gremlinId: "g1", agent: "alpha", status: "completed" }),
-			expect.objectContaining({ gremlinId: "g2", agent: "beta", status: "completed" }),
-		]);
+		expect(result.results.map((entry) => entry.gremlinId)).toEqual(["g1", "g2", "g3", "g4", "g5", "g6"]);
+		expect(result.results.map((entry) => entry.agent)).toEqual(["agent-0", "agent-1", "agent-2", "agent-3", "agent-4", "agent-5"]);
 		expect(result.mode).toBe("parallel");
 	});
 
@@ -160,21 +169,24 @@ describe("gremlin scheduler v1 contract", () => {
 		expect(result.summary).toContain("canceled");
 	});
 
-	test("parent abort cancels all running gremlins and waits for cleanup before resolving", async () => {
-		const { runGremlinBatch } = await import("./gremlin-scheduler.ts");
+	test("parent abort cancels running and queued gremlins without starting queued work", async () => {
+		const { DEFAULT_GREMLIN_BATCH_CONCURRENCY, runGremlinBatch } = await import("./gremlin-scheduler.ts");
 		const controller = new AbortController();
 		const cleaned = [];
+		const started = [];
 		const updates = [];
 
 		const batchPromise = runGremlinBatch({
-			gremlins: [
-				{ intent: "Find alpha independently", agent: "alpha", context: "Find alpha" },
-				{ intent: "Find beta independently", agent: "beta", context: "Find beta" },
-			],
+			gremlins: Array.from({ length: DEFAULT_GREMLIN_BATCH_CONCURRENCY + 2 }, (_value, index) => ({
+				intent: `Find ${index} independently`,
+				agent: `agent-${index}`,
+				context: `Find ${index}`,
+			})),
 			signal: controller.signal,
 			onUpdate: (details) => updates.push(details),
 			runGremlin: ({ gremlin, gremlinId, signal, onUpdate }) =>
 				new Promise((resolve) => {
+					started.push(gremlin.agent);
 					onUpdate?.({ gremlinId, agent: gremlin.agent, status: "active", currentPhase: "streaming" });
 					signal.addEventListener(
 						"abort",
@@ -196,16 +208,24 @@ describe("gremlin scheduler v1 contract", () => {
 				}),
 		});
 
+		await Promise.resolve();
+		expect(started).toEqual(["agent-0", "agent-1", "agent-2", "agent-3"]);
 		controller.abort();
 		expect(cleaned).toEqual([]);
 		expect(
 			updates.some(
-				(details) => details.canceledCount === 2 && details.activeCount === 0,
+				(details) => details.canceledCount === DEFAULT_GREMLIN_BATCH_CONCURRENCY + 2 && details.activeCount === 0,
 			),
 		).toBe(true);
 		const result = await batchPromise;
-		expect(cleaned).toEqual(["alpha", "beta"]);
+		expect(cleaned).toEqual(["agent-0", "agent-1", "agent-2", "agent-3"]);
+		expect(started).toEqual(["agent-0", "agent-1", "agent-2", "agent-3"]);
+		expect(result.results.map((entry) => entry.gremlinId)).toEqual(["g1", "g2", "g3", "g4", "g5", "g6"]);
 		expect(result.results.map((entry) => entry.status)).toEqual([
+			"canceled",
+			"canceled",
+			"canceled",
+			"canceled",
 			"canceled",
 			"canceled",
 		]);

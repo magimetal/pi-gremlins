@@ -1,3 +1,4 @@
+import { mapWithConcurrency } from "./gremlin-async-utils.js";
 import { createGremlinProgressStore } from "./gremlin-progress-store.js";
 import { buildGremlinBatchSummary, buildGremlinProgressSummary } from "./gremlin-summary.js";
 import type {
@@ -27,6 +28,8 @@ export interface GremlinBatchResult {
 	anyError: boolean;
 	summary: string;
 }
+
+export const DEFAULT_GREMLIN_BATCH_CONCURRENCY = 4;
 
 function createTerminalResult(
 	gremlin: GremlinRequest,
@@ -69,9 +72,9 @@ export async function runGremlinBatch({
 			controller.abort();
 		}
 	};
-	const parentAbortListener = () => {
-		abortChildren();
-		for (const gremlinId of childControllers.keys()) {
+	const markAllCanceled = () => {
+		for (let index = 0; index < gremlins.length; index++) {
+			const gremlinId = `g${index + 1}`;
 			publishDetails(
 				progressStore.update(gremlinId, {
 					status: "canceled",
@@ -80,6 +83,10 @@ export async function runGremlinBatch({
 				}),
 			);
 		}
+	};
+	const parentAbortListener = () => {
+		abortChildren();
+		markAllCanceled();
 		snapshotAndPublish();
 	};
 	if (signal) {
@@ -88,29 +95,42 @@ export async function runGremlinBatch({
 	}
 
 	snapshotAndPublish();
-	const settlements = await Promise.allSettled(
-		gremlins.map((gremlin, index) => {
+	const settlements = await mapWithConcurrency(
+		gremlins,
+		DEFAULT_GREMLIN_BATCH_CONCURRENCY,
+		async (gremlin, index): Promise<PromiseSettledResult<GremlinRunResult>> => {
 			const gremlinId = `g${index + 1}`;
+			if (signal?.aborted) {
+				const result = createTerminalResult(
+					gremlin,
+					gremlinId,
+					new Error("Gremlin run was aborted"),
+					true,
+				);
+				publishDetails(progressStore.complete(gremlinId, result));
+				return { status: "fulfilled", value: result };
+			}
+
 			const childController = new AbortController();
-			if (signal?.aborted) childController.abort();
 			childControllers.set(gremlinId, childController);
-			return runGremlin({
-				gremlin,
-				index,
-				gremlinId,
-				signal: childController.signal,
-				onUpdate: (patch) => {
-					publishDetails(progressStore.update(gremlinId, patch));
-				},
-			})
-				.then((result) => {
-					publishDetails(progressStore.complete(gremlinId, result));
-					return result;
-				})
-				.finally(() => {
-					childControllers.delete(gremlinId);
+			try {
+				const result = await runGremlin({
+					gremlin,
+					index,
+					gremlinId,
+					signal: childController.signal,
+					onUpdate: (patch) => {
+						publishDetails(progressStore.update(gremlinId, patch));
+					},
 				});
-		}),
+				publishDetails(progressStore.complete(gremlinId, result));
+				return { status: "fulfilled", value: result };
+			} catch (reason) {
+				return { status: "rejected", reason };
+			} finally {
+				childControllers.delete(gremlinId);
+			}
+		},
 	);
 
 	if (signal) {

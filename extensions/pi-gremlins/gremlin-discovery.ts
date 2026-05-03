@@ -7,6 +7,7 @@ import {
 	loadGremlinDefinition,
 	type GremlinDefinition,
 } from "./gremlin-definition.js";
+import { mapWithConcurrency } from "./gremlin-async-utils.js";
 import { hashString } from "./gremlin-cache-utils.js";
 import {
 	loadPrimaryAgentDefinition,
@@ -76,6 +77,8 @@ export type PrimaryAgentNameResolution =
 	| { status: "found"; agent: PrimaryAgentDefinition }
 	| { status: "not-found" }
 	| { status: "ambiguous"; matches: PrimaryAgentDefinition[] };
+
+export const DEFAULT_DISCOVERY_FILE_CONCURRENCY = 16;
 
 const nodeFileSystem: AgentDiscoveryFileSystem = {
 	readdir: (dir) => readdir(dir, { withFileTypes: true }),
@@ -148,8 +151,10 @@ async function fingerprintKnownFiles(
 	fileFingerprints: Map<string, FileFingerprintSnapshot>;
 }> {
 	const nextFingerprints = new Map<string, FileFingerprintSnapshot>();
-	const parts = await Promise.all(
-		files.map(async (filePath) => {
+	const parts = await mapWithConcurrency(
+		files,
+		DEFAULT_DISCOVERY_FILE_CONCURRENCY,
+		async (filePath) => {
 			try {
 				const fileStat = await fileSystem.stat(filePath);
 				const metadataSignature = createFileMetadataSignature(fileStat);
@@ -167,7 +172,7 @@ async function fingerprintKnownFiles(
 			} catch {
 				return `${path.basename(filePath)}:missing`;
 			}
-		}),
+		},
 	);
 	return { parts, fileFingerprints: nextFingerprints };
 }
@@ -230,14 +235,16 @@ async function loadDefinitionsFromFiles<T>(
 	source: AgentSource,
 	loader: (filePath: string, source: AgentSource) => Promise<T | null>,
 ): Promise<{ definitions: T[]; diagnostics: AgentDiscoveryDiagnostic[] }> {
-	const results = await Promise.all(
-		files.map(async (filePath) => {
+	const results = await mapWithConcurrency(
+		files,
+		DEFAULT_DISCOVERY_FILE_CONCURRENCY,
+		async (filePath) => {
 			try {
 				return { definition: await loader(filePath, source), diagnostic: null };
 			} catch (error) {
 				return { definition: null, diagnostic: formatLoadDiagnostic(filePath, error) };
 			}
-		}),
+		},
 	);
 	return {
 		definitions: results

@@ -64,7 +64,7 @@ const TOOL_DESCRIPTION = [
 	"context is required: task details, constraints, paths, findings, and requested output.",
 	"Example intent: Get independent architecture read before editing runtime code.",
 	"Example context: Inspect extensions/pi-gremlins scheduler and runner flow; report risks and exact files to change.",
-	"One gremlin runs single invocation. Multiple gremlins start in parallel.",
+	"One gremlin runs single invocation. Multiple gremlins run with bounded parallel scheduling.",
 	"Gremlin definitions load from user and nearest project directories when agent_type is sub-agent.",
 	"Progress stays inline and expands with Ctrl+O.",
 ].join(" ");

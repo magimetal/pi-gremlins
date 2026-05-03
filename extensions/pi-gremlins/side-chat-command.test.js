@@ -92,6 +92,9 @@ function createFakeSessionFactory({ events = [] } = {}) {
 				listener = l;
 				return () => {};
 			},
+			emit(event) {
+				listener?.(event);
+			},
 			async prompt() {
 				for (const event of events) listener?.(event);
 			},
@@ -242,6 +245,52 @@ describe("side-chat overlay command contract", () => {
 		expect(factory.calls.length).toBe(1);
 		expect(factory.sessions[0]).toBeDefined();
 		expect(getResourceLoaderInstances().length).toBe(1);
+	});
+
+	test("persists overlapping prompts in submitted question order", async () => {
+		const { registerSideChatCommands } = await loadCommandModule();
+		const factory = createFakeSessionFactory();
+		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
+		const ctx = createFakeCtx();
+
+		await pi.commands.get("gremlins:chat").handler("first", ctx);
+		await pi.commands.get("gremlins:chat").handler("second", ctx);
+		factory.sessions[0].emit({ type: "message_start", message: { role: "assistant" } });
+		factory.sessions[0].emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "answer one" } });
+		factory.sessions[0].emit({ type: "turn_end", turnIndex: 1 });
+		factory.sessions[0].emit({ type: "message_start", message: { role: "assistant" } });
+		factory.sessions[0].emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "answer two" } });
+		factory.sessions[0].emit({ type: "turn_end", turnIndex: 2 });
+
+		const threadEntries = pi.entries.filter(
+			(entry) => entry.customType === "pi-gremlins:side-chat-thread",
+		);
+		expect(threadEntries.map((entry) => entry.data.question)).toEqual(["first", "second"]);
+		expect(threadEntries.map((entry) => entry.data.answer)).toEqual(["answer one", "answer two"]);
+	});
+
+	test("chat and tangent pending questions do not cross-contaminate", async () => {
+		const { registerSideChatCommands } = await loadCommandModule();
+		const factory = createFakeSessionFactory();
+		registerSideChatCommands(pi, { createSideChatSession: factory.impl });
+		const ctx = createFakeCtx();
+
+		await pi.commands.get("gremlins:chat").handler("chat question", ctx);
+		factory.sessions[0].emit({ type: "message_start", message: { role: "assistant" } });
+		factory.sessions[0].emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "chat answer" } });
+		factory.sessions[0].emit({ type: "turn_end", turnIndex: 1 });
+		await pi.commands.get("gremlins:tangent").handler("tangent question", ctx);
+		factory.sessions[1].emit({ type: "message_start", message: { role: "assistant" } });
+		factory.sessions[1].emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "tangent answer" } });
+		factory.sessions[1].emit({ type: "turn_end", turnIndex: 1 });
+
+		const threadEntries = pi.entries.filter(
+			(entry) => entry.customType === "pi-gremlins:side-chat-thread",
+		);
+		expect(threadEntries.map((entry) => ({ mode: entry.data.mode, question: entry.data.question }))).toEqual([
+			{ mode: "chat", question: "chat question" },
+			{ mode: "tangent", question: "tangent question" },
+		]);
 	});
 
 	test("tool-like assistant events still persist a completed side-chat exchange", async () => {

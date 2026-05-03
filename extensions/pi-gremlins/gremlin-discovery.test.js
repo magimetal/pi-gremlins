@@ -5,8 +5,10 @@ import { createWorkspace, writeAgentFile } from "./test-helpers.js";
 
 function createCountingFileSystem({ statDelayMs = 0 } = {}) {
 	const calls = { readdir: 0, stat: 0, readFile: 0 };
+	const active = { stat: 0, readFile: 0, maxStat: 0, maxReadFile: 0 };
 	return {
 		calls,
+		active,
 		fileSystem: {
 			async readdir(dir) {
 				calls.readdir++;
@@ -14,14 +16,26 @@ function createCountingFileSystem({ statDelayMs = 0 } = {}) {
 			},
 			async stat(candidatePath) {
 				calls.stat++;
-				if (statDelayMs) {
-					await new Promise((resolve) => setTimeout(resolve, statDelayMs));
+				active.stat++;
+				active.maxStat = Math.max(active.maxStat, active.stat);
+				try {
+					if (statDelayMs) {
+						await new Promise((resolve) => setTimeout(resolve, statDelayMs));
+					}
+					return await fs.promises.stat(candidatePath);
+				} finally {
+					active.stat--;
 				}
-				return fs.promises.stat(candidatePath);
 			},
 			async readFile(candidatePath, encoding) {
 				calls.readFile++;
-				return fs.promises.readFile(candidatePath, encoding);
+				active.readFile++;
+				active.maxReadFile = Math.max(active.maxReadFile, active.readFile);
+				try {
+					return await fs.promises.readFile(candidatePath, encoding);
+				} finally {
+					active.readFile--;
+				}
 			},
 		},
 	};
@@ -279,6 +293,31 @@ describe("gremlin discovery v1 contract", () => {
 		expect(second).toBe(first);
 		expect(first.gremlins.map((gremlin) => gremlin.name)).toEqual(["researcher"]);
 		expect(calls.readFile).toBe(1);
+	});
+
+	test("bounds fingerprint stat fan-out for large markdown file sets", async () => {
+		const { DEFAULT_DISCOVERY_FILE_CONCURRENCY, createGremlinDiscoveryCache } = await import("./gremlin-discovery.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		fs.mkdirSync(workspace.projectAgentsDir, { recursive: true });
+		for (let index = 0; index < DEFAULT_DISCOVERY_FILE_CONCURRENCY + 8; index++) {
+			writeAgentFile(
+				workspace.projectAgentsDir,
+				`agent-${String(index).padStart(2, "0")}.md`,
+				`agent-${String(index).padStart(2, "0")}`,
+				`agent ${index}`,
+			);
+		}
+		const { active, fileSystem } = createCountingFileSystem({ statDelayMs: 5 });
+		const discovery = createGremlinDiscoveryCache({
+			userAgentsDir: workspace.userAgentsDir,
+			fileSystem,
+		});
+
+		const result = await discovery.get(workspace.repoRoot);
+
+		expect(result.gremlins.length).toBe(DEFAULT_DISCOVERY_FILE_CONCURRENCY + 8);
+		expect(active.maxStat).toBeLessThanOrEqual(DEFAULT_DISCOVERY_FILE_CONCURRENCY);
 	});
 
 	test("detects same-size markdown content changes when stat metadata changes", async () => {

@@ -1,4 +1,3 @@
-import type { TextContent } from "@mariozechner/pi-ai";
 import type {
 	CreateAgentSessionResult,
 	ExtensionAPI,
@@ -38,6 +37,7 @@ import {
 	type SideChatTranscriptEvent,
 	type SideChatTranscriptState,
 } from "./side-chat-transcript-state.js";
+import { extractTextFromContent } from "./gremlin-content-utils.js";
 
 export const SIDE_CHAT_CHAT_COMMAND = "gremlins:chat";
 export const SIDE_CHAT_CHAT_NEW_COMMAND = "gremlins:chat:new";
@@ -80,7 +80,7 @@ interface SideChatRuntime {
 	requestOverlayRender: (() => void) | null;
 	transcriptState: SideChatTranscriptState;
 	subscriptions: Set<() => void>;
-	lastSubmittedQuestion: string | null;
+	pendingQuestions: Record<SideChatMode, string[]>;
 }
 
 function createRuntime(): SideChatRuntime {
@@ -95,7 +95,7 @@ function createRuntime(): SideChatRuntime {
 		requestOverlayRender: null,
 		transcriptState: createInitialSideChatTranscriptState(),
 		subscriptions: new Set(),
-		lastSubmittedQuestion: null,
+		pendingQuestions: { chat: [], tangent: [] },
 	};
 }
 
@@ -163,9 +163,7 @@ export function registerSideChatCommands(
 		for (const unsubscribe of runtime.subscriptions) unsubscribe();
 		runtime.subscriptions.clear();
 		runtime.overlayHandle?.hide();
-		runtime.overlayHandle = null;
-		runtime.overlayPromise = null;
-		runtime.requestOverlayRender = null;
+		runtime = createRuntime();
 	});
 	pi.on("context", (event) => {
 		return { messages: filterSideChatMessagesFromContext(event.messages) };
@@ -209,6 +207,7 @@ export function registerSideChatCommands(
 					timestamp: Date.now(),
 				});
 				runtime.threads[mode] = { mode, exchanges: [] };
+				runtime.pendingQuestions[mode] = [];
 				if (runtime.activeSessionMode === mode) resetActiveSession(runtime);
 			}
 			if (mode === "chat" && runtime.threads.chat.exchanges.length === 0) {
@@ -282,7 +281,7 @@ export function registerSideChatCommands(
 	): Promise<void> {
 		const mode = runtime.activeMode;
 		const thread = runtime.threads[mode];
-		runtime.lastSubmittedQuestion = userPrompt;
+		runtime.pendingQuestions[mode].push(userPrompt);
 		runtime.transcriptState = appendSideChatUserMessage(
 			runtime.transcriptState,
 			userPrompt,
@@ -357,7 +356,7 @@ function finalizeExchange(
 	runtime: SideChatRuntime,
 	mode: SideChatMode,
 ): void {
-	const question = runtime.lastSubmittedQuestion;
+	const question = runtime.pendingQuestions[mode].shift();
 	if (!question) return;
 	const answer = runtime.transcriptState.lastAssistantText.trim();
 	const thread = runtime.threads[mode];
@@ -371,7 +370,6 @@ function finalizeExchange(
 	};
 	thread.exchanges.push(data);
 	pi.appendEntry(SIDE_CHAT_THREAD_ENTRY_TYPE, data);
-	runtime.lastSubmittedQuestion = null;
 }
 
 function resetActiveSession(runtime: SideChatRuntime): void {
@@ -384,17 +382,4 @@ function resetActiveSession(runtime: SideChatRuntime): void {
 	}
 	runtime.activeSession = null;
 	runtime.activeSessionMode = null;
-}
-
-function extractTextFromContent(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.flatMap((item) => {
-			if (!item || typeof item !== "object") return [];
-			if ((item as { type?: string }).type !== "text") return [];
-			const text = (item as TextContent).text;
-			return typeof text === "string" ? [text] : [];
-		})
-		.join("");
 }
