@@ -1,46 +1,47 @@
-<!--THIS IS A GENERATED FILE - DO NOT MODIFY DIRECTLY, FOR MANUAL ADJUSTMENTS UPDATE `AGENTS_CUSTOM.MD`-->
+<!--THIS IS A GENERATED FILE - DO NOT MODIFY DIRECTLY-->
 # DOCS KNOWLEDGE BASE
 
-**Generated:** 2026-04-26T05:03:51Z
-**Commit:** 98722c7
+**Generated:** 2026-05-03T08:35:15Z
+**Commit:** f167e65
 **Branch:** main
 
 ## OVERVIEW
-Governance layer for product scope, architecture decisions, and implementation history. PRD/ADR records are current authority; plans are execution artifacts unless explicitly newer and aligned.
+Governance layer for product scope, architecture decisions, and implementation history. PRD/ADR records plus README/changelog are current authority; plans require source cross-check.
 
 ## STRUCTURE
 ```text
 docs/
 ├── adr/       # architecture decision records + status index
 ├── prd/       # product requirement documents + status index
-├── plans/     # implementation/remediation plans; verify before treating as current
+├── plans/     # execution/remediation plans; may be historical
 └── gremlins.png
 ```
 
 ## WHERE TO LOOK
 | Task | Location | Notes |
 |------|----------|-------|
-| Product scope | `prd/README.md`, `prd/000*.md` | status table plus numbered PRDs |
-| Architecture boundary | `adr/README.md`, `adr/000*.md` | status table plus numbered ADRs |
-| SDK runtime decision | `adr/0002-in-process-sdk-based-gremlin-runtime.md` | current child-session architecture |
-| Primary-agent merge | `adr/0003-unified-agent-discovery-and-primary-agent-prompt-injection-in-pi-gremlins.md` | current discovery/prompt-injection architecture |
-| V1 runtime scope | `prd/0002-pi-gremlins-v1-sdk-rewrite.md` | narrow gremlin contract and non-goals |
-| Primary-agent scope | `prd/0003-primary-agent-selection-and-pi-mohawk-deprecation.md` | `pi-mohawk` replacement scope |
-| Implementation history | `plans/` | useful rationale; cross-check source/README/changelog |
+| Product policy/index | `prd/README.md` | trigger rubric, lifecycle, status table |
+| Architecture policy/index | `adr/README.md` | trigger rubric, lifecycle, status table |
+| SDK runtime boundary | `adr/0002-in-process-sdk-based-gremlin-runtime.md` | in-process child session decision |
+| Primary-agent merge | `prd/0003-*.md`, `adr/0003-*.md` | pi-mohawk replacement |
+| Side-chat | `prd/0004-*.md`…`prd/0008-*.md`, `adr/0004-*.md`…`adr/0008-*.md` | absorption, overlay persistence, tools policy |
+| Active steering | `prd/0006-*.md`, `adr/0006-*.md` | official SDK steering contract |
+| Plans/history | `plans/` | useful rationale; not lifecycle authority |
 
 ## CONVENTIONS
-- PRD before significant user-facing scope change.
-- ADR before runtime architecture, cross-package contract, persistence/config format, or pipeline change.
-- Keep `docs/prd/README.md` and `docs/adr/README.md` status tables aligned with document changes.
-- Changelog entries for major work cite related PRD/ADR ids.
-- Number new docs with next four-digit prefix; keep `0000-template.md` untouched except template policy updates.
+- PRD before significant user-facing feature/scope/behavior change.
+- ADR before runtime architecture, cross-package contract, persistence/config, dependency, or pipeline change.
+- Keep `docs/prd/README.md` and `docs/adr/README.md` indexes aligned with document status.
+- Cross-link related PRDs and ADRs; cite IDs in changelog for major work.
+- Number new docs with next four-digit prefix; leave `0000-template.md` as template/policy source.
 
 ## ANTI-PATTERNS
-- Do not treat superseded ADR-0001 as current viewer/runtime architecture.
-- Do not revive v1 non-goals from historical plans without new PRD/ADR coverage.
-- Do not update `docs/plans/` as substitute for PRD/ADR status changes.
-- Do not mark PRD/ADR completed/accepted without updating index table and cross-links.
+- Do not treat superseded ADR-0001 or PRD-0007 as current authority.
+- Do not revive historical non-goals from plans without new PRD/ADR coverage.
+- Do not use `docs/plans/` as substitute for PRD/ADR status changes.
+- Do not mark PRD/ADR completed/accepted without index updates and cross-links.
 
 ## NOTES
-- PRD-0002 is still marked Draft in the index despite implemented v1 work; verify intended status before relying on lifecycle state.
-- ADR-0002 and ADR-0003 are accepted and define current runtime/primary-agent boundaries.
+- PRD-0002 remains `Draft` in the index despite implemented v1 runtime; verify lifecycle intent before relying on status.
+- ADR-0008 supersedes guarded side-chat tool capability ADR-0007.
+- README can expose newer behavior details than old implementation plans.
