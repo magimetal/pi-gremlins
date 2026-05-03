@@ -20,7 +20,7 @@
 		"CHANGELOG.md"
 	],
 	"scripts": {
-		"test": "bun test extensions/pi-gremlins/*.test.js",
+		"test": "bun test extensions/pi-gremlins/test/**/*.test.js",
 		"typecheck": "tsc --noEmit",
 		"check": "npm run typecheck && npm test"
 	},

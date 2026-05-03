@@ -302,24 +302,15 @@ Migration from `pi-mohawk`:
 ```text
 .
 ├── extensions/pi-gremlins/
+│   ├── AGENTS.md
 │   ├── index.ts
-│   ├── gremlin-schema.ts
-│   ├── agent-definition.ts
-│   ├── gremlin-definition.ts
-│   ├── primary-agent-definition.ts
-│   ├── gremlin-discovery.ts
-│   ├── primary-agent-state.ts
-│   ├── primary-agent-controls.ts
-│   ├── primary-agent-prompt.ts
-│   ├── gremlin-prompt.ts
-│   ├── gremlin-session-factory.ts
-│   ├── gremlin-runner.ts
-│   ├── gremlin-scheduler.ts
-│   ├── gremlin-progress-store.ts
-│   ├── gremlin-render-components.ts
-│   ├── gremlin-rendering.ts
-│   ├── gremlin-summary.ts
-│   └── *.test.js
+│   ├── agents/
+│   ├── gremlins/
+│   ├── primary/
+│   ├── rendering/
+│   ├── shared/
+│   ├── side-chat/
+│   └── test/
 ├── docs/
 ├── package.json
 └── README.md
@@ -337,7 +328,7 @@ Run checks:
 
 ```bash
 npm run typecheck
-npm test        # runs Bun tests under extensions/pi-gremlins/*.test.js
+npm test        # runs Bun tests under extensions/pi-gremlins/test/**/*.test.js
 # or
 npm run check
 ```

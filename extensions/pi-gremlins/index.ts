@@ -15,45 +15,45 @@ import {
 	type AgentDiscoveryDiagnostic,
 	type GremlinDiscoveryCache,
 	type PrimaryAgentDiscoveryCache,
-} from "./gremlin-discovery.js";
+} from "./gremlins/gremlin-discovery.js";
 import {
 	GremlinInlineResultComponent,
 	renderGremlinInvocationText,
 	styleGremlinInvocationText,
-} from "./gremlin-rendering.js";
+} from "./rendering/gremlin-rendering.js";
 import {
 	PiGremlinsParams,
 	type GremlinInvocationDetails,
-} from "./gremlin-schema.js";
+} from "./shared/gremlin-schema.js";
 import {
 	executePiGremlinsTool,
 	normalizeInvocationDetails,
 	type PiGremlinsArgs,
-} from "./gremlin-tool-execution.js";
-import { createActiveGremlinSessionRegistry } from "./gremlin-session-registry.js";
+} from "./gremlins/gremlin-tool-execution.js";
+import { createActiveGremlinSessionRegistry } from "./gremlins/gremlin-session-registry.js";
 import {
 	createGremlinSteerCommandHandler,
 	GREMLIN_STEER_COMMAND,
-} from "./gremlin-steer-command.js";
+} from "./gremlins/gremlin-steer-command.js";
 import {
 	cyclePrimaryAgent,
 	notifyPrimaryAgent,
 	PRIMARY_SHORTCUT,
 	runPrimaryAgentCommand,
 	updatePrimaryAgentStatus,
-} from "./primary-agent-controls.js";
-import { applyPrimaryAgentPromptInjection } from "./primary-agent-prompt.js";
-import { registerSideChatCommands } from "./side-chat-command.js";
+} from "./primary/primary-agent-controls.js";
+import { applyPrimaryAgentPromptInjection } from "./primary/primary-agent-prompt.js";
+import { registerSideChatCommands } from "./side-chat/side-chat-command.js";
 import {
 	clearPersistedPrimaryAgentSelection,
 	readPersistedPrimaryAgentSelectionWithDiagnostics,
-} from "./primary-agent-persistence.js";
+} from "./primary/primary-agent-persistence.js";
 import {
 	createInitialPrimaryAgentState,
 	getLatestPrimaryAgentSessionEntryData,
 	reconstructPrimaryAgentStateFromData,
 	type PrimaryAgentState,
-} from "./primary-agent-state.js";
+} from "./primary/primary-agent-state.js";
 
 const BRAND_NAME = "Gremlins🧌";
 const TOOL_NAME = "pi-gremlins";
