@@ -423,7 +423,36 @@ describe("gremlin rendering v1 contract", () => {
 		expect(text.split("\n").length).toBeGreaterThan(INLINE_RESULT_PREVIEW_LINES);
 	});
 
-	test("bounds expanded render output for large multiline fields", async () => {
+	test("renders full expanded subagent output without field clipping", async () => {
+		const { renderGremlinInvocationText } = await import("../../rendering/gremlin-rendering.ts");
+		const fullOutput = Array.from({ length: 8 }, (_value, index) => `full output line ${index + 1}`).join("\n");
+
+		const text = renderGremlinInvocationText(
+			{
+				requestedCount: 1,
+				activeCount: 0,
+				completedCount: 1,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: [{
+					gremlinId: "g1",
+					agent: "researcher",
+					source: "project",
+					status: "completed",
+					latestText: fullOutput,
+					revision: 66,
+				}],
+				revision: 66,
+			},
+			{ expanded: true },
+		);
+
+		expect(text).toContain("latest · full output line 1");
+		expect(text).toContain("latest · full output line 8");
+		expect(text).not.toContain("omitted");
+	});
+
+	test("wraps expanded render output to width without omitting available fields", async () => {
 		const { renderGremlinInvocationText } = await import("../../rendering/gremlin-rendering.ts");
 		const hugeLines = Array.from({ length: 80 }, (_value, index) => `expanded line ${index + 1} ${"x".repeat(180)}`).join("\n");
 		const details = {
@@ -449,8 +478,9 @@ describe("gremlin rendering v1 contract", () => {
 
 		const lines = renderGremlinInvocationText(details, { expanded: true, width: 140 }).split("\n");
 
-		expect(lines.length).toBeLessThanOrEqual(38);
-		expect(lines.some((line) => line.includes("omitted"))).toBe(true);
+		expect(lines.length).toBeGreaterThanOrEqual(403);
+		expect(lines).toContain(`latest · expanded line 80 ${"x".repeat(180)}`.slice(0, 139) + "…");
+		expect(lines.some((line) => line.includes("omitted"))).toBe(false);
 		for (const line of lines) {
 			expect(line.length).toBeLessThanOrEqual(140);
 		}
