@@ -11,8 +11,6 @@ const ENTRY_CACHE_LIMIT = 256;
 const COLLAPSED_PREVIEW_LIMIT = 96;
 const COLLAPSED_CONTEXT_LINE_LIMIT = 3;
 const COLLAPSED_ACTIVITY_LINE_LIMIT = 3;
-const EXPANDED_FIELD_LINE_LIMIT = 4;
-const EXPANDED_FIELD_CHAR_LIMIT = 120;
 const collapsedLinesCache = new Map<string, string[]>();
 const expandedLinesCache = new Map<string, string[]>();
 
@@ -263,23 +261,10 @@ function formatIntentPreviewLine(intent?: string): string | undefined {
 	return preview ? `intent · ${preview}` : undefined;
 }
 
-function boundExpandedLine(line: string): string {
-	if (line.length <= EXPANDED_FIELD_CHAR_LIMIT) return line;
-	return `${line.slice(0, EXPANDED_FIELD_CHAR_LIMIT - 1).trimEnd()}…`;
-}
-
 function formatExpandedFieldLines(label: string, value?: string): string[] {
 	const normalized = normalizeText(value);
 	if (!normalized) return [];
-	const sourceLines = normalized.split(/\r?\n/);
-	const visibleLines = sourceLines
-		.slice(0, EXPANDED_FIELD_LINE_LIMIT)
-		.map((line) => `${label} · ${boundExpandedLine(line)}`);
-	const omittedLines = sourceLines.length - visibleLines.length;
-	if (omittedLines > 0) {
-		visibleLines.push(`${label} · … ${omittedLines} lines omitted`);
-	}
-	return visibleLines;
+	return normalized.split(/\r?\n/).map((line) => `${label} · ${line}`);
 }
 
 export function formatBatchHeadline(details: GremlinInvocationDetails): string {
