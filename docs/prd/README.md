@@ -91,3 +91,4 @@ Maintain in `docs/prd/README.md`:
 | 0006 | Active Gremlin Session Steering                         | Completed | 2026-04-30 |
 | 0007 | Allow Side-Chat Sessions to Use Approved Skills and Tools | Superseded by PRD-0008 | 2026-05-01 |
 | 0008 | Side-Chat Sessions Use SDK Default Tools and Extension Custom Tools | Completed | 2026-05-01 |
+| 0009 | Side-Chat Tool Input Summaries                         | Completed | 2026-05-05 |
