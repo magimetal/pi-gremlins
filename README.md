@@ -276,7 +276,8 @@ Controls:
 
 Session behavior:
 
-- selection is restored from nearest project `.pi/settings.json` under `pi-gremlins.primaryAgent`; project-local storage avoids surprising cross-project primary-agent injection.
+- selection is restored from nearest project `.pi/agents/settings.json` under `pi-gremlins.primaryAgent`; project-local storage avoids surprising cross-project primary-agent injection.
+- existing primary-agent selections in legacy `.pi/settings.json` are safely migrated or used as fallback when the new agents settings file has no primary-agent selection.
 - current-branch session entries still take precedence when present.
 - `/gremlins:primary <name>`, picker selection, `Ctrl+Shift+M`, and `/gremlins:primary none` persist selected name, source, and file path only.
 - new session entries are also appended as `pi-gremlins-primary-agent` for branch history compatibility.

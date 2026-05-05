@@ -17,6 +17,7 @@ interface PrimaryAgentSettingsRoot {
 
 interface PrimaryAgentSettingsReadResult {
 	settings: PrimaryAgentSettingsRoot;
+	exists: boolean;
 	diagnostic?: string;
 }
 
@@ -35,9 +36,16 @@ function findNearestPiDir(cwd: string): string | null {
 	}
 }
 
-export function getPrimaryAgentSettingsPath(cwd: string): string {
-	const nearestPiDir = findNearestPiDir(cwd);
-	return path.join(nearestPiDir ?? path.join(path.resolve(cwd), ".pi"), "settings.json");
+function getPrimaryAgentPiDir(cwd: string): string {
+	return findNearestPiDir(cwd) ?? path.join(path.resolve(cwd), ".pi");
+}
+
+function getPrimaryAgentSettingsPath(cwd: string): string {
+	return path.join(getPrimaryAgentPiDir(cwd), "agents", "settings.json");
+}
+
+function getLegacyPrimaryAgentSettingsPath(cwd: string): string {
+	return path.join(getPrimaryAgentPiDir(cwd), "settings.json");
 }
 
 function formatSettingsReadError(settingsPath: string, error: unknown): string {
@@ -45,34 +53,95 @@ function formatSettingsReadError(settingsPath: string, error: unknown): string {
 	return `Could not read primary-agent settings at ${settingsPath}: ${message}`;
 }
 
-function readSettingsFile(settingsPath: string): PrimaryAgentSettingsReadResult {
-	try {
-		return {
-			settings: JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as PrimaryAgentSettingsRoot,
-		};
-	} catch (error) {
-		if (
-			error &&
+function isMissingFileError(error: unknown): boolean {
+	return Boolean(
+		error &&
 			typeof error === "object" &&
 			"code" in error &&
 			error.code === "ENOENT"
-		) {
-			return { settings: {} };
+	);
+}
+
+function isSettingsRoot(value: unknown): value is PrimaryAgentSettingsRoot {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function readSettingsFile(settingsPath: string): PrimaryAgentSettingsReadResult {
+	try {
+		const parsed = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+		return { settings: isSettingsRoot(parsed) ? parsed : {}, exists: true };
+	} catch (error) {
+		if (isMissingFileError(error)) {
+			return { settings: {}, exists: false };
 		}
-		return { settings: {}, diagnostic: formatSettingsReadError(settingsPath, error) };
+		return {
+			settings: {},
+			exists: true,
+			diagnostic: formatSettingsReadError(settingsPath, error),
+		};
 	}
+}
+
+function getPrimaryAgentSelection(settings: PrimaryAgentSettingsRoot): PrimaryAgentSessionEntryData | null {
+	const value = settings[PRIMARY_AGENT_SETTINGS_NAMESPACE]?.[PRIMARY_AGENT_SETTINGS_KEY];
+	return isPrimaryAgentSessionEntryData(value) ? value : null;
+}
+
+function settingsDefinesPrimaryAgent(settings: PrimaryAgentSettingsRoot): boolean {
+	return Object.prototype.hasOwnProperty.call(
+		settings[PRIMARY_AGENT_SETTINGS_NAMESPACE] ?? {},
+		PRIMARY_AGENT_SETTINGS_KEY,
+	);
+}
+
+function withPrimaryAgentSelection(
+	settings: PrimaryAgentSettingsRoot,
+	selection: PrimaryAgentSessionEntryData,
+): PrimaryAgentSettingsRoot {
+	const namespace = settings[PRIMARY_AGENT_SETTINGS_NAMESPACE];
+	settings[PRIMARY_AGENT_SETTINGS_NAMESPACE] = {
+		...(namespace && typeof namespace === "object" ? namespace : {}),
+		[PRIMARY_AGENT_SETTINGS_KEY]: selection,
+	};
+	return settings;
+}
+
+function writeSettingsFile(settingsPath: string, settings: PrimaryAgentSettingsRoot): void {
+	fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+	fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf-8");
 }
 
 export function readPersistedPrimaryAgentSelectionWithDiagnostics(cwd: string): {
 	selection: PrimaryAgentSessionEntryData | null;
 	diagnostic?: string;
 } {
-	const { settings, diagnostic } = readSettingsFile(getPrimaryAgentSettingsPath(cwd));
-	const value = settings[PRIMARY_AGENT_SETTINGS_NAMESPACE]?.[PRIMARY_AGENT_SETTINGS_KEY];
-	return {
-		selection: isPrimaryAgentSessionEntryData(value) ? value : null,
-		diagnostic,
-	};
+	const settingsPath = getPrimaryAgentSettingsPath(cwd);
+	const newRead = readSettingsFile(settingsPath);
+	if (newRead.diagnostic) {
+		return { selection: null, diagnostic: newRead.diagnostic };
+	}
+
+	const newSelection = getPrimaryAgentSelection(newRead.settings);
+	if (newSelection) {
+		return { selection: newSelection };
+	}
+
+	if (newRead.exists && settingsDefinesPrimaryAgent(newRead.settings)) {
+		return { selection: null };
+	}
+
+	const legacyRead = readSettingsFile(getLegacyPrimaryAgentSettingsPath(cwd));
+	if (legacyRead.diagnostic) {
+		return { selection: null, diagnostic: legacyRead.diagnostic };
+	}
+
+	const legacySelection = getPrimaryAgentSelection(legacyRead.settings);
+	if (!legacySelection) {
+		return { selection: null };
+	}
+
+	writeSettingsFile(settingsPath, withPrimaryAgentSelection(newRead.settings, legacySelection));
+	return { selection: legacySelection };
 }
 
 export function readPersistedPrimaryAgentSelection(
@@ -87,12 +156,7 @@ export function writePersistedPrimaryAgentSelection(
 ): void {
 	const settingsPath = getPrimaryAgentSettingsPath(cwd);
 	const { settings } = readSettingsFile(settingsPath);
-	settings[PRIMARY_AGENT_SETTINGS_NAMESPACE] = {
-		...(settings[PRIMARY_AGENT_SETTINGS_NAMESPACE] ?? {}),
-		[PRIMARY_AGENT_SETTINGS_KEY]: selection,
-	};
-	fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-	fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf-8");
+	writeSettingsFile(settingsPath, withPrimaryAgentSelection(settings, selection));
 }
 
 export function clearPersistedPrimaryAgentSelection(cwd: string): void {
