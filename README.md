@@ -1,70 +1,23 @@
 ![Gizmo](docs/gremlins.png)
+
 # Gremlins🧌 (`pi-gremlins`)
 
-Pi package. Adds `Gremlins🧌` user-facing tool branding for summoning specialized workers through isolated in-process Pi SDK child sessions, plus primary-agent selection formerly provided by `pi-mohawk`.
+`pi-gremlins` is a Pi package for delegating work to isolated in-process SDK child sessions, selecting a parent-session primary agent, and opening persistent side-chat overlays without leaving the current Pi session.
 
-Suggested GitHub About text:
+Human-facing UI uses the label **Gremlins🧌**. Package installation, extension wiring, and tool invocation use the runtime identifier `pi-gremlins`.
 
-> Gremlin-flavored Pi package for isolated in-process SDK child delegation.
+## Highlights
 
-## What tool does
+- **Isolated gremlin delegation** — summon one specialist or a bounded parallel batch through SDK child sessions.
+- **One tool contract** — `gremlins: [{ intent, agent, context, cwd? }]`, with 1 to 10 requests per invocation.
+- **Role-aware markdown agents** — discover `agent_type: sub-agent` gremlins and `agent_type: primary` parent roles from user and project directories.
+- **Primary-agent controls** — choose the parent-session role with `/gremlins:primary` or cycle with `Ctrl+Shift+M`.
+- **Active steering** — queue guidance into a running gremlin with `/gremlins:steer <G-id> <message>`.
+- **Persistent overlays** — use `/gremlins:chat` for a transcript-aware side conversation or `/gremlins:tangent` for a clean tangent.
 
-`Gremlins🧌` runs one or more gremlins with isolated child-session context. Primary-agent controls select one parent-session agent role and inject its raw markdown into the parent system prompt before each turn.
+## Install and update
 
-Current contract:
-
-- one tool/runtime identifier: `pi-gremlins`
-- one input shape: `gremlins: [{ intent, agent, context, cwd? }]`
-- `intent`, `agent`, and `context` are required non-empty strings
-- array length `1..10`
-- one gremlin = single run
-- multiple gremlins = parallel run
-- inline progress only, expand the tool row with `Ctrl+O`
-
-Agent definitions load direct `.md` files from:
-
-- `~/.pi/agent/agents`
-- nearest ancestor `.pi/agents` for the effective working directory
-
-Roles stay separated by frontmatter:
-
-- `agent_type: sub-agent` files are gremlins that the `pi-gremlins` tool can summon. They must have a frontmatter `name`; optional `description`, `model`, `thinking`, and `tools` fields can guide the child session. Symlinked markdown is included for gremlin discovery.
-- `agent_type: primary` files are parent-session primary agents selected through `/gremlins:primary` or `Ctrl+Shift+M`. Their display names fall back from frontmatter `name`, to first H1, to filename stem. Symlinked markdown is ignored for primary-agent discovery.
-- untyped files and other agent types are ignored.
-
-Gremlin example:
-
-```yaml
----
-name: researcher
-description: Research-focused gremlin
-agent_type: sub-agent
----
-```
-
-Primary-agent example:
-
-```yaml
----
-name: Orchestrator
-description: Parent-session role
-agent_type: primary
----
-```
-
-If user and nearest-project directories define the same display name for the same role, the project definition wins. Names are sorted for display/cycling after role filtering and precedence merge.
-
-Important: UI label may show `Gremlins🧌` for human-facing branding. Actual package/runtime/tool identifier stays `pi-gremlins` for install and invocation wiring.
-
-## Install
-
-From local checkout:
-
-```bash
-pi install /absolute/path/to/pi-gremlins
-```
-
-From GitHub:
+Install from GitHub:
 
 ```bash
 pi install git:github.com/magimetal/pi-gremlins
@@ -72,90 +25,179 @@ pi install git:github.com/magimetal/pi-gremlins
 pi install https://github.com/magimetal/pi-gremlins
 ```
 
-Project-local install:
+Install from a local checkout:
+
+```bash
+pi install /absolute/path/to/pi-gremlins
+```
+
+Install project-locally:
 
 ```bash
 pi install -l git:github.com/magimetal/pi-gremlins
 ```
 
-## Use
+The package manifest exposes the extension at [`./extensions/pi-gremlins`](extensions/pi-gremlins/) and currently reports version `0.1.0`. Between unreleased commits, reinstall from the intended checkout, branch, or Git commit instead of relying on the version string alone.
 
-Single summon:
+## Quick start
+
+Create a gremlin definition in `~/.pi/agent/agents/researcher.md`, or in the nearest project `.pi/agents/researcher.md` for the working directory you run from:
+
+```md
+---
+name: researcher
+description: Research-focused gremlin
+agent_type: sub-agent
+---
+
+You investigate code and return concise, source-backed findings.
+```
+
+Then ask Pi to call the tool:
 
 ```text
 pi-gremlins({
   gremlins: [
     {
-      intent: "Get independent architecture read before editing runtime code",
+      intent: "Get an independent architecture read before editing runtime code",
       agent: "researcher",
-      context: "Summarize repo architecture"
+      context: "Inspect extensions/pi-gremlins/gremlins and summarize the scheduler/runner flow."
     }
   ]
 })
 ```
 
-Parallel swarm:
+`intent`, `agent`, and `context` are required non-empty strings. `cwd` is optional.
+
+## Gremlin invocation
+
+### Schema
+
+```ts
+{
+  gremlins: Array<{
+    intent: string;
+    agent: string;
+    context: string;
+    cwd?: string;
+  }> // min 1, max 10
+}
+```
+
+One array entry runs one gremlin. Multiple entries start as a bounded parallel batch.
+
+### Single gremlin
 
 ```text
 pi-gremlins({
   gremlins: [
     {
-      intent: "Map auth implementation before parent changes code",
-      agent: "researcher",
-      context: "Find auth flow"
-    },
-    {
-      intent: "Catch risks in pending changes",
+      intent: "Check the plan before implementation",
       agent: "reviewer",
-      context: "Review recent changes"
-    },
-    {
-      intent: "Prepare concise user-facing release copy",
-      agent: "writer",
-      context: "Draft release note"
+      context: "Review the README rewrite plan for sequencing and risk."
     }
   ]
 })
 ```
 
-Per-gremlin working directory override:
+### Parallel swarm
 
 ```text
 pi-gremlins({
   gremlins: [
     {
-      intent: "Audit frontend auth before parent edits web app",
+      intent: "Map current behavior from source",
       agent: "researcher",
-      context: "Audit frontend auth code",
-      cwd: "apps/web"
+      context: "Inspect extensions/pi-gremlins/index.ts and related modules."
+    },
+    {
+      intent: "Catch documentation accuracy risks",
+      agent: "reviewer",
+      context: "Compare README examples with package.json and source contracts."
+    },
+    {
+      intent: "Draft user-facing wording",
+      agent: "writer",
+      context: "Create concise Markdown copy for install, quick start, and FAQ."
     }
   ]
 })
 ```
 
-Runtime behavior:
+### Per-gremlin working directory
 
-- `intent` is required and states why the parent is delegating or what outcome the gremlin should serve
-- `agent` is required and resolves by exact name first, then the first case-insensitive name match from the sorted discovered gremlin list
-- unknown gremlin names, invalid `cwd` values, unresolved or ambiguous explicit gremlin models, failures, and cancellations are reported per gremlin and mark the aggregate tool result as an error
-- `context` is required and carries concrete task details, constraints, paths, findings, and requested output
-- `cwd`, when provided, is resolved against the parent session cwd unless already absolute; it must point to an existing directory, and discovery/session execution use that effective cwd
-- child sessions run in-process through Pi SDK
-- child session system prompt is the selected gremlin raw markdown only
-- child user prompt carries caller `intent` and `context` only
-- child sessions can use gremlin frontmatter `model`, `thinking`, and `tools`; when `model` or `thinking` is omitted, the parent setting is used as fallback
-- explicit gremlin `model` may be provider-qualified (`provider/model-id`) or a bare model id; bare ids must resolve to exactly one provider/model in Pi's model registry
-- child sessions do not inherit parent system prompt snapshots, primary-agent prompt blocks, active primary-agent markdown, orchestration rules, or conversation history
-- child sessions do not load extensions, skills, prompts, themes, or AGENTS files
-- parent abort cancels all active gremlins; completed sibling results remain visible in the aggregate result
-- collapsed tool row shows source, status, intent/task preview, latest activity, usage, and errors
-- expanded tool row shows intent, task, cwd, model, thinking, latest text/tool data, usage, and errors
+```text
+pi-gremlins({
+  gremlins: [
+    {
+      intent: "Inspect only the extension package surface",
+      agent: "researcher",
+      context: "List command registration and runtime boundaries.",
+      cwd: "extensions/pi-gremlins"
+    }
+  ]
+})
+```
 
-## Active gremlin steering: `/gremlins:steer`
+`cwd` resolves relative to the parent session cwd unless it is absolute. It must be an existing directory. Discovery and execution use the effective cwd.
 
-Use `/gremlins:steer <G-id> <message>` to steer an active gremlin child session through the official Pi SDK `AgentSession.steer(message)` API.
+### Error behavior
 
-Example:
+The tool reports per-gremlin failures and marks the aggregate result as an error when any gremlin fails or is canceled. Common setup failures include invalid parameters, invalid `cwd`, unknown gremlin name, unknown explicit model, or ambiguous bare model id.
+
+## Agent discovery and frontmatter
+
+Gremlins and primary agents are plain Markdown files with YAML frontmatter.
+
+Discovery reads direct `.md` files from:
+
+- `~/.pi/agent/agents`
+- the nearest ancestor `.pi/agents` directory for the effective cwd
+
+Role filtering is strict:
+
+| Role | Frontmatter | Name rules | Symlinks |
+| --- | --- | --- | --- |
+| Gremlin | `agent_type: sub-agent` | `name` is required | Included |
+| Primary agent | `agent_type: primary` | `name`, then first H1, then filename stem | Ignored |
+
+For `agent_type: sub-agent`, optional frontmatter fields include `description`, `model`, `thinking`, and `tools`. Untyped files and other `agent_type` values are ignored. When user and nearest-project directories define the same display name for the same role, the project definition wins. Names are sorted after role filtering and precedence merge.
+
+Primary-agent example:
+
+```md
+---
+name: Orchestrator
+description: Parent-session coordination role
+agent_type: primary
+---
+
+Coordinate the parent session and keep implementation scoped.
+```
+
+## Runtime and session isolation
+
+Gremlin runs are isolated at the Pi SDK child-session context/resource boundary:
+
+- The child system prompt is the selected sub-agent's raw Markdown.
+- The child user prompt contains only caller `intent` and caller `context`.
+- Child sessions do not inherit the parent conversation, parent system prompt snapshots, active primary-agent Markdown, primary prompt blocks, extensions, skills, prompts, themes, or AGENTS files.
+- `model`, `thinking`, and `tools` can come from gremlin frontmatter.
+- If `model` or `thinking` is omitted, the parent setting is used as fallback.
+- Provider-qualified models use `provider/model-id`; bare model ids must resolve to exactly one provider/model in Pi's model registry.
+- Parent abort cancels active gremlins; completed sibling results remain visible in the aggregate result.
+
+This is context and resource isolation inside Pi's SDK runtime. It is not an OS-level sandbox, container, filesystem jail, or security boundary.
+
+## Inline UI behavior
+
+The tool row uses the label **Gremlins🧌** and can be expanded with Pi's standard `Ctrl+O` affordance.
+
+Collapsed output summarizes source, status, intent/task preview, latest activity, token usage, and errors. Expanded output adds per-gremlin details such as intent, task/context, cwd, model, thinking level, latest text/tool data, usage, errors, and steering activity.
+
+## Active gremlin steering
+
+Use `/gremlins:steer <G-id> <message>` to queue guidance into an active gremlin session through `AgentSession.steer(message)`.
 
 ```text
 /gremlins:steer G1 keep investigating the auth flow before summarizing
@@ -163,182 +205,148 @@ Example:
 
 Behavior:
 
-- `G-id` is the displayed gremlin id such as `g1`; matching is case-insensitive, so `G1` and `g1` target the same active id when unambiguous.
-- The id is parsed from the first non-empty token. The message is the remaining text after the id with separator whitespace normalized; internal multi-word spacing and punctuation are preserved and sent to `AgentSession.steer(message)`.
-- Only currently active gremlin sessions can be steered. Unknown, completed, canceled, failed, setup-failed, stale, or disposed ids are rejected.
-- Concurrent batches can each have a `g1`. If more than one active session shares an id, steering that id fails as ambiguous instead of guessing.
-- Pi SDK queues steering for the target child session after its current child tool calls finish and before its next child LLM call; it does not interrupt a running tool call immediately.
-- Successful active steering is recorded in the inline gremlin activity stream as `steering · steering:queued · queued · <message>` and also emits a transient notification. If the active session rejects steering, the inline activity stream records `steering:rejected` with the failure reason.
-- This is official child-session steering. It does not restore legacy subprocess/RPC steering, parent-message injection, prompt-history injection, popup UI, or `/gremlins:view` viewer controls.
+- `G-id` values such as `g1` are matched case-insensitively.
+- The first non-empty token is the id; the remaining text is the steering message.
+- Only active gremlin sessions can be steered.
+- Unknown, completed, canceled, failed, stale, setup-failed, or disposed sessions are rejected.
+- If concurrent batches each have a `g1`, steering fails as ambiguous instead of guessing.
+- Steering is queued for the child session; it does not interrupt a running child tool call immediately.
+- Queued and SDK-rejected steering attempts appear in the inline activity stream.
 
-Manual live repro:
+Related: [PRD-0006](docs/prd/0006-active-gremlin-session-steering.md), [ADR-0006](docs/adr/0006-official-sdk-steering-for-active-gremlin-sessions.md).
 
-1. Start a long-running gremlin task that will make more than one child LLM call, such as a task that asks a gremlin to inspect several files and wait to summarize until all files are read.
-2. While the gremlin row still shows `Active`, run `/gremlins:steer G1 keep investigating before summarizing` in the parent session.
-3. Confirm the notification says `Steering queued for g1 (...)` and expand the gremlin row with Pi's standard tool-row expand control to confirm a `steering:queued` activity line appears.
-4. Confirm the gremlin incorporates the steering before its next LLM response. Steering submitted after completion should warn `No active gremlin found`.
-
-Install/version drift check: because the package version may remain `0.1.0` between unreleased commits, confirm the installed source by checking the Pi package install location or reinstalling from the intended Git commit/branch before testing steering behavior.
-
-See [PRD-0006](docs/prd/0006-active-gremlin-session-steering.md) and [ADR-0006](docs/adr/0006-official-sdk-steering-for-active-gremlin-sessions.md).
-
-## Side-chat overlay: `/gremlins:chat` and `/gremlins:tangent`
-
-Side-chat support uses persistent Pi overlays (PRD-0005, ADR-0005,
-issues #49 and #54) with SDK default tools, enabled extension custom tools,
-and fresh child-session skill guidance (PRD-0008, ADR-0008, issues #57 and
-#59). Side-chat child sessions omit explicit `tools`, so Pi SDK default
-built-ins apply; current expected built-ins include `read`, `bash`, `edit`, and
-`write`. Enabled extension custom tools and intended child-session skills may be
-available through a fresh child resource loader. Tangent still receives no
-parent transcript, and side-chat has no per-chat model/thinking override.
-
-### Commands
+## Side-chat and tangent overlays
 
 | Command | Behavior |
 | --- | --- |
-| `/gremlins:chat` | Open the side-chat overlay; resume the existing chat thread if one exists, otherwise start a new one. |
-| `/gremlins:chat:new` | Open the overlay with a fresh chat thread and discard prior chat history for chat only. |
-| `/gremlins:tangent` | Open the side-chat overlay; resume the existing tangent thread if one exists, otherwise start a new one. |
-| `/gremlins:tangent:new` | Open the overlay with a fresh tangent thread and discard prior tangent history only. |
+| `/gremlins:chat` | Open or resume the persistent chat overlay. The first chat thread captures a parent transcript snapshot at origin. |
+| `/gremlins:chat:new` | Start a fresh chat thread and reset chat history only. |
+| `/gremlins:tangent` | Open or resume the persistent tangent overlay. Tangent starts without parent transcript context. |
+| `/gremlins:tangent:new` | Start a fresh tangent thread and reset tangent history only. |
 
-Optional inline prompt compatibility is retained: `/gremlins:chat <prompt>` and
-`/gremlins:tangent <prompt>` open the overlay and submit the prompt into the
-current thread.
+Inline prompts are supported: `/gremlins:chat <prompt>` and `/gremlins:tangent <prompt>` open the overlay and submit the prompt.
 
-### Overlay behavior
+Overlay behavior:
 
-- Overlay is top-center, non-capturing, approximately 78% terminal width and
-  max height, with margin from terminal edges.
-- Header shows the active mode (`💬 chat` or `🧭 tangent`) and status.
-- Draft input is edited in the overlay; `Enter` submits and `Escape` closes
-  the overlay without losing completed thread history.
-- Transcript rows stream assistant text and support basic scroll keys
-  (`Up`, `Down`, `PageUp`, `PageDown`, `Home`, `End`).
+- Centered, non-capturing overlay, about 78% terminal width and up to 80% height.
+- Header shows mode (`💬 chat` or `🧭 tangent`) and status.
+- `Enter` submits the draft; `Escape` closes the overlay without deleting completed history.
+- `Up`, `Down`, `PageUp`, `PageDown`, `Home`, and `End` scroll transcript rows.
+- `Alt+/` toggles focus after a side-chat overlay exists.
 
-### Tool and extension behavior
+Isolation behavior:
 
-- Side-chat does not read or require side-chat-specific `.pi/settings.json`
-  capability configuration.
-- Side-chat omits explicit `tools` during child session creation. Pi SDK owns
-  the default built-in tool set; current expected defaults include `read`,
-  `bash`, `edit`, and `write`.
-- Enabled extension custom tools and fresh child-session skill guidance may be
-  available through a fresh child `DefaultResourceLoader`; existing active
-  side-chat sessions reuse their child resources rather than reloading
-  extensions and skills on every prompt.
-- Non-tool/non-skill extension surfaces are stripped where feasible: side-chat
-  does not inherit parent prompts, themes, parent-loaded skills,
-  AGENTS/context files, append-system prompt material, primary-agent markdown,
-  or hidden parent context.
+- Chat captures the parent transcript once when the first chat thread starts; it does not inherit live parent history afterward.
+- Tangent starts without parent transcript context.
+- Chat and tangent keep independent persistent threads and independent reset markers.
+- Side-chat child sessions omit explicit `tools`, so Pi SDK default tools may apply.
+- Enabled extension custom tools and fresh child-session skills may load through the child resource-loader boundary.
+- Parent-loaded prompts, themes, skills, AGENTS files, and primary-agent material are not inherited.
+- Side-chat currently has no per-chat model or thinking override; parent fallback is reused.
 
-### Persistence and isolation guarantees
-
-- Chat and tangent are independent threads.
-- Completed exchanges persist as Pi custom entries and restore on reload and
-  `/tree` navigation for the active branch.
-- `:new` writes a reset marker and discards only that mode's prior restored
-  thread.
-- Side-chat custom entries are filtered from parent LLM context as
-  defense-in-depth.
-- Chat captures the parent transcript snapshot once at thread origin; resumed
-  chat does not recapture later parent turns.
-- Tangent never captures parent transcript or project context.
-- Side-chat child sessions omit explicit tools so SDK defaults apply, enabled
-  extension custom tools can be discovered by the fresh child loader, and fresh
-  child-session skills/diagnostics can provide SDK-native skill guidance.
-- Side-chat child sessions do not load parent prompts, themes, parent-loaded
-  skills, legacy side-chat skill paths, AGENTS files, primary-agent markdown,
-  parent transcript history, or hidden parent context outside the ADR-0005 chat
-  origin snapshot.
-
-See [PRD-0005](docs/prd/0005-persistent-overlay-side-chat.md),
-[ADR-0005](docs/adr/0005-persistent-overlay-side-chat.md),
-[PRD-0008](docs/prd/0008-side-chat-sessions-use-sdk-default-tools-and-extension-custom-tools.md),
-and [ADR-0008](docs/adr/0008-sdk-default-side-chat-tool-capabilities.md).
-
-Note: do not run `pi-gizmo` and `pi-gremlins` side-chat commands concurrently
-if both are installed in the same Pi profile; migrate to `pi-gremlins` and
-disable / uninstall `pi-gizmo` to avoid duplicate command registration.
+Related: [PRD-0005](docs/prd/0005-persistent-overlay-side-chat.md), [ADR-0005](docs/adr/0005-persistent-overlay-side-chat.md), [PRD-0008](docs/prd/0008-side-chat-sessions-use-sdk-default-tools-and-extension-custom-tools.md), [ADR-0008](docs/adr/0008-sdk-default-side-chat-tool-capabilities.md).
 
 ## Primary agents
 
-Primary-agent support replaces the separate `pi-mohawk` extension inside `pi-gremlins`.
+Primary agents are parent-session roles selected from `agent_type: primary` Markdown files.
 
-Controls:
+Commands and controls:
 
-- `/gremlins:primary` opens a `Select primary agent` picker when UI exists.
-- `/gremlins:primary` without UI writes `Primary agents: None, ...` into the transcript.
-- `/gremlins:primary <name>` selects exact or single case-insensitive primary-agent match; ambiguous case-insensitive matches leave state unchanged and warn with exact-case options.
-- `/gremlins:primary none` clears selection.
-- `Ctrl+Shift+M` cycles deterministically through `[None, ...sorted primary agents]`.
-- status key is `pi-gremlins-primary`; visible label is `Primary: <name|None>`.
+| Control | Behavior |
+| --- | --- |
+| `/gremlins:primary` | Open an interactive picker when UI is available; otherwise list primary agents in the transcript. |
+| `/gremlins:primary <name>` | Select by name. Exact matches win; ambiguous case-insensitive matches warn instead of guessing. |
+| `/gremlins:primary none` | Clear the active primary agent. |
+| `Ctrl+Shift+M` | Cycle through `None` and discovered primary agents. |
 
-Session behavior:
+Selections are stored in the current session branch and persisted to the nearest project `.pi/settings.json` under the `pi-gremlins.primaryAgent` settings namespace/key. On each parent turn, the selected primary agent's raw Markdown is appended to the parent system prompt inside `pi-gremlins` prompt block markers. This prompt injection is parent-only and is not inherited by gremlin child sessions or side-chat sessions.
 
-- selection is restored from nearest project `.pi/settings.json` under `pi-gremlins.primaryAgent`; project-local storage avoids surprising cross-project primary-agent injection.
-- current-branch session entries still take precedence when present.
-- `/gremlins:primary <name>`, picker selection, `Ctrl+Shift+M`, and `/gremlins:primary none` persist selected name, source, and file path only.
-- new session entries are also appended as `pi-gremlins-primary-agent` for branch history compatibility.
-- legacy `pi-mohawk-primary-agent` entries are read for migration; new writes use `pi-gremlins-primary-agent`.
-- raw primary-agent markdown is never stored in session entries or settings.
-- missing selected primary agent resets to `None` in project settings and warns instead of injecting stale markdown.
+Legacy `pi-mohawk` prompt blocks are stripped during prompt injection, and older persisted selection data is handled as migration/deprecation history where supported by existing session state.
 
-Prompt behavior:
+Related: [PRD-0003](docs/prd/0003-primary-agent-selection-and-pi-mohawk-deprecation.md), [ADR-0003](docs/adr/0003-unified-agent-discovery-and-primary-agent-prompt-injection-in-pi-gremlins.md).
 
-- selected primary-agent raw markdown is appended during `before_agent_start` inside `<!-- pi-gremlins primary agent:start -->` / `<!-- pi-gremlins primary agent:end -->`.
-- existing `pi-gremlins` and legacy `pi-mohawk` primary-agent blocks are stripped before appending to avoid duplicate injection.
-- primary-agent prompt blocks stay parent-only and are never propagated into gremlin child sessions.
-- `agent_type: sub-agent` gremlins are never injected as primary agents.
-
-Migration from `pi-mohawk`:
-
-- install updated `pi-gremlins` and use `/gremlins:primary` (formerly `/mohawk`) / `Ctrl+Shift+M` controls.
-- after confirming primary-agent behavior works in `pi-gremlins`, disable or uninstall `pi-mohawk` to avoid duplicate command, shortcut, status, or prompt-hook behavior.
-- keep agent markdown in the same user/project directories; no schema rename is needed for `agent_type: primary`.
-
-## Repo layout
+## Repository layout
 
 ```text
 .
-├── extensions/pi-gremlins/
-│   ├── AGENTS.md
-│   ├── index.ts
-│   ├── agents/
-│   ├── gremlins/
-│   ├── primary/
-│   ├── rendering/
-│   ├── shared/
-│   ├── side-chat/
-│   └── test/
-├── docs/
+├── README.md
+├── CHANGELOG.md
 ├── package.json
-└── README.md
+├── docs/
+│   ├── adr/
+│   └── prd/
+└── extensions/
+    └── pi-gremlins/
+        ├── agents/       # shared markdown agent parsing
+        ├── gremlins/     # discovery, execution, sessions, scheduler, steering
+        ├── primary/      # primary-agent selection, persistence, prompt injection
+        ├── rendering/    # inline tool-row rendering
+        ├── shared/       # schemas and shared helpers
+        ├── side-chat/    # chat/tangent overlays and sessions
+        └── test/         # Bun tests
 ```
 
-## Develop
+## Development and verification
 
-Install dev dependencies:
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-Run checks:
+Available package scripts:
 
 ```bash
 npm run typecheck
-npm test        # runs Bun tests under extensions/pi-gremlins/test/**/*.test.js
-# or
+npm test
 npm run check
 ```
 
-## Publish shape
+`npm test` runs:
 
-Repo root is package root. Important because `pi install git:...` clones repo and reads `package.json` from repo root.
+```bash
+bun test extensions/pi-gremlins/test/**/*.test.js
+```
 
-Manifest uses documented Pi package shape:
+Keep documentation examples source-checked against [`package.json`](package.json), [`extensions/pi-gremlins/index.ts`](extensions/pi-gremlins/index.ts), and [`extensions/pi-gremlins/shared/gremlin-schema.ts`](extensions/pi-gremlins/shared/gremlin-schema.ts).
 
-- `keywords` includes `pi-package`
-- `pi.extensions` points at `./extensions/pi-gremlins`
-- Pi runtime packages stay in `peerDependencies`
+## Troubleshooting and FAQ
+
+### The `pi-gremlins` tool does not appear after install
+
+Reinstall from the intended source and confirm the package manifest points Pi at `./extensions/pi-gremlins`. For unreleased fixes, confirm the installed checkout or commit rather than only checking version `0.1.0`.
+
+### A gremlin is not found
+
+Confirm the file is a direct `.md` file in `~/.pi/agent/agents` or the nearest project `.pi/agents`, has `agent_type: sub-agent`, and has a non-empty `name` in frontmatter. Project definitions override same-role user definitions with the same display name.
+
+### A primary agent is not appearing
+
+Confirm the file has `agent_type: primary`, is not a symlink, and is in the user agents directory or nearest project `.pi/agents` for the current cwd. Primary display names fall back from `name` to the first H1 to the filename stem.
+
+### `cwd` fails
+
+Relative `cwd` values resolve against the parent session cwd. The resolved path must already exist and be a directory.
+
+### Steering is rejected
+
+Only active gremlins can be steered. Completed, failed, canceled, stale, setup-failed, disposed, unknown, or ambiguous ids are rejected. Steering waits for the child session boundary and does not stop a currently running tool call.
+
+### The side-chat overlay does not open
+
+The overlay requires an interactive UI. In non-UI contexts, open commands may warn instead of drawing the overlay.
+
+### What context does side-chat receive?
+
+Chat captures a parent transcript snapshot only at chat-thread origin. Tangent receives no parent transcript. Neither mode inherits parent prompts, themes, AGENTS files, primary-agent material, or parent-loaded skills.
+
+### Is this a security sandbox?
+
+No. Gremlin and side-chat sessions isolate Pi context/resources, not operating-system access. Tool availability still determines what a child session can do.
+
+## Contributing, maintenance, and license
+
+- Keep README examples aligned with the source under [`extensions/pi-gremlins/`](extensions/pi-gremlins/).
+- Update [`CHANGELOG.md`](CHANGELOG.md) for notable user-facing documentation changes.
+- Link PRDs and ADRs only when the referenced files exist under [`docs/prd/`](docs/prd/) or [`docs/adr/`](docs/adr/).
+- No license file is present in this checkout; do not assume a license until one is added.
