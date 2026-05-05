@@ -193,7 +193,7 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: None" });
 	});
 
-	test("selection persists to project settings and restores in a new session without raw markdown", async () => {
+	test("selection persists to project agents settings and restores in a new session without raw markdown", async () => {
 		const { createPrimaryAgentDiscoveryCache } = await import("../../gremlins/gremlin-discovery.ts");
 		const { createPiGremlinsExtension } = await import("../../index.ts");
 		const workspace = createWorkspace();
@@ -207,7 +207,10 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		await firstPi.handler("session_start")({ type: "session_start", reason: "startup" }, firstCtx);
 		await firstPi.commands.get("gremlins:primary").handler("Alpha", firstCtx);
 
-		const settingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const legacySettingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const settingsPath = path.join(workspace.repoRoot, ".pi", "agents", "settings.json");
+		expect(fs.existsSync(path.dirname(settingsPath))).toBe(true);
+		expect(fs.existsSync(legacySettingsPath)).toBe(false);
 		const settingsContent = fs.readFileSync(settingsPath, "utf-8");
 		expect(settingsContent).toContain('"selectedName": "Alpha"');
 		expect(settingsContent).toContain('"source": "project"');
@@ -222,41 +225,131 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		expect(injected.systemPrompt).toContain("alpha prompt");
 	});
 
-	test("corrupt project settings does not crash startup and reports warning", async () => {
-		const { createPrimaryAgentDiscoveryCache } = await import("../../gremlins/gremlin-discovery.ts");
-		const { createPiGremlinsExtension } = await import("../../index.ts");
-		const workspace = createWorkspace();
-		workspaceRoot = workspace.root;
-		fs.mkdirSync(path.join(workspace.repoRoot, ".pi"), { recursive: true });
-		fs.writeFileSync(path.join(workspace.repoRoot, ".pi", "settings.json"), "{not json", "utf-8");
-		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
-		const pi = createMockPi();
-		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(pi);
-		const ctx = createMockContext(workspace);
-
-		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
-
-		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: None" });
-		expect(ctx.ui.notifications.at(-1)).toMatchObject({ type: "warning" });
-		expect(ctx.ui.notifications.at(-1).message).toContain("Could not read primary-agent settings");
-	});
-
-	test("selection replaces corrupt project settings with valid persisted primary", async () => {
+	test("legacy project settings migrate only primary-agent selection when new settings are absent", async () => {
 		const { createPrimaryAgentDiscoveryCache } = await import("../../gremlins/gremlin-discovery.ts");
 		const { createPiGremlinsExtension } = await import("../../index.ts");
 		const workspace = createWorkspace();
 		workspaceRoot = workspace.root;
 		writePrimaryFile(workspace.projectAgentsDir, "alpha.md", "---\nname: Alpha\nagent_type: primary\n---\nalpha prompt");
-		const settingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const legacySettingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const settingsPath = path.join(workspace.repoRoot, ".pi", "agents", "settings.json");
+		fs.writeFileSync(legacySettingsPath, JSON.stringify({
+			"pi-gremlins": { primaryAgent: { selectedName: "Alpha", source: "project", filePath: path.join(workspace.projectAgentsDir, "alpha.md") }, other: true },
+			unrelated: "legacy",
+		}, null, 2), "utf-8");
+		const legacyBefore = fs.readFileSync(legacySettingsPath, "utf-8");
+
+		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
+		const pi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(pi);
+		const ctx = createMockContext(workspace);
+		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
+
+		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: Alpha" });
+		expect(fs.readFileSync(legacySettingsPath, "utf-8")).toBe(legacyBefore);
+		const migrated = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+		expect(migrated).toEqual({ "pi-gremlins": { primaryAgent: { selectedName: "Alpha", source: "project", filePath: path.join(workspace.projectAgentsDir, "alpha.md") } } });
+	});
+
+	test("new primary-agent settings win over legacy and legacy is not rewritten", async () => {
+		const { createPrimaryAgentDiscoveryCache } = await import("../../gremlins/gremlin-discovery.ts");
+		const { createPiGremlinsExtension } = await import("../../index.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		writePrimaryFile(workspace.projectAgentsDir, "alpha.md", "---\nname: Alpha\nagent_type: primary\n---\nalpha prompt");
+		writePrimaryFile(workspace.projectAgentsDir, "beta.md", "---\nname: Beta\nagent_type: primary\n---\nbeta prompt");
+		const legacySettingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const settingsPath = path.join(workspace.repoRoot, ".pi", "agents", "settings.json");
+		fs.writeFileSync(legacySettingsPath, JSON.stringify({ "pi-gremlins": { primaryAgent: { selectedName: "Alpha", source: "project", filePath: path.join(workspace.projectAgentsDir, "alpha.md") } } }, null, 2), "utf-8");
+		fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+		fs.writeFileSync(settingsPath, JSON.stringify({ preserved: true, "pi-gremlins": { primaryAgent: { selectedName: "Beta", source: "project", filePath: path.join(workspace.projectAgentsDir, "beta.md") } } }, null, 2), "utf-8");
+		const legacyBefore = fs.readFileSync(legacySettingsPath, "utf-8");
+
+		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
+		const pi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(pi);
+		const ctx = createMockContext(workspace);
+		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
+		await pi.commands.get("gremlins:primary").handler("Alpha", ctx);
+
+		expect(ctx.ui.statuses.at(-2)).toEqual({ key: "pi-gremlins-primary", text: "Primary: Beta" });
+		expect(fs.readFileSync(legacySettingsPath, "utf-8")).toBe(legacyBefore);
+		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+		expect(settings.preserved).toBe(true);
+		expect(settings["pi-gremlins"].primaryAgent).toMatchObject({ selectedName: "Alpha", source: "project" });
+	});
+
+	test("legacy migration fills missing new primary-agent key while preserving new settings", async () => {
+		const { createPrimaryAgentDiscoveryCache } = await import("../../gremlins/gremlin-discovery.ts");
+		const { createPiGremlinsExtension } = await import("../../index.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		writePrimaryFile(workspace.projectAgentsDir, "alpha.md", "---\nname: Alpha\nagent_type: primary\n---\nalpha prompt");
+		const legacySettingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const settingsPath = path.join(workspace.repoRoot, ".pi", "agents", "settings.json");
+		fs.writeFileSync(legacySettingsPath, JSON.stringify({ "pi-gremlins": { primaryAgent: { selectedName: "Alpha", source: "project", filePath: path.join(workspace.projectAgentsDir, "alpha.md") }, legacyOnly: true }, copiedNever: true }, null, 2), "utf-8");
+		fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+		fs.writeFileSync(settingsPath, JSON.stringify({ preserved: true, "pi-gremlins": { newOnly: true } }, null, 2), "utf-8");
+
+		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
+		const pi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(pi);
+		const ctx = createMockContext(workspace);
+		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
+
+		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: Alpha" });
+		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+		expect(settings).toEqual({ preserved: true, "pi-gremlins": { newOnly: true, primaryAgent: { selectedName: "Alpha", source: "project", filePath: path.join(workspace.projectAgentsDir, "alpha.md") } } });
+	});
+
+	test("corrupt new primary-agent settings are authoritative and block legacy fallback", async () => {
+		const { createPrimaryAgentDiscoveryCache } = await import("../../gremlins/gremlin-discovery.ts");
+		const { createPiGremlinsExtension } = await import("../../index.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		writePrimaryFile(workspace.projectAgentsDir, "alpha.md", "---\nname: Alpha\nagent_type: primary\n---\nalpha prompt");
+		const legacySettingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const settingsPath = path.join(workspace.repoRoot, ".pi", "agents", "settings.json");
+		fs.writeFileSync(legacySettingsPath, JSON.stringify({ "pi-gremlins": { primaryAgent: { selectedName: "Alpha", source: "project", filePath: path.join(workspace.projectAgentsDir, "alpha.md") } } }, null, 2), "utf-8");
+		fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
 		fs.writeFileSync(settingsPath, "{not json", "utf-8");
+		const legacyBefore = fs.readFileSync(legacySettingsPath, "utf-8");
+
+		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
+		const pi = createMockPi();
+		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(pi);
+		const ctx = createMockContext(workspace);
+		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
+
+		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: None" });
+		expect(ctx.ui.notifications.at(-1)).toMatchObject({ type: "warning" });
+		expect(ctx.ui.notifications.at(-1).message).toContain(".pi/agents/settings.json");
+		expect(fs.readFileSync(settingsPath, "utf-8")).toBe("{not json");
+		expect(fs.readFileSync(legacySettingsPath, "utf-8")).toBe(legacyBefore);
+	});
+
+	test("corrupt legacy settings warn only during allowed fallback and command writes new path", async () => {
+		const { createPrimaryAgentDiscoveryCache } = await import("../../gremlins/gremlin-discovery.ts");
+		const { createPiGremlinsExtension } = await import("../../index.ts");
+		const workspace = createWorkspace();
+		workspaceRoot = workspace.root;
+		writePrimaryFile(workspace.projectAgentsDir, "alpha.md", "---\nname: Alpha\nagent_type: primary\n---\nalpha prompt");
+		const legacySettingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const settingsPath = path.join(workspace.repoRoot, ".pi", "agents", "settings.json");
+		fs.writeFileSync(legacySettingsPath, "{not json", "utf-8");
+		const legacyBefore = fs.readFileSync(legacySettingsPath, "utf-8");
 		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
 		const pi = createMockPi();
 		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(pi);
 		const ctx = createMockContext(workspace);
 
 		await pi.handler("session_start")({ type: "session_start", reason: "startup" }, ctx);
-		await pi.commands.get("gremlins:primary").handler("Alpha", ctx);
+		expect(ctx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: None" });
+		expect(ctx.ui.notifications.at(-1)).toMatchObject({ type: "warning" });
+		expect(ctx.ui.notifications.at(-1).message).toContain(".pi/settings.json");
 
+		await pi.commands.get("gremlins:primary").handler("Alpha", ctx);
+		expect(fs.readFileSync(legacySettingsPath, "utf-8")).toBe(legacyBefore);
 		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
 		expect(settings["pi-gremlins"].primaryAgent).toMatchObject({ selectedName: "Alpha", source: "project" });
 	});
@@ -268,7 +361,8 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		workspaceRoot = workspace.root;
 		writePrimaryFile(workspace.projectAgentsDir, "alpha.md", "---\nname: Alpha\nagent_type: primary\n---\nalpha prompt");
 		const discovery = createPrimaryAgentDiscoveryCache({ userAgentsDir: workspace.userAgentsDir });
-		const settingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const legacySettingsPath = path.join(workspace.repoRoot, ".pi", "settings.json");
+		const settingsPath = path.join(workspace.repoRoot, ".pi", "agents", "settings.json");
 
 		const firstPi = createMockPi();
 		createPiGremlinsExtension({ primaryAgentDiscoveryCache: discovery })(firstPi);
@@ -276,6 +370,8 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		await firstPi.handler("session_start")({ type: "session_start", reason: "startup" }, firstCtx);
 		await firstPi.commands.get("gremlins:primary").handler("Alpha", firstCtx);
 		await firstPi.commands.get("gremlins:primary").handler("none", firstCtx);
+		expect(fs.existsSync(path.dirname(settingsPath))).toBe(true);
+		expect(fs.existsSync(legacySettingsPath)).toBe(false);
 		expect(fs.readFileSync(settingsPath, "utf-8")).toContain('"selectedName": null');
 
 		const clearedPi = createMockPi();
@@ -291,6 +387,8 @@ describe("primary-agent state, controls, and prompt injection", () => {
 		await missingPi.handler("session_start")({ type: "session_start", reason: "startup" }, missingCtx);
 		expect(missingCtx.ui.statuses.at(-1)).toEqual({ key: "pi-gremlins-primary", text: "Primary: None" });
 		expect(missingCtx.ui.notifications.at(-1)).toEqual({ message: "Primary agent unavailable, reset to None: Missing", type: "warning" });
+		expect(fs.existsSync(path.dirname(settingsPath))).toBe(true);
+		expect(fs.existsSync(legacySettingsPath)).toBe(false);
 		expect(fs.readFileSync(settingsPath, "utf-8")).toContain('"selectedName": null');
 		const injected = await missingPi.handler("before_agent_start")({ type: "before_agent_start", systemPrompt: "system", prompt: "go", systemPromptOptions: {} }, missingCtx);
 		expect(injected).toBeUndefined();

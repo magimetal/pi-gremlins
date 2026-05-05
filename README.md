@@ -259,7 +259,7 @@ Commands and controls:
 | `/gremlins:primary none` | Clear the active primary agent. |
 | `Ctrl+Shift+M` | Cycle through `None` and discovered primary agents. |
 
-Selections are stored in the current session branch and persisted to the nearest project `.pi/settings.json` under the `pi-gremlins.primaryAgent` settings namespace/key. On each parent turn, the selected primary agent's raw Markdown is appended to the parent system prompt inside `pi-gremlins` prompt block markers. This prompt injection is parent-only and is not inherited by gremlin child sessions or side-chat sessions.
+Selections are stored in the current session branch and persisted to the nearest project `.pi/agents/settings.json` under the `pi-gremlins.primaryAgent` settings namespace/key. On each parent turn, the selected primary agent's raw Markdown is appended to the parent system prompt inside `pi-gremlins` prompt block markers. This prompt injection is parent-only and is not inherited by gremlin child sessions or side-chat sessions.
 
 Legacy `pi-mohawk` prompt blocks are stripped during prompt injection, and older persisted selection data is handled as migration/deprecation history where supported by existing session state.
 

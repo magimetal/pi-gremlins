@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Primary-agent settings path** (issue #67): primary-agent selection now reads and writes nearest project `.pi/agents/settings.json`, creates `.pi/agents/` when needed, and safely migrates/falls back from legacy `.pi/settings.json` selections without writing new primary-agent state to the old path.
 - Rewrote README documentation for current install/update flows, gremlin invocation, discovery/frontmatter, runtime isolation, primary agents, steering, side-chat overlays, troubleshooting, and repository layout accuracy (issue #69).
 - `extensions/pi-gremlins` source and test files are reorganized into feature folders (`agents`, `gremlins`, `primary`, `rendering`, `shared`, `side-chat`, and `test`) while preserving the package entry point at `./extensions/pi-gremlins`.
 - **Persistent overlay side-chat** (PRD-0005, ADR-0005, issue #49): `/gremlins:chat` and `/gremlins:tangent` now open persistent multi-turn overlays instead of inline one-shot responses; `:new` variants reset only the selected mode while preserving chat/tangent isolation.
