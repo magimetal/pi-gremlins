@@ -138,6 +138,15 @@ export function formatGremlinStatus(status: GremlinInvocationEntry["status"]): s
 	}
 }
 
+function formatUsageCost(cost: number): string {
+	if (cost === 0) return "$0.00";
+	const absoluteCost = Math.abs(cost);
+	const sign = cost < 0 ? "-" : "";
+	if (absoluteCost < 0.000001) return `${sign}<$0.000001`;
+	if (absoluteCost < 0.01) return `${sign}$${absoluteCost.toFixed(6)}`;
+	return `${sign}$${absoluteCost.toFixed(2)}`;
+}
+
 export function formatUsageSummary(usage?: GremlinUsage): string {
 	if (!usage) return "";
 	const parts = [
@@ -150,7 +159,9 @@ export function formatUsageSummary(usage?: GremlinUsage): string {
 		parts.push(`cacheWrite:${usage.cacheWrite}`);
 	}
 	if (typeof usage.contextTokens === "number") parts.push(`context:${usage.contextTokens}`);
-	if (typeof usage.cost === "number") parts.push(`cost:${usage.cost}`);
+	if (typeof usage.cost === "number" && Number.isFinite(usage.cost)) {
+		parts.push(`cost:${formatUsageCost(usage.cost)}`);
+	}
 	return parts.join(" · ");
 }
 
