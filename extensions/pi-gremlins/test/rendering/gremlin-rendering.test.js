@@ -233,6 +233,56 @@ describe("gremlin rendering v1 contract", () => {
 		expect(text).toContain("read apps/web/src/main.ts");
 	});
 
+	test("formats usage cost in collapsed and expanded inline summaries", async () => {
+		const { renderGremlinInvocationText } = await import(
+			"../../rendering/gremlin-rendering.ts"
+		);
+		const details = {
+			requestedCount: 1,
+			activeCount: 0,
+			completedCount: 1,
+			failedCount: 0,
+			canceledCount: 0,
+			gremlins: [
+				{
+					gremlinId: "g1",
+					agent: "researcher",
+					source: "project",
+					status: "completed",
+					context: "Find auth flow",
+					usage: { turns: 2, input: 20, output: 8, cost: 0.000123456 },
+					revision: 14,
+				},
+			],
+			revision: 14,
+		};
+
+		const collapsed = renderGremlinInvocationText(details, { expanded: false, width: 120 });
+		const expanded = renderGremlinInvocationText(details, { expanded: true, width: 120 });
+
+		expect(collapsed).toContain("usage · turns:2 · input:20 · output:8 · cost:$0.000123");
+		expect(expanded).toContain("usage · turns:2 · input:20 · output:8 · cost:$0.000123");
+		expect(collapsed).not.toContain("0.000123456");
+		expect(expanded).not.toContain("0.000123456");
+	});
+
+	test("formats zero tiny and normal usage costs predictably and omits non-finite costs", async () => {
+		const { formatUsageSummary } = await import("../../rendering/gremlin-render-components.ts");
+
+		expect(formatUsageSummary({ turns: 0, input: 0, output: 0, cost: 0 })).toBe(
+			"turns:0 · input:0 · output:0 · cost:$0.00",
+		);
+		expect(formatUsageSummary({ turns: 1, input: 2, output: 3, cost: 0.0000004 })).toBe(
+			"turns:1 · input:2 · output:3 · cost:<$0.000001",
+		);
+		expect(formatUsageSummary({ turns: 1, input: 2, output: 3, cost: 1.234 })).toBe(
+			"turns:1 · input:2 · output:3 · cost:$1.23",
+		);
+		expect(formatUsageSummary({ turns: 1, input: 2, output: 3, cost: Number.NaN })).toBe(
+			"turns:1 · input:2 · output:3",
+		);
+	});
+
 	test("renders expanded inline detail with task model usage and no popup chrome", async () => {
 		const { renderGremlinInvocationText } = await import(
 			"../../rendering/gremlin-rendering.ts"
