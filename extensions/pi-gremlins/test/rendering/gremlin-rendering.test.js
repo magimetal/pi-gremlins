@@ -160,6 +160,45 @@ describe("gremlin rendering v1 contract", () => {
 		}
 	});
 
+	test("keeps collapsed inline entries separated with visible per-entry status and ids", async () => {
+		const {
+			GremlinInlineResultComponent,
+			renderGremlinInvocationText,
+		} = await import("../../rendering/gremlin-rendering.ts");
+
+		const details = {
+			requestedCount: 3,
+			activeCount: 3,
+			completedCount: 0,
+			failedCount: 0,
+			canceledCount: 0,
+			gremlins: Array.from({ length: 3 }, (_value, index) => ({
+				gremlinId: `g${index + 1}`,
+				agent: `worker-${index + 1}`,
+				source: "project",
+				status: "active",
+				intent: `Handle independent task ${index + 1}`,
+				context: `Context line one for worker ${index + 1}\nContext line two for worker ${index + 1}`,
+				currentPhase: "streaming",
+				latestText: `Latest active update for worker ${index + 1}`,
+				revision: index + 1,
+			})),
+			revision: 3,
+		};
+		const text = renderGremlinInvocationText(details, { expanded: false, width: 96 });
+		const lines = text.split("\n");
+
+		expect(lines).toContain("");
+		for (const id of ["g1", "g2", "g3"]) {
+			expect(text).toContain(`[Active] · ${id} worker-${id.slice(1)} [project]`);
+		}
+
+		const rendered = new GremlinInlineResultComponent(text, false).render(96).join("\n");
+		expect(rendered).toContain("[Active] · g1 worker-1 [project]");
+		expect(rendered).toContain("[Active] · g2 worker-2 [project]");
+		expect(rendered).toContain("[Active] · g3 worker-3 [project]");
+	});
+
 	test("keeps multiline collapsed activity previews on one visible line", async () => {
 		const { renderGremlinInvocationText } = await import(
 			"../../rendering/gremlin-rendering.ts"
