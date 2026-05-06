@@ -177,6 +177,7 @@ function styleLine(
 	if (line.startsWith("latest · ")) return theme.fg("text", line);
 	if (line.startsWith("error · ")) return theme.fg("error", line);
 	if (line.startsWith("idle · ")) return theme.fg("dim", line);
+	if (line.startsWith("meta · ")) return theme.fg("dim", line);
 	if (line.startsWith("usage · ")) return theme.fg("dim", line);
 	if (
 		line.startsWith("cwd · ") ||

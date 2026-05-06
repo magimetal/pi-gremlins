@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pi-gremlins` maintainability improved by extracting shared cache helpers, tool execution flow, and gremlin runner event projection into smaller focused modules/functions without changing the public tool contract.
 
 ### Fixed
+- **Inline gremlin session metadata** (issue #75): collapsed inline gremlin summaries now show compact model and thinking metadata when available while omitting missing values gracefully.
 - **Sub-agent inline usage cost formatting** (issue #65): gremlin inline usage summaries now render finite costs with a `$` marker and stable precision instead of raw floating-point decimals.
 - **Expanded inline subagent output** (issue #66): expanded gremlin inline details now show the full available subagent output instead of clipping expanded text fields to a short preview.
 - Side-chat transcript persistence now queues pending chat/tangent questions per mode so overlapping prompts are saved with the correct completed answer.

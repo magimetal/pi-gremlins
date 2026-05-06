@@ -59,6 +59,49 @@ describe("gremlin rendering v1 contract", () => {
 		expect(text).not.toContain("popup");
 	});
 
+	test("renders compact model and thinking metadata in collapsed inline summaries", async () => {
+		const { renderGremlinInvocationText } = await import(
+			"../../rendering/gremlin-rendering.ts"
+		);
+
+		const text = renderGremlinInvocationText(
+			{
+				requestedCount: 2,
+				activeCount: 1,
+				completedCount: 1,
+				failedCount: 0,
+				canceledCount: 0,
+				gremlins: [
+					{
+						gremlinId: "g1",
+						agent: "researcher",
+						source: "project",
+						status: "active",
+						context: "Find auth flow",
+						model: "openai/gpt-5-mini",
+						thinking: "medium",
+						revision: 20,
+					},
+					{
+						gremlinId: "g2",
+						agent: "reviewer",
+						source: "user",
+						status: "completed",
+						context: "Review auth flow",
+						revision: 21,
+					},
+				],
+				revision: 21,
+			},
+			{ expanded: false, width: 120 },
+		);
+
+		expect(text).toContain("meta · model:openai/gpt-5-mini · thinking:medium");
+		expect(text).toContain("[Completed] · g2 reviewer [user]");
+		expect(text).not.toContain("model:undefined");
+		expect(text).not.toContain("thinking:undefined");
+	});
+
 	test("renders narrow collapsed state readably for repeated agent names by keeping stable gremlin ids", async () => {
 		const { renderGremlinInvocationText } = await import(
 			"../../rendering/gremlin-rendering.ts"

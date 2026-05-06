@@ -193,7 +193,7 @@ This is context and resource isolation inside Pi's SDK runtime. It is not an OS-
 
 The tool row uses the label **Gremlins🧌** and can be expanded with Pi's standard `Ctrl+O` affordance.
 
-Collapsed output summarizes source, status, intent/task preview, latest activity, token usage, and errors. Expanded output adds per-gremlin details such as intent, task/context, cwd, model, thinking level, latest text/tool data, usage, errors, and steering activity.
+Collapsed output summarizes source, status, compact model/thinking metadata when available, intent/task preview, latest activity, token usage, and errors. Expanded output adds per-gremlin details such as intent, task/context, cwd, model, thinking level, latest text/tool data, usage, errors, and steering activity.
 
 ## Active gremlin steering
 
