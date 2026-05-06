@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repaired reliability audit findings for renderer cache uniqueness, same-size agent discovery changes, corrupt primary-agent settings recovery, effective request-cwd discovery, and ambiguous gremlin model reporting.
 
 ### Added
+- **Gremlin session overlay** (issue #77): `/gremlins:open` now opens captured active/completed gremlin transcripts in the side-chat-style overlay, supports active steering through `AgentSession.steer(message)`, and fails closed for missing, ambiguous, or terminal sessions.
 - **Side-chat tool input summaries** (PRD-0009, issue #68): side-chat tool start rows now show safe concise `read` path/file and `bash` command details, with sensitive or long values redacted/truncated before display.
 - **Side-chat skill prompt support** (PRD-0008, ADR-0008, issue #59): `/gremlins:chat` and `/gremlins:tangent` can now load fresh child-session skills and diagnostics through the side-chat child resource-loader boundary, enabling SDK-native skill guidance while keeping parent-loaded skills and legacy side-chat skill paths isolated.
 - **Side-chat SDK default and extension tools** (PRD-0008, ADR-0008, issue #57): `/gremlins:chat` and `/gremlins:tangent` now omit explicit child-session tools so SDK default built-ins apply, while enabled extension custom tools can load through a fresh child resource loader. Side-chat-specific `.pi/settings.json` allowlists/configuration are removed/ignored; overlay persistence and chat/tangent isolation are retained.

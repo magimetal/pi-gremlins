@@ -21,6 +21,7 @@ import type {
 	ActiveGremlinSessionRegistry,
 	ActiveGremlinSteeringEvent,
 } from "./gremlin-session-registry.js";
+import type { GremlinSessionTranscriptStore } from "./gremlin-session-transcript-store.js";
 
 export interface GremlinRunnerUpdate {
 	gremlinId: string;
@@ -81,6 +82,7 @@ export interface RunSingleGremlinOptions {
 	signal?: AbortSignal;
 	onUpdate?: (update: GremlinRunnerUpdate) => void;
 	activeSessionRegistry?: ActiveGremlinSessionRegistry;
+	transcriptStore?: GremlinSessionTranscriptStore;
 	createSession?: (
 		options: Parameters<typeof createGremlinSession>[0],
 	) => Promise<CreateAgentSessionResult>;
@@ -186,8 +188,10 @@ function createActivityRecorder(state: GremlinRunResult) {
 
 function createGremlinPublisher(
 	gremlinId: string,
+	toolCallId: string,
 	state: GremlinRunResult,
 	onUpdate?: (update: GremlinRunnerUpdate) => void,
+	transcriptStore?: GremlinSessionTranscriptStore,
 ): PublishGremlinPatch {
 	const addActivity = createActivityRecorder(state);
 	return (patch, activity) => {
@@ -195,6 +199,9 @@ function createGremlinPublisher(
 			? { ...patch, activities: addActivity(activity) }
 			: patch;
 		Object.assign(state, nextPatch, { revision: (state.revision ?? 0) + 1 });
+		if (nextPatch.status) {
+			transcriptStore?.updateSession({ gremlinId, toolCallId, status: nextPatch.status });
+		}
 		onUpdate?.({ gremlinId, patch: { ...nextPatch, revision: state.revision } });
 	};
 }
@@ -351,10 +358,23 @@ export async function runSingleGremlin({
 	signal,
 	onUpdate,
 	activeSessionRegistry,
+	transcriptStore,
 	createSession = createGremlinSession,
 }: RunSingleGremlinOptions): Promise<GremlinRunResult> {
 	const state = buildBaseResult(gremlinId, request, definition);
-	const publish = createGremlinPublisher(gremlinId, state, onUpdate);
+	transcriptStore?.upsertSession({
+		gremlinId,
+		toolCallId,
+		agent: request.agent,
+		status: state.status,
+	});
+	const publish = createGremlinPublisher(
+		gremlinId,
+		toolCallId,
+		state,
+		onUpdate,
+		transcriptStore,
+	);
 	const textDeltaPublisher = createTextDeltaPublisher(state, publish);
 
 	if (signal?.aborted) {
@@ -454,6 +474,7 @@ export async function runSingleGremlin({
 			},
 		});
 		unsubscribe = session.subscribe?.((event: GremlinEvent) => {
+			transcriptStore?.recordEvent({ gremlinId, toolCallId, event });
 			projectGremlinEvent(event, state, session, publish, textDeltaPublisher);
 		});
 		signal?.addEventListener("abort", abortListener, { once: true });

@@ -34,12 +34,15 @@ export const SIDE_CHAT_OVERLAY_OPTIONS: OverlayOptions = {
 };
 
 export interface SideChatOverlayController {
-	getMode(): SideChatMode;
+	getMode(): SideChatMode | "gremlin";
 	getTranscriptState(): SideChatTranscriptState;
 	getDraft(): string;
 	setDraft(value: string): void;
 	submitDraft(value: string): void;
 	close(): void;
+	getHeaderText?(): string;
+	getInputLabel?(): string;
+	getEmptyText?(): string;
 }
 
 export class SideChatOverlayComponent implements Component {
@@ -67,13 +70,15 @@ export class SideChatOverlayComponent implements Component {
 			innerWidth,
 			bodyHeight,
 		);
+		const headerText = this.controller.getHeaderText?.() ?? `${mode === "chat" ? "💬 chat" : mode === "tangent" ? "🧭 tangent" : "🧌 gremlin"} │ ${formatStatus(state.status)} │ Enter submits · Esc closes · Alt+/ focuses`;
+		const inputLabel = this.controller.getInputLabel?.() ?? "›";
 		const contentLines = [
 			"",
-			`${mode === "chat" ? "💬 chat" : "🧭 tangent"} │ ${formatStatus(state.status)} │ Enter submits · Esc closes · Alt+/ focuses`,
+			headerText,
 			"─".repeat(innerWidth),
 			...bodyLines,
 			"",
-			`› ${draft}${this.focused ? CURSOR_MARKER : ""}`,
+			`${inputLabel} ${draft}${this.focused ? CURSOR_MARKER : ""}`,
 			"Scroll: ↑/↓ PgUp/PgDn Home/End",
 			"",
 		];
@@ -155,7 +160,7 @@ export class SideChatOverlayComponent implements Component {
 		height: number,
 	): string[] {
 		const transcriptLines = rows.length === 0
-			? new Text("No side-chat messages yet.", 0, 0).render(width)
+			? new Text(this.controller.getEmptyText?.() ?? "No side-chat messages yet.", 0, 0).render(width)
 			: rows.flatMap((row) => this.renderRow(row, width));
 		const maxOffset = Math.max(0, transcriptLines.length - height);
 		const offset = Math.min(this.scrollOffset, maxOffset);
