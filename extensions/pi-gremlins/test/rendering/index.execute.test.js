@@ -35,13 +35,14 @@ describe("pi-gremlins index execute v1", () => {
 		resetV1ContractHarness();
 	});
 
-	test("registers tool plus primary-agent compatibility commands with official steering but no legacy viewer", () => {
+	test("registers tool plus primary-agent compatibility commands with official steering and session open but no legacy viewer", () => {
 		const { tool, commands, shortcuts } = createExtensionHarness();
 
 		expect(tool.name).toBe("pi-gremlins");
-		expect(commands.size).toBe(6);
+		expect(commands.size).toBe(7);
 		expect(commands.has("gremlins:primary")).toBe(true);
 		expect(commands.has("gremlins:steer")).toBe(true);
+		expect(commands.has("gremlins:open")).toBe(true);
 		expect(commands.has("gremlins:chat")).toBe(true);
 		expect(commands.has("gremlins:chat:new")).toBe(true);
 		expect(commands.has("gremlins:tangent")).toBe(true);

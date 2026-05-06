@@ -32,6 +32,11 @@ import {
 } from "./gremlins/gremlin-tool-execution.js";
 import { createActiveGremlinSessionRegistry } from "./gremlins/gremlin-session-registry.js";
 import {
+	createGremlinOpenCommandHandler,
+	GREMLIN_OPEN_COMMAND,
+} from "./gremlins/gremlin-open-command.js";
+import { createGremlinSessionTranscriptStore } from "./gremlins/gremlin-session-transcript-store.js";
+import {
 	createGremlinSteerCommandHandler,
 	GREMLIN_STEER_COMMAND,
 } from "./gremlins/gremlin-steer-command.js";
@@ -108,6 +113,7 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 			});
 		let primaryAgentState: PrimaryAgentState = createInitialPrimaryAgentState();
 		const activeSessionRegistry = createActiveGremlinSessionRegistry();
+		const transcriptStore = createGremlinSessionTranscriptStore();
 
 		registerSideChatCommands(pi);
 
@@ -145,6 +151,7 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 			discovery.clear();
 			primaryAgentDiscovery.clear();
 			activeSessionRegistry.clearActiveGremlinSessions();
+			transcriptStore.clearGremlinTranscripts();
 		});
 
 		pi.registerCommand("gremlins:primary", {
@@ -163,6 +170,11 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 		pi.registerCommand(GREMLIN_STEER_COMMAND, {
 			description: "Steer an active gremlin child session",
 			handler: createGremlinSteerCommandHandler(activeSessionRegistry),
+		});
+
+		pi.registerCommand(GREMLIN_OPEN_COMMAND, {
+			description: "Open an overlay for an active or completed gremlin session transcript",
+			handler: createGremlinOpenCommandHandler(transcriptStore, activeSessionRegistry),
 		});
 
 		pi.registerShortcut(PRIMARY_SHORTCUT, {
@@ -237,6 +249,7 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 					ctx,
 					discovery,
 					activeSessionRegistry,
+					transcriptStore,
 					notifyDiagnostics: (diagnostics) =>
 						notifyDiscoveryDiagnostics(ctx, diagnostics),
 				});

@@ -18,6 +18,7 @@ import type {
 } from "../shared/gremlin-schema.js";
 import { runGremlinBatch } from "./gremlin-scheduler.js";
 import type { ActiveGremlinSessionRegistry } from "./gremlin-session-registry.js";
+import type { GremlinSessionTranscriptStore } from "./gremlin-session-transcript-store.js";
 import { buildGremlinProgressSummary } from "./gremlin-summary.js";
 
 export type PiGremlinsArgs = { gremlins: GremlinRequest[] };
@@ -33,6 +34,7 @@ export interface ExecutePiGremlinsToolOptions {
 	ctx: ExtensionContext;
 	discovery: GremlinDiscoveryCache;
 	activeSessionRegistry?: ActiveGremlinSessionRegistry;
+	transcriptStore?: GremlinSessionTranscriptStore;
 	notifyDiagnostics: (diagnostics: AgentDiscoveryDiagnostic[]) => void;
 }
 
@@ -138,6 +140,7 @@ export async function executePiGremlinsTool({
 	ctx,
 	discovery,
 	activeSessionRegistry,
+	transcriptStore,
 	notifyDiagnostics,
 }: ExecutePiGremlinsToolOptions): Promise<PiGremlinsToolResult> {
 	if (!Array.isArray(params.gremlins) || params.gremlins.length === 0) {
@@ -192,6 +195,7 @@ export async function executePiGremlinsTool({
 				modelRegistry: ctx.modelRegistry,
 				signal: childSignal,
 				activeSessionRegistry,
+				transcriptStore,
 				onUpdate: ({ patch }) => publishUpdate?.(patch),
 			});
 		},

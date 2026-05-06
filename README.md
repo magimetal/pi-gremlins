@@ -13,6 +13,7 @@ Human-facing UI uses the label **Gremlins🧌**. Package installation, extension
 - **Role-aware markdown agents** — discover `agent_type: sub-agent` gremlins and `agent_type: primary` parent roles from user and project directories.
 - **Primary-agent controls** — choose the parent-session role with `/gremlins:primary` or cycle with `Ctrl+Shift+M`.
 - **Active steering** — queue guidance into a running gremlin with `/gremlins:steer <G-id> <message>`.
+- **Gremlin session overlay** — inspect active or completed gremlin transcripts with `/gremlins:open <G-id>` and steer active sessions from the overlay input.
 - **Persistent overlays** — use `/gremlins:chat` for a transcript-aware side conversation or `/gremlins:tangent` for a clean tangent.
 
 ## Install and update
@@ -214,6 +215,24 @@ Behavior:
 - Queued and SDK-rejected steering attempts appear in the inline activity stream.
 
 Related: [PRD-0006](docs/prd/0006-active-gremlin-session-steering.md), [ADR-0006](docs/adr/0006-official-sdk-steering-for-active-gremlin-sessions.md).
+
+## Gremlin session overlay
+
+Use `/gremlins:open <G-id>` to open a side-chat-style overlay for a known gremlin session.
+
+```text
+/gremlins:open G1
+```
+
+Behavior:
+
+- Opens captured transcript rows for active or completed gremlins from the current Pi session.
+- `/gremlins:open` with no id opens the only known gremlin, warns when no sessions are known, and fails closed with a list when multiple sessions require an explicit id.
+- Active sessions append live transcript rows at the bottom when the overlay is not scrolled away from the bottom.
+- Typing in the overlay and pressing `Enter` steers active sessions through the same `AgentSession.steer(message)` path as `/gremlins:steer`.
+- Completed, canceled, failed, stale, missing, or ambiguous sessions remain readable but reject steering in the transcript without closing the overlay.
+- Duplicate local ids across concurrent/repeated batches fail as ambiguous instead of guessing.
+- Tool transcript status rows show tool names only and do not render tool args/results, avoiding secret exposure in the overlay.
 
 ## Side-chat and tangent overlays
 
