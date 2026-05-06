@@ -80,6 +80,8 @@ export function createEntryCacheKey(
 			String(entry.revision),
 			createBoundedTextCacheToken(entry.currentPhase),
 			createBoundedTextCacheToken(entry.context),
+			createBoundedTextCacheToken(entry.model),
+			createBoundedTextCacheToken(entry.thinking),
 			createBoundedTextCacheToken(entry.latestText),
 			createBoundedTextCacheToken(entry.latestToolCall),
 			createBoundedTextCacheToken(entry.latestToolResult),
@@ -272,6 +274,14 @@ function formatIntentPreviewLine(intent?: string): string | undefined {
 	return preview ? `intent · ${preview}` : undefined;
 }
 
+function formatCompactMetadataLine(entry: GremlinInvocationEntry): string | undefined {
+	const parts = dedupeParts([
+		normalizeText(entry.model) ? `model:${entry.model}` : undefined,
+		normalizeText(entry.thinking) ? `thinking:${entry.thinking}` : undefined,
+	]);
+	return parts.length > 0 ? `meta · ${parts.join(" · ")}` : undefined;
+}
+
 function formatExpandedFieldLines(label: string, value?: string): string[] {
 	const normalized = normalizeText(value);
 	if (!normalized) return [];
@@ -297,6 +307,8 @@ export function formatCollapsedGremlinLines(entry: GremlinInvocationEntry): stri
 	const lines = [`[${formatGremlinStatus(entry.status)}] · ${formatGremlinIdentity(entry)}`];
 	const intentLine = formatIntentPreviewLine(entry.intent);
 	if (intentLine) lines.push(intentLine);
+	const metadataLine = formatCompactMetadataLine(entry);
+	if (metadataLine) lines.push(metadataLine);
 	lines.push(...formatContextPreviewLines(entry.context));
 	lines.push(...getRecentActivityPreviews(entry).map(formatActivityPreviewLine));
 	const usage = formatUsageSummary(entry.usage);
