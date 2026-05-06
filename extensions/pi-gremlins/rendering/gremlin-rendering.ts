@@ -129,9 +129,10 @@ function buildCollapsedText(details: GremlinInvocationDetails, width?: number): 
 	if (details.gremlins.length === 0) {
 		segments.push(getStaticRenderSegment("No gremlins requested.", width));
 	} else {
-		for (const entry of details.gremlins) {
+		details.gremlins.forEach((entry, index) => {
+			if (index > 0) segments.push("");
 			segments.push(getCollapsedEntrySegment(entry, width));
-		}
+		});
 	}
 	segments.push(getStaticRenderSegment("Ctrl+O expands inline detail.", width));
 	return segments.join("\n");
