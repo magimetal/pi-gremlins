@@ -253,6 +253,14 @@ Overlay behavior:
 - `Up`, `Down`, `PageUp`, `PageDown`, `Home`, and `End` scroll transcript rows.
 - `Alt+/` toggles focus after a side-chat overlay exists.
 
+Tool status summaries:
+
+- Side-chat and tangent tool start rows may show safe input summaries, such as the `read` path or `bash` command.
+- Sensitive keys or values are redacted, including tokens, API keys, passwords, cookies, authorization headers, credentials, and private keys.
+- Long summaries are truncated; ambiguous, malformed, missing, or unsupported inputs fall back to the tool name only.
+- Status summaries do not show full tool args, tool results, file contents, command output, or environment dumps.
+- Gremlin session overlays are stricter: their tool transcript status rows show tool names only and do not include input summaries.
+
 Isolation behavior:
 
 - Chat captures the parent transcript once when the first chat thread starts; it does not inherit live parent history afterward.
