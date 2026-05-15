@@ -1,4 +1,4 @@
-import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { ActiveGremlinSessionRegistry } from "./gremlin-session-registry.js";
 
 export const GREMLIN_STEER_COMMAND = "gremlins:steer";

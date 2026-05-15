@@ -154,7 +154,7 @@ function truncateToVisualLines(text, maxVisualLines, width, paddingX = 0) {
 	};
 }
 
-mock.module("@mariozechner/pi-coding-agent", () => ({
+mock.module("@earendil-works/pi-coding-agent", () => ({
 	DefaultResourceLoader,
 	truncateToVisualLines,
 	AuthStorage: {
@@ -179,7 +179,7 @@ mock.module("@mariozechner/pi-coding-agent", () => ({
 	withFileMutationQueue: async (_filePath, operation) => await operation(),
 }));
 
-mock.module("@mariozechner/pi-ai", () => ({
+mock.module("@earendil-works/pi-ai", () => ({
 	StringEnum: (_values, options = {}) => options,
 }));
 
@@ -195,7 +195,7 @@ mock.module("typebox", () => ({
 	},
 }));
 
-mock.module("@mariozechner/pi-tui", () => ({
+mock.module("@earendil-works/pi-tui", () => ({
 	Container: MockContainer,
 	Key: {
 		home: "home",

@@ -1,5 +1,5 @@
-import { truncateToVisualLines } from "@mariozechner/pi-coding-agent";
-import { Text, type Component } from "@mariozechner/pi-tui";
+import { truncateToVisualLines } from "@earendil-works/pi-coding-agent";
+import { Text, type Component } from "@earendil-works/pi-tui";
 import { pushLimitedCache } from "../shared/gremlin-cache-utils.js";
 import type { GremlinInvocationDetails } from "../shared/gremlin-schema.js";
 import {

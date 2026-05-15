@@ -1,5 +1,5 @@
-import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
-import type { OverlayHandle } from "@mariozechner/pi-tui";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { OverlayHandle } from "@earendil-works/pi-tui";
 import {
 	SIDE_CHAT_OVERLAY_OPTIONS,
 	SideChatOverlayComponent,

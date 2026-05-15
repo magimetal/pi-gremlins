@@ -3,8 +3,8 @@ import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 	ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
-import type { OverlayHandle } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import type { OverlayHandle } from "@earendil-works/pi-tui";
 import {
 	buildSideChatPrompt,
 	buildSideChatSessionConfig,

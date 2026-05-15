@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Pi SDK package imports and development dependencies now use the `@earendil-works` namespace at version `0.74.0`, replacing the previous `@mariozechner` package namespace.
 - **Primary-agent settings path** (issue #67): primary-agent selection now reads and writes nearest project `.pi/agents/settings.json`, creates `.pi/agents/` when needed, and safely migrates/falls back from legacy `.pi/settings.json` selections without writing new primary-agent state to the old path.
 - Rewrote README documentation for current install/update flows, gremlin invocation, discovery/frontmatter, runtime isolation, primary agents, steering, side-chat overlays, troubleshooting, and repository layout accuracy (issue #69).
 - `extensions/pi-gremlins` source and test files are reorganized into feature folders (`agents`, `gremlins`, `primary`, `rendering`, `shared`, `side-chat`, and `test`) while preserving the package entry point at `./extensions/pi-gremlins`.

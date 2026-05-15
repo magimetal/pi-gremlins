@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { ParentTranscriptSnapshot, SideChatMode } from "./side-chat-session-factory.js";
 
 export const SIDE_CHAT_THREAD_ENTRY_TYPE = "pi-gremlins:side-chat-thread";

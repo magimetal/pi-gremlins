@@ -2,13 +2,13 @@ import * as path from "node:path";
 import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
-} from "@mariozechner/pi-agent-core";
+} from "@earendil-works/pi-agent-core";
 import {
 	type ExtensionAPI,
 	type ExtensionContext,
 	getAgentDir,
-} from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import {
 	createGremlinDiscoveryCache,
 	createPrimaryAgentDiscoveryCache,

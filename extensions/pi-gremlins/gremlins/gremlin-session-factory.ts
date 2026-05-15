@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Model } from "@mariozechner/pi-ai";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { Model } from "@earendil-works/pi-ai";
 import {
 	AuthStorage,
 	createAgentSession,
@@ -8,7 +8,7 @@ import {
 	SessionManager,
 	SettingsManager,
 	type ResourceLoader,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import type { GremlinDefinition } from "./gremlin-definition.js";
 import { buildGremlinPrompt } from "./gremlin-prompt.js";
 

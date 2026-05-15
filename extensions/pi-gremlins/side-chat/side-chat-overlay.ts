@@ -9,8 +9,8 @@ import {
 	type MarkdownTheme,
 	type OverlayOptions,
 	type TUI,
-} from "@mariozechner/pi-tui";
-import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-tui";
+import { getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import type { SideChatMode } from "./side-chat-session-factory.js";
 import type {
 	SideChatTranscriptRow,

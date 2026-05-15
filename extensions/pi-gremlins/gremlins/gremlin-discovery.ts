@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDir } from "@mariozechner/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { AgentSource } from "../agents/agent-definition.js";
 import {
 	loadGremlinDefinition,

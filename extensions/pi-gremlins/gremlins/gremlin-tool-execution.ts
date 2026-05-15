@@ -3,8 +3,8 @@ import * as path from "node:path";
 import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
-} from "@mariozechner/pi-agent-core";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-agent-core";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	resolveGremlinByName,
 	type AgentDiscoveryDiagnostic,

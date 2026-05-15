@@ -1,4 +1,4 @@
-import type { TextContent } from "@mariozechner/pi-ai";
+import type { TextContent } from "@earendil-works/pi-ai";
 
 export function extractTextFromContent(content: unknown): string {
 	if (typeof content === "string") return content;
