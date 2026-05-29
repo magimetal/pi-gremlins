@@ -256,9 +256,7 @@ export function createPiGremlinsExtension(options: PiGremlinsExtensionOptions = 
 			},
 		};
 
-		// FIXME: Cast kept because pi 0.69.0 + TypeBox 1.x triggers TS2589 deep-instantiation at registerTool().
-		// Keep unsoundness pinned to registration boundary. Revisit after upstream typings or TS inference improves.
-		pi.registerTool(tool as any);
+		pi.registerTool(tool);
 	};
 }
 
